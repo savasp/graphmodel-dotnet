@@ -45,7 +45,7 @@ internal sealed class InMemoryQueryExecutor(
                 combined = combined.Distinct(GraphValueComparer.Instance);
             }
 
-            return ApplyTerminal(combined.ToList(), model, hints, allPredicate: null);
+            return ApplyTerminal(combined.ToList(), model, hints);
         }
 
         var rows = RootRows(model.Root);
@@ -54,14 +54,10 @@ internal sealed class InMemoryQueryExecutor(
         rows = ApplyRelationshipExistence(rows, model.RelationshipExistence);
         rows = ApplyJoin(rows, model);
 
-        var predicates = model.Predicates.ToList();
-        PredicateFragment? allPredicate = null;
-        if (model.Terminal == TerminalOperation.All && predicates.Count > 0)
-        {
-            allPredicate = predicates[^1];
-            predicates.RemoveAt(predicates.Count - 1);
-        }
-
+        // The All terminal predicate is universal quantification over the effective source, not a
+        // source filter: it stays in model.TerminalPredicate and is evaluated once every surviving
+        // row is projected. Only the preceding Where predicates filter here.
+        var predicates = model.Predicates;
         var deferred = new List<PredicateFragment>();
         var complexTraversals = model.Traversal.Where(step => step.IsComplexPropertyTraversal).ToList();
         if (predicates.Count > 0)
@@ -132,14 +128,13 @@ internal sealed class InMemoryQueryExecutor(
         }
 
         var values = materialized.Select(p => p.Value).ToList();
-        return ApplyTerminal(values, model, hints, allPredicate);
+        return ApplyTerminal(values, model, hints);
     }
 
     private object? ApplyTerminal(
         List<object?> values,
         GraphQueryModel model,
-        TerminalHints hints,
-        PredicateFragment? allPredicate)
+        TerminalHints hints)
     {
         switch (model.Terminal)
         {
@@ -182,7 +177,8 @@ internal sealed class InMemoryQueryExecutor(
             case TerminalOperation.Any:
                 return values.Count > 0;
             case TerminalOperation.All:
-                return allPredicate is null ||
+                // Universal quantification over the effective source: vacuously true when empty.
+                return model.TerminalPredicate is not { } allPredicate ||
                     values.All(v => EvaluatePredicate(allPredicate.Predicate, v));
             case TerminalOperation.Count:
                 return values.Count;
@@ -229,11 +225,13 @@ internal sealed class InMemoryQueryExecutor(
 
                 return SumValues(nonNull, numericType);
             case TerminalOperation.Average:
+                // LINQ Average ignores nulls: a nullable input averages to a nullable result and
+                // returns null for an empty or all-null sequence, while a non-nullable input throws
+                // on empty. Integer and long inputs average to double, decimal stays decimal, and
+                // float/double compute in double (the API result type shapes float back to float).
                 if (nonNull.Count == 0)
                 {
-                    return nullable && values.Count == 0 && Nullable.GetUnderlyingType(inputType) is not null
-                        ? null
-                        : throw new InvalidOperationException(NoElements);
+                    return nullable ? null : throw new InvalidOperationException(NoElements);
                 }
 
                 return numericType == typeof(decimal)
@@ -809,7 +807,7 @@ internal sealed class InMemoryQueryExecutor(
 
     private IEnumerable<Row> FilterRows(
         IEnumerable<Row> rows,
-        List<PredicateFragment> predicates,
+        IReadOnlyList<PredicateFragment> predicates,
         List<PredicateFragment> deferred,
         IReadOnlyList<TraversalStep> complexTraversals)
     {

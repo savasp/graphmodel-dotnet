@@ -1,0 +1,7 @@
+== Cypher ==
+MATCH (src:HostilePropertyLabelNode)
+ORDER BY src.`family name`
+RETURN src.`family name`
+
+== Parameters ==
+(none)

@@ -13,6 +13,7 @@ public interface IAggregationTests : IGraphTest
         public decimal NetWorth { get; set; }
         public double Height { get; set; }
         public float Weight { get; set; }
+        public int? Score { get; set; }
         public DateTime CreatedAt { get; set; }
         public Guid TrackingId { get; set; }
     }
@@ -486,6 +487,100 @@ public interface IAggregationTests : IGraphTest
                 .Where(p => p.FirstName == "NonExistent")
                 .AverageAsync(p => p.Age, TestContext.Current.CancellationToken);
         });
+    }
+
+    [Fact]
+    public async Task AverageInt_FractionalResult_ReturnsDoubleWithoutTruncation()
+    {
+        // 20 and 21 average to 20.5. The old translation truncated integer averages to the input
+        // type (returning 20); the LINQ-aligned surface returns the fractional double.
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = "Alice", Age = 20 },
+            new PersonWithNumbers { FirstName = "Bob", Age = 21 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        double average = await Graph.Nodes<PersonWithNumbers>()
+            .AverageAsync(p => p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Equal(20.5, average);
+    }
+
+    [Fact]
+    public async Task AverageLong_FractionalResult_ReturnsDoubleWithoutTruncation()
+    {
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = "Alice", Salary = 100L },
+            new PersonWithNumbers { FirstName = "Bob", Salary = 101L }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        double average = await Graph.Nodes<PersonWithNumbers>()
+            .AverageAsync(p => p.Salary, TestContext.Current.CancellationToken);
+
+        Assert.Equal(100.5, average);
+    }
+
+    [Fact]
+    public async Task AverageNullableInt_MixedNullAndValue_AveragesNonNullValues()
+    {
+        // LINQ Average ignores nulls: (10 + 20) / 2 non-null values = 15.
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = "Alice", Score = 10 },
+            new PersonWithNumbers { FirstName = "Bob", Score = null },
+            new PersonWithNumbers { FirstName = "Charlie", Score = 20 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        double? average = await Graph.Nodes<PersonWithNumbers>()
+            .AverageAsync(p => p.Score, TestContext.Current.CancellationToken);
+
+        Assert.Equal(15.0, average);
+    }
+
+    [Fact]
+    public async Task AverageNullableInt_AllNull_ReturnsNull()
+    {
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = "Alice", Score = null },
+            new PersonWithNumbers { FirstName = "Bob", Score = null }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        double? average = await Graph.Nodes<PersonWithNumbers>()
+            .AverageAsync(p => p.Score, TestContext.Current.CancellationToken);
+
+        Assert.Null(average);
+    }
+
+    [Fact]
+    public async Task AverageNullableInt_EmptySource_ReturnsNull()
+    {
+        double? average = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == "NonExistent")
+            .AverageAsync(p => p.Score, TestContext.Current.CancellationToken);
+
+        Assert.Null(average);
     }
 
     [Fact]

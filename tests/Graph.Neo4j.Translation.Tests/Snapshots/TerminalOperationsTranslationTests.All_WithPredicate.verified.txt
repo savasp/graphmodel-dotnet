@@ -1,7 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-WHERE src.Age >= $p0
-RETURN COUNT(src) > 0 AS exists
+RETURN count(CASE WHEN src.Age >= $p0 THEN 1 END) = count(src) AS exists
 
 == Parameters ==
 p0 = 18

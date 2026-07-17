@@ -189,6 +189,20 @@ public static class GraphQueryModelValidator
             ValidateLambdaReferences(model.Ordering[i].KeySelector, possibleScopeTypes, $"Ordering key {i}");
         }
 
+        if (model.TerminalPredicate is { } terminalPredicate)
+        {
+            if (model.Terminal != TerminalOperation.All)
+            {
+                throw new GraphException(
+                    $"Terminal operation '{model.Terminal}' cannot carry a terminal predicate; only " +
+                    $"'{TerminalOperation.All}' owns one.");
+            }
+
+            // The terminal predicate ranges over the value the query produces, so a preceding
+            // projection's result type is a valid scope (possibleScopeTypes already includes it).
+            ValidateLambdaReferences(terminalPredicate.Predicate, possibleScopeTypes, "Terminal predicate");
+        }
+
         if (model.PostPaging is { } postPaging)
         {
             if (model.Paging.Skip is null && model.Paging.Take is null)

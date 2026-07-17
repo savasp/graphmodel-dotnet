@@ -590,6 +590,42 @@ public interface IQueryTests : IGraphTest
     }
 
     [Fact]
+    public async Task AllAsync_UniversalQuantification_MatchesLinqSemantics()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"AllAsync-{Guid.NewGuid():N}";
+        var missingGroup = $"{group}-missing";
+        var people = new[]
+        {
+            new Person { FirstName = $"{group}-Alice", LastName = group, Age = 21 },
+            new Person { FirstName = $"{group}-Bob", LastName = group, Age = 35 },
+            new Person { FirstName = $"{group}-Charlie", LastName = group, Age = 42 }
+        };
+
+        foreach (var person in people)
+        {
+            await this.Graph.CreateNodeAsync(person, null, cancellationToken);
+        }
+
+        var groupMembers = this.Graph.Nodes<Person>().Where(p => p.LastName == group);
+
+        // All-true: every member satisfies the predicate.
+        Assert.True(await groupMembers.AllAsync(p => p.Age >= 18, cancellationToken));
+
+        // Mixed: some members satisfy, some do not. This is the case the old translation reported
+        // as true because it applied the predicate as a source filter and checked for any survivor.
+        Assert.False(await groupMembers.AllAsync(p => p.Age >= 35, cancellationToken));
+
+        // All-false: no member satisfies the predicate.
+        Assert.False(await groupMembers.AllAsync(p => p.Age >= 100, cancellationToken));
+
+        // Empty effective source is vacuously true, even for an always-false predicate.
+        var empty = this.Graph.Nodes<Person>().Where(p => p.LastName == missingGroup);
+        Assert.True(await empty.AllAsync(p => p.Age >= 100, cancellationToken));
+        Assert.True(await empty.AllAsync(p => p.FirstName == "unreachable", cancellationToken));
+    }
+
+    [Fact]
     public async Task CanQueryWithContainsOnScalarProjection()
     {
         var p1 = new Person { FirstName = "Contains-A", Bio = "alpha" };

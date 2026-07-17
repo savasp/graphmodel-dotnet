@@ -65,6 +65,21 @@ public abstract record CustomPropertyLabelNode : Node
 }
 
 /// <summary>
+/// A node whose custom property storage names are not plain Cypher symbolic names, so typed
+/// property access must backtick-escape them on the read path (#367). Abstract on purpose, like
+/// <see cref="SpacedLabelNode"/>, so the label does not leak into INode-widened snapshots.
+/// </summary>
+[Node("HostilePropertyLabelNode")]
+public abstract record HostilePropertyLabelNode : Node
+{
+    [Property(Label = "family name")]
+    public string LastName { get; set; } = string.Empty;
+
+    [Property(Label = "score`; MATCH (m) DETACH DELETE m //")]
+    public int Score { get; set; }
+}
+
+/// <summary>
 /// A complex (non-entity) property type embedded on <see cref="Person"/>.
 /// </summary>
 public record Address

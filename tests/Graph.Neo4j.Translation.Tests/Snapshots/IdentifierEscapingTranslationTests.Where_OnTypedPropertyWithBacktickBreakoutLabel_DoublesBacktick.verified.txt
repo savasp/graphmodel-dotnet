@@ -1,0 +1,10 @@
+== Cypher ==
+MATCH (src:HostilePropertyLabelNode)
+WHERE src.`score``; MATCH (m) DETACH DELETE m //` > $p0
+RETURN {
+                Node: src,
+                ComplexProperties: []
+            } AS Node
+
+== Parameters ==
+p0 = 0

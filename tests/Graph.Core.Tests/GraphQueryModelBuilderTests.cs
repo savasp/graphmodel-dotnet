@@ -585,9 +585,9 @@ public class GraphQueryModelBuilderTests
     [InlineData("FirstAsyncMarker", TerminalOperation.First)]
     [InlineData("SingleAsyncMarker", TerminalOperation.Single)]
     [InlineData("AnyAsyncMarker", TerminalOperation.Any)]
-    [InlineData("AllAsyncMarker", TerminalOperation.All)]
     [InlineData("CountAsyncMarker", TerminalOperation.Count)]
-    public void PredicateTerminalMarkers_CarryPredicate(string markerName, TerminalOperation expected)
+    public void ExistentialPredicateTerminalMarkers_CarryPredicateAsSourcePredicate(
+        string markerName, TerminalOperation expected)
     {
         var source = Root<Person>();
         Expression<Func<Person, bool>> predicate = person => person.Age >= 18;
@@ -601,6 +601,48 @@ public class GraphQueryModelBuilderTests
 
         Assert.Equal(expected, model.Terminal);
         Assert.Same(predicate, Assert.Single(model.Predicates).Predicate);
+        Assert.Null(model.TerminalPredicate);
+    }
+
+    [Fact]
+    public void AllMarker_CarriesPredicateAsTerminalPredicateNotSourceFilter()
+    {
+        var source = Root<Person>();
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 18;
+        var expression = MarkerCall(
+            "AllAsyncMarker",
+            [typeof(Person)],
+            source.Expression,
+            [Expression.Quote(predicate)]);
+
+        var model = GraphQueryModelBuilder.Build(expression);
+
+        Assert.Equal(TerminalOperation.All, model.Terminal);
+        // The universal-quantification predicate must stay off the source-predicate list so no
+        // provider can lower it as an ordinary pre-aggregate filter.
+        Assert.Empty(model.Predicates);
+        Assert.NotNull(model.TerminalPredicate);
+        Assert.Same(predicate, model.TerminalPredicate.Predicate);
+    }
+
+    [Fact]
+    public void AllMarker_AfterWhere_KeepsWhereAsSourcePredicateAndAllAsTerminalPredicate()
+    {
+        Expression<Func<Person, bool>> where = person => person.LastName == "Smith";
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 18;
+        var source = Root<Person>().Where(where);
+        var expression = MarkerCall(
+            "AllAsyncMarker",
+            [typeof(Person)],
+            source.Expression,
+            [Expression.Quote(predicate)]);
+
+        var model = GraphQueryModelBuilder.Build(expression);
+
+        Assert.Equal(TerminalOperation.All, model.Terminal);
+        Assert.Same(where, Assert.Single(model.Predicates).Predicate);
+        Assert.NotNull(model.TerminalPredicate);
+        Assert.Same(predicate, model.TerminalPredicate.Predicate);
     }
 
     [Theory]

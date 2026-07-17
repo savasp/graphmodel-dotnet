@@ -23,7 +23,12 @@ public interface ICypherDialect
     /// <summary>Renders a property or stored entity-ID access.</summary>
     /// <param name="target">The already-rendered target expression.</param>
     /// <param name="property">The stored property name.</param>
-    /// <param name="escape">Whether the property name must be escaped.</param>
+    /// <param name="escape">
+    /// When <see langword="true"/>, the property name is a dynamic (untrusted) identifier and is
+    /// always escaped. When <see langword="false"/>, it is a compile-time data-model property
+    /// identifier and is rendered byte-stably: bare when it is a plain symbolic name, escaped only
+    /// when it would otherwise break out of the identifier (spaces, punctuation, backticks).
+    /// </param>
     string RenderPropertyAccess(string target, string property, bool escape);
 
     /// <summary>Maps a provider-neutral function name to dialect syntax.</summary>

@@ -432,7 +432,13 @@ internal sealed partial class AgeQueryRunner
             items[index] = $"{items[index].Trim()} AS {normalizedColumns[index]}";
         }
 
-        var replacement = string.Join(", ", items);
+        // Preserve the captured body's trailing whitespace: the RETURN body runs up to the word
+        // boundary before ORDER BY / SKIP / LIMIT, so it includes the separating whitespace. Rebuilt
+        // items are trimmed, and dropping that whitespace would fuse the last alias into the
+        // following clause keyword (for example "age_column_0ORDER BY").
+        var capturedBody = match.Groups[1].Value;
+        var trailingWhitespace = capturedBody[capturedBody.TrimEnd().Length..];
+        var replacement = string.Join(", ", items) + trailingWhitespace;
         cypher = $"{cypher[..match.Groups[1].Index]}{replacement}{cypher[(match.Groups[1].Index + match.Groups[1].Length)..]}";
         return (cypher, normalizedColumns);
     }

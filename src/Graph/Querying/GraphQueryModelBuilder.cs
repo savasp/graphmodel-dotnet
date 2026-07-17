@@ -38,6 +38,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     private UnionFragment? _union;
     private QueryPathShape? _pathShape;
     private object? _terminalOperand;
+    private PredicateFragment? _terminalPredicate;
     private SearchRoot? _searchFilter;
     private TerminalOperation _terminal = TerminalOperation.ToListOrArray;
     private bool _distinct;
@@ -107,6 +108,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         {
             RelationshipExistence = builder._relationshipExistence,
             LabelFilters = builder._labelFilters,
+            TerminalPredicate = builder._terminalPredicate,
         };
     }
 
@@ -527,7 +529,18 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
             }
 
             AddComplexPropertyTraversals(predicate);
-            _predicates.Add(new PredicateFragment(predicate, _currentAlias));
+
+            // All's universal quantification is the one predicate terminal that a source filter
+            // cannot express: filtering would turn "every element satisfies" into "some element
+            // satisfies". The other predicate terminals are equivalent to Where + terminal.
+            if (terminal == TerminalOperation.All)
+            {
+                _terminalPredicate = new PredicateFragment(predicate, _currentAlias);
+            }
+            else
+            {
+                _predicates.Add(new PredicateFragment(predicate, _currentAlias));
+            }
         }
 
         _terminal = terminal;

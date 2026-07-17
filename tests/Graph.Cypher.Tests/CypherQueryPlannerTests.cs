@@ -701,6 +701,44 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_LowersAllTerminalToSatisfyingCountEqualsTotalWithoutSourceFilter()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 18;
+        var model = Model(terminal: TerminalOperation.All) with
+        {
+            TerminalPredicate = new PredicateFragment(predicate, "src"),
+        };
+
+        var statement = planner.Plan(model);
+
+        // The universal-quantification predicate must never be lowered as a source WHERE filter;
+        // doing so is exactly the Any-shaped mistranslation this guards against.
+        Assert.Empty(statement.Clauses.OfType<WhereClause>());
+
+        var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
+        Assert.Equal("exists", item.Alias);
+
+        // count(CASE WHEN <predicate> THEN 1 END) = count(src): satisfying rows equal total rows.
+        var equality = Assert.IsType<AstBinaryExpression>(item.Expression);
+        Assert.Equal(CypherBinaryOperator.Equal, equality.Op);
+        Assert.Equal("count", Assert.IsType<FunctionCall>(equality.Left).Name);
+        Assert.Equal("count", Assert.IsType<FunctionCall>(equality.Right).Name);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_RejectsTerminalPredicateOnNonAllTerminal()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 18;
+        var model = Model(terminal: TerminalOperation.Any) with
+        {
+            TerminalPredicate = new PredicateFragment(predicate, "src"),
+        };
+
+        Assert.Throws<GraphException>(() => planner.Plan(model));
+    }
+
+    [Fact]
     public void Plan_LowersJoinToTwoMatchesEqualityAndProjection()
     {
         Expression<Func<Knows, string>> outerKey = relationship => relationship.StartNodeId;
