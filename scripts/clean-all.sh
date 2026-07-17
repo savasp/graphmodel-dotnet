@@ -84,7 +84,7 @@ fi
 # Clean MSBuild artifacts
 print_header "Cleaning MSBuild artifacts..."
 print_status "Cleaning local NuGet feed..."
-dotnet msbuild -target:CleanLocalFeed -verbosity:quiet || true
+dotnet msbuild eng/PackageValidation.proj -target:Clean -verbosity:quiet || true
 
 print_status "Cleaning solution..."
 dotnet clean --verbosity quiet || true
@@ -111,12 +111,6 @@ fi
 if [ -d "benchmarks" ]; then
     print_status "Removing benchmarks directory..."
     rm -rf benchmarks
-fi
-
-# Clean local NuGet feed directory
-if [ -d "local-nuget-feed" ]; then
-    print_status "Removing local NuGet feed directory..."
-    rm -rf local-nuget-feed
 fi
 
 print_status "✅ MSBuild artifacts cleaned"
@@ -214,4 +208,4 @@ fi
 echo ""
 print_status "You can now start fresh with:"
 print_status "  dotnet restore"
-print_status "  dotnet build" 
+print_status "  dotnet build"

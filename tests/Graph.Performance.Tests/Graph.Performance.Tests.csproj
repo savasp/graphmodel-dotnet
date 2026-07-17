@@ -39,7 +39,6 @@
     <PackageReference Include="Cvoya.Graph" />
     <PackageReference Include="Cvoya.Graph.Neo4j" />
     <PackageReference Include="Cvoya.Graph.Serialization" />
-    <PackageReference Include="Cvoya.Graph.Serialization.CodeGen" />
   </ItemGroup>
 
 </Project>

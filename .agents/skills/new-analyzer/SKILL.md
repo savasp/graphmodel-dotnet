@@ -16,13 +16,13 @@ Scaffold a new Roslyn analyzer with code fix and tests.
 
 ## Steps
 
-1. **Read existing analyzers** in `src/Cvoya.Graph.Analyzers/` to understand:
+1. **Read existing analyzers** in `src/Graph.Analyzers/` to understand:
    - Naming conventions (e.g., `CG001`, `CG002`)
    - Diagnostic categories and severities used
    - How analyzers are registered
    - Code fix patterns
 
-2. **Create the analyzer class** in `src/Cvoya.Graph.Analyzers/`:
+2. **Create the analyzer class** in `src/Graph.Analyzers/`:
    - Follow the `DiagnosticAnalyzer` pattern from existing analyzers
    - Use the provided diagnostic ID and title
    - Add a meaningful message format and description
@@ -30,15 +30,15 @@ Scaffold a new Roslyn analyzer with code fix and tests.
 
 3. **Create a code fix provider** if applicable, registered for the analyzer's diagnostic ID.
 
-4. **Add tests** in `tests/Cvoya.Graph.Analyzers.Tests/` — one test class per diagnostic, following the existing `CG00X_*Tests.cs` pattern (uses `Microsoft.CodeAnalysis.Testing`).
+4. **Add tests** in `tests/Graph.Analyzers.Tests/` — one test class per diagnostic, following the existing `CG00X_*Tests.cs` pattern (uses `Microsoft.CodeAnalysis.Testing`).
 
 5. **Build and test** (no Docker needed for analyzer work):
    ```bash
-   dotnet build src/Cvoya.Graph.Analyzers/ --configuration Debug
-   dotnet test tests/Cvoya.Graph.Analyzers.Tests --configuration Debug
+   dotnet build src/Graph.Analyzers/Graph.Analyzers.csproj --configuration Debug
+   DiffEngine_Disabled=true dotnet test tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj --configuration Debug
    ```
 
 ## References
 
-- Existing analyzers in `src/Cvoya.Graph.Analyzers/` are the primary reference
+- Existing analyzers in `src/Graph.Analyzers/` are the primary reference
 - [Roslyn Analyzer docs](https://learn.microsoft.com/en-us/dotnet/csharp/roslyn-sdk/tutorials/how-to-write-csharp-analyzer-code-fix)

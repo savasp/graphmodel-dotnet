@@ -33,12 +33,18 @@ The test projects have different requirements — get this right:
 |---------|------------|-------|
 | `src/Graph.CompatibilityTests` | **Provider contract suite (TCK), packed as `Cvoya.Graph.CompatibilityTests`.** Test interfaces with default xUnit methods, a harness SPI (`IGraphProviderTestHarness`), and a capability registry; providers bind those interfaces in their own test project. It executes ~no tests standalone. Add provider-agnostic tests here so every provider inherits them. See [docs/provider-implementers-guide.md](docs/provider-implementers-guide.md#certifying-a-provider). | nothing (but running it alone proves nothing) |
 | `tests/Graph.Neo4j.Tests` | The contract suite bound to Neo4j + provider-specific tests. This is where the suite actually runs. | a running Neo4j at `NEO4J_URI`, or reachable at the default `bolt://localhost:7687` with `neo4j/password`. Start one with `scripts/containers/start-neo4j.sh` (Podman preferred locally; Docker fallback; set `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` to force one). There is **no** automatic container startup — `CI=true` does nothing (that path is disabled; see #88). |
+| `tests/Graph.Age.Tests` | The contract suite bound to Apache AGE + provider-specific tests. | a running AGE instance at `AGE_CONNECTION_STRING`. Start one with `scripts/containers/start-age.sh` and export the connection string it prints (default host port `5455`). |
 | `tests/Graph.InMemory.Tests` | The contract suite bound to the in-memory provider. Full-text search tests skip via the capability declaration. | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.CompatibilityTests.Tests` | Meta-tests for the TCK itself (harness SPI lifecycle, capability skips, the compliance guard). | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.Analyzers.Tests` | Analyzer tests. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.Core.Tests` | Provider-neutral graph model, query-shape, and serialization integration tests. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.Cypher.Tests` | Shared Cypher AST, validation, and rendering tests. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.Neo4j.Translation.Tests` | LINQ-to-Cypher translation tests that do not execute against Neo4j. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.QuerySurface.CompilationTests` | Compile-time query-surface contract tests. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.Serialization.CodeGen.Tests` | Incremental serialization generator tests. | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.Performance.Tests` | Benchmarks. | not part of the normal gate |
 
-Package testing before publishing: `dotnet build --configuration LocalFeed`, then `--configuration Release`. Release builds require the `VERSION` file; the release process (tag-triggered, `VERSION` as the source of truth) is described in [docs/release-process.md](docs/release-process.md).
+Package testing before publishing: `dotnet msbuild eng/PackageValidation.proj -target:Validate`. The orchestrator packs the complete LocalFeed set, verifies it with `scripts/verify-package-set.sh`, and restores/builds package references using repository-scoped NuGet state. Release builds require the `VERSION` file; the release process (tag-triggered, `VERSION` as the source of truth) is described in [docs/release-process.md](docs/release-process.md).
 
 ## Conventions
 

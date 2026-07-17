@@ -24,14 +24,15 @@ Scaffold a new node type with proper conventions.
    - Use C# records, matching the existing codebase
    - Add XML documentation and the Apache 2.0 header
 
-3. **Add tests** in `tests/Cvoya.Graph.Tests/` (the provider-agnostic contract suite — tests there are inherited and executed by provider test projects) following existing test patterns.
+3. **Add provider-contract coverage** in `src/Graph.CompatibilityTests/` when the behavior belongs to every provider. Those tests execute through `tests/Graph.InMemory.Tests/`, `tests/Graph.Neo4j.Tests/`, and `tests/Graph.Age.Tests/`. Add core-only tests in `tests/Graph.Core.Tests/`.
 
-4. **Serialization** is handled by the `Cvoya.Graph.Serialization.CodeGen` source generator automatically for types visible to the compilation — verify the generated serializer appears by building.
+4. **Serialization** is handled by the `Graph.Serialization.CodeGen` source generator automatically for types visible to the compilation — verify the generated serializer appears by building.
 
 5. **Build and test** to verify everything compiles:
    ```bash
-   dotnet build --configuration Debug
-   dotnet test --configuration Debug --no-build   # full run needs Neo4j; see AGENTS.md
+   dotnet build cvoya-graph.sln --configuration Debug
+   DiffEngine_Disabled=true dotnet test tests/Graph.Core.Tests/Graph.Core.Tests.csproj --configuration Debug --no-build
+   DiffEngine_Disabled=true dotnet test tests/Graph.InMemory.Tests/Graph.InMemory.Tests.csproj --configuration Debug --no-build
    ```
 
 ## References
