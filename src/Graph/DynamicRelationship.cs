@@ -16,6 +16,10 @@ public sealed record DynamicRelationship : Relationship
     /// <summary>
     /// Gets the properties of this relationship.
     /// </summary>
+    /// <remarks>
+    /// Simple collection properties are materialized as <see cref="List{T}"/> values because the
+    /// serialized representation retains the element type but not the caller's original collection type.
+    /// </remarks>
     public IReadOnlyDictionary<string, object?> Properties { get; init; } = new Dictionary<string, object?>();
 
     /// <summary>

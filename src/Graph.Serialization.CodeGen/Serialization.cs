@@ -152,12 +152,6 @@ internal static class Serialization
             sb.AppendLine("                ? null");
             sb.AppendLine("                : new SimpleCollection(");
             sb.AppendLine("                    Values: value");
-
-            if (elementType.IsNullable)
-            {
-                sb.AppendLine("                        .Where(item => item is not null)");
-            }
-
             sb.AppendLine($"                        .Select(item => new SimpleValue(item!, typeof({elementType.TypeOfName})))");
             sb.AppendLine("                        .ToList(),");
             sb.AppendLine($"                    ElementType: typeof({elementType.TypeOfName})");

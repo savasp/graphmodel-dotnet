@@ -28,6 +28,15 @@ public class EntityFactoryTests
     private static readonly string[] ExpectedLabels = ["FactoryNode", "RuntimeLabel"];
     private static readonly string[] DynamicLabels = ["Person", "Employee"];
     private static readonly string[] DynamicTags = ["engineer", "mathematician"];
+    private static readonly string[] ExpectedDynamicStrings = ["first", "second"];
+    private static readonly int[] ExpectedDynamicIntegers = [1, 2, 3];
+    private static readonly FactoryKind[] ExpectedDynamicKinds = [FactoryKind.Unknown, FactoryKind.Primary];
+    private static readonly int?[] ExpectedDynamicNullableIntegers = [1, null, 3];
+    private static readonly Guid[] DynamicIds =
+    [
+        Guid.Parse("7a2ef43f-dadf-4c88-a2f6-af730f87a963"),
+        Guid.Parse("69bd4638-166e-428f-8fd2-3993338e865f"),
+    ];
 
     static EntityFactoryTests()
     {
@@ -153,7 +162,106 @@ public class EntityFactoryTests
         Assert.Equal(FixedDate, roundTripped.Properties["workDate"]);
         Assert.Equal(FixedTime, roundTripped.Properties["workTime"]);
         Assert.Equal(FixedPoint, roundTripped.Properties["location"]);
+        Assert.Equal(DynamicTags, Assert.IsType<List<string>>(roundTripped.Properties["tags"]));
         Assert.Null(roundTripped.Properties["optional"]);
+    }
+
+    [Fact]
+    public void DynamicNode_RoundTripsTypedSimpleCollectionsAsLists()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode("dynamic-collections", ["Person"], CreateDynamicCollectionProperties());
+
+        var roundTripped = factory.Deserialize<DynamicNode>(factory.Serialize(node));
+
+        AssertDynamicCollectionProperties(roundTripped.Properties);
+    }
+
+    [Fact]
+    public void DynamicRelationship_RoundTripsTypedSimpleCollectionsAsLists()
+    {
+        var factory = new EntityFactory();
+        var relationship = new DynamicRelationship(
+            "source",
+            "target",
+            "KNOWS",
+            CreateDynamicCollectionProperties());
+
+        var roundTripped = factory.Deserialize<DynamicRelationship>(factory.Serialize(relationship));
+
+        AssertDynamicCollectionProperties(roundTripped.Properties);
+    }
+
+    [Fact]
+    public void DynamicCollection_WithMalformedItem_ThrowsGraphException()
+    {
+        var factory = new EntityFactory();
+        var entity = factory.Serialize(new DynamicNode("dynamic-invalid", ["Person"], new Dictionary<string, object?>()));
+        entity.SimpleProperties["invalid"] = new Property(
+            PropertyInfo: null!,
+            Label: "invalid",
+            IsNullable: false,
+            Value: new SimpleCollection(
+                [new SimpleValue("not-an-integer", typeof(string))],
+                typeof(int)));
+
+        var exception = Assert.Throws<GraphException>(() => factory.Deserialize<DynamicNode>(entity));
+
+        Assert.Contains("invalid", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(typeof(int).ToString(), exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DynamicCollection_WithNullElementForNonNullableValueType_ThrowsGraphException()
+    {
+        var factory = new EntityFactory();
+        var entity = factory.Serialize(new DynamicNode("dynamic-null-element", ["Person"], new Dictionary<string, object?>()));
+        entity.SimpleProperties["invalid"] = new Property(
+            PropertyInfo: null!,
+            Label: "invalid",
+            IsNullable: false,
+            Value: new SimpleCollection([new SimpleValue(null!, typeof(int))], typeof(int)));
+
+        var exception = Assert.Throws<GraphException>(() => factory.Deserialize<DynamicNode>(entity));
+
+        Assert.Contains("invalid", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("null element", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(typeof(int).ToString(), exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DynamicProperty_WithNullSerializedValue_DeserializesAsNull()
+    {
+        var factory = new EntityFactory();
+        var entity = factory.Serialize(new DynamicNode("dynamic-null-value", ["Person"], new Dictionary<string, object?>()));
+        entity.SimpleProperties["optional"] = new Property(
+            PropertyInfo: null!,
+            Label: "optional",
+            IsNullable: true,
+            Value: null);
+
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
+
+        Assert.True(roundTripped.Properties.ContainsKey("optional"));
+        Assert.Null(roundTripped.Properties["optional"]);
+    }
+
+    [Fact]
+    public void ComplexValueSimpleCollections_PreserveNullElementsAndDeclaredElementType()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-complex-collections",
+            ["Person"],
+            new Dictionary<string, object?> { ["survey"] = new FactorySurvey() });
+
+        var entity = factory.Serialize(node);
+
+        var complex = Assert.IsType<EntityInfo>(entity.ComplexProperties["survey"].Value);
+        var scores = Assert.IsType<SimpleCollection>(complex.SimpleProperties[nameof(FactorySurvey.Scores)].Value);
+        Assert.Equal(typeof(int?), scores.ElementType);
+        Assert.Equal(new object?[] { 1, null, 3 }, scores.Values.Select(value => value.Object));
+        Assert.All(scores.Values, value => Assert.Equal(typeof(int?), value.Type));
     }
 
     [Fact]
@@ -273,6 +381,28 @@ public class EntityFactoryTests
         Assert.Equal("node-1", roundTripped.Id);
     }
 
+    private static Dictionary<string, object?> CreateDynamicCollectionProperties() => new()
+    {
+        ["strings"] = new[] { "first", "second" },
+        ["integers"] = new List<int> { 1, 2, 3 },
+        ["guids"] = DynamicIds,
+        ["kinds"] = new[] { FactoryKind.Unknown, FactoryKind.Primary },
+        ["nullableIntegers"] = new int?[] { 1, null, 3 },
+        ["emptyIntegers"] = Array.Empty<int>(),
+    };
+
+    private static void AssertDynamicCollectionProperties(IReadOnlyDictionary<string, object?> properties)
+    {
+        Assert.Equal(ExpectedDynamicStrings, Assert.IsType<List<string>>(properties["strings"]));
+        Assert.Equal(ExpectedDynamicIntegers, Assert.IsType<List<int>>(properties["integers"]));
+        Assert.Equal(DynamicIds, Assert.IsType<List<Guid>>(properties["guids"]));
+        Assert.Equal(
+            ExpectedDynamicKinds,
+            Assert.IsType<List<FactoryKind>>(properties["kinds"]));
+        Assert.Equal(ExpectedDynamicNullableIntegers, Assert.IsType<List<int?>>(properties["nullableIntegers"]));
+        Assert.Empty(Assert.IsType<List<int>>(properties["emptyIntegers"]));
+    }
+
     private sealed record FactoryNode : Node
     {
         public string Name { get; init; } = string.Empty;
@@ -299,6 +429,11 @@ public class EntityFactoryTests
     private sealed record UnregisteredNode : Node;
 
     private sealed record FactoryAddress(string Street, string City);
+
+    private sealed record FactorySurvey
+    {
+        public List<int?> Scores { get; init; } = [1, null, 3];
+    }
 
     private sealed record LabeledContact
     {

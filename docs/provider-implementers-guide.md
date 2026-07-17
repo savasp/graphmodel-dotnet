@@ -88,6 +88,8 @@ Simple properties are properties whose types pass `GraphDataModel.IsSimple` or `
 
 `[Property]` controls storage names, key/index/full-text inclusion, and required/ignored semantics through `SchemaRegistry`. Relationship entities may only have simple properties; the Neo4j provider rejects complex properties on relationships.
 
+When **dynamic** entities are materialized, a simple-collection wire value (a `GraphValue.List` of scalars) is reconstructed as a canonical `List<T>` in the property bag — the caller's original container type is not retained. `T` is inferred from the runtime wire element values: elements sharing one type produce that type, mixed or all-null collections fall back to `object`, and a value-type element type is promoted to `Nullable<T>` when the collection contains nulls. Element order is preserved, and empty collections stay empty. Map-valued wire properties (`GraphValue.Map`) are not simple collections; they pass through to the property bag as dictionaries.
+
 ### Complex Properties
 
 Complex properties are first-class graph structure. A property named `Home` whose CLR type is

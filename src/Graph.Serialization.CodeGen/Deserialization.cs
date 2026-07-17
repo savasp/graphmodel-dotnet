@@ -306,7 +306,7 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is SimpleCollection {simpleCollectionName}");
             sb.AppendLine($"{indentStr}        ? {simpleCollectionName}.Values");
 
-            if (elementType.IsReferenceType || elementType.IsNullable)
+            if (elementType.IsReferenceType && !elementType.IsNullable)
             {
                 sb.AppendLine($"{indentStr}            .Where(simpleValue => simpleValue.Object is not null)");
             }
@@ -487,7 +487,10 @@ internal static class Deserialization
     {
         if (IsGuid(targetType))
         {
-            return $"{sourceExpression} is System.Guid guidValue ? guidValue : System.Guid.Parse({sourceExpression}.ToString()!)";
+            var conversion = $"{sourceExpression} is System.Guid guidValue ? guidValue : System.Guid.Parse({sourceExpression}.ToString()!)";
+            return targetType.IsNullable
+                ? $"{sourceExpression} is null ? ({targetType.DisplayName})null : {conversion}"
+                : conversion;
         }
 
         return $"({targetType.DisplayName}){sourceExpression}";

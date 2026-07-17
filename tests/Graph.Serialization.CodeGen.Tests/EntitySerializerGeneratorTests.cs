@@ -119,6 +119,66 @@ public class EntitySerializerGeneratorTests
     }
 
     [Fact]
+    public Task NodeWithNullableSimpleCollections()
+    {
+        const string source = """
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            namespace NullableCollections;
+
+            [Node("Tracked")]
+            public record TrackedNode : Node
+            {
+                public List<int?> Scores { get; set; } = new();
+                public List<Guid?> RelatedIds { get; set; } = new();
+            }
+            """;
+
+        return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
+    [Fact]
+    public void NodeWithNullableSimpleCollections_RoundTripsNullElements()
+    {
+        const string source = """
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            namespace NullableCollections;
+
+            [Node("Tracked")]
+            public record TrackedNode : Node
+            {
+                public List<int?> Scores { get; set; } = new();
+                public List<Guid?> RelatedIds { get; set; } = new();
+            }
+            """;
+        var firstId = Guid.Parse("7a2ef43f-dadf-4c88-a2f6-af730f87a963");
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var nodeType = assembly.GetType("NullableCollections.TrackedNode", throwOnError: true)!;
+        var serializerType = assembly.GetType(
+            "NullableCollections.Generated.TrackedNodeSerializer",
+            throwOnError: true)!;
+        var node = Activator.CreateInstance(nodeType)!;
+        nodeType.GetProperty("Scores")!.SetValue(node, new List<int?> { 1, null, 3 });
+        nodeType.GetProperty("RelatedIds")!.SetValue(node, new List<Guid?> { firstId, null });
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+
+        var entity = serializer.Serialize(node);
+        var roundTripped = serializer.Deserialize(entity);
+
+        Assert.Equal(
+            new int?[] { 1, null, 3 },
+            Assert.IsType<List<int?>>(nodeType.GetProperty("Scores")!.GetValue(roundTripped)));
+        Assert.Equal(
+            new Guid?[] { firstId, null },
+            Assert.IsType<List<Guid?>>(nodeType.GetProperty("RelatedIds")!.GetValue(roundTripped)));
+    }
+
+    [Fact]
     public Task Relationship()
     {
         const string source = """
