@@ -526,7 +526,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         // For arrays
         if (type is IArrayTypeSymbol arrayType)
         {
-            return $"{GetShortTypeName(arrayType.ElementType)}[]";
+            return $"{GetShortTypeName(arrayType.ElementType)}[{new string(',', arrayType.Rank - 1)}]";
         }
 
         // Handle nullable value types
@@ -569,7 +569,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             if (helper.IsComplexType(property.Type))
             {
                 var result = helper.ValidateComplexType(property.Type);
-                if (!result.IsValid)
+                if (!result.IsValid && result.ContainsGraphInterface)
                 {
                     // This complex type contains graph interfaces, so CG006 will handle it
                     continue;
@@ -583,7 +583,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 if (complexElementType != null && helper.IsComplexType(complexElementType))
                 {
                     var result = helper.ValidateComplexType(complexElementType);
-                    if (!result.IsValid)
+                    if (!result.IsValid && result.ContainsGraphInterface)
                     {
                         // This collection contains complex types with graph interfaces, so CG006 will handle it
                         continue;
@@ -598,7 +598,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 if (collectionElementType != null && !AnalyzerHelper.IsSimpleType(collectionElementType))
                 {
                     var result = helper.ValidateComplexType(collectionElementType);
-                    if (!result.IsValid)
+                    if (!result.IsValid && result.ContainsGraphInterface)
                     {
                         // This collection contains types with graph interfaces, so CG006 will handle it
                         continue;
@@ -610,7 +610,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             if (property.Type is IArrayTypeSymbol arrayType)
             {
                 var result = helper.ValidateComplexType(arrayType.ElementType);
-                if (!result.IsValid)
+                if (!result.IsValid && result.ContainsGraphInterface)
                 {
                     // This array contains types with graph interfaces, so CG006 will handle it
                     continue;
@@ -662,7 +662,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             if (helper.IsComplexType(property.Type))
             {
                 var result = helper.ValidateComplexType(property.Type);
-                if (!result.IsValid)
+                if (!result.IsValid && result.ContainsGraphInterface)
                 {
                     // This complex type contains graph interfaces, so CG006 will handle it
                     continue;
@@ -676,7 +676,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 if (complexElementType != null && helper.IsComplexType(complexElementType))
                 {
                     var result = helper.ValidateComplexType(complexElementType);
-                    if (!result.IsValid)
+                    if (!result.IsValid && result.ContainsGraphInterface)
                     {
                         // This collection contains complex types with graph interfaces, so CG006 will handle it
                         continue;
@@ -691,7 +691,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 if (collectionElementType != null && !AnalyzerHelper.IsSimpleType(collectionElementType))
                 {
                     var result = helper.ValidateComplexType(collectionElementType);
-                    if (!result.IsValid)
+                    if (!result.IsValid && result.ContainsGraphInterface)
                     {
                         // This collection contains types with graph interfaces, so CG006 will handle it
                         continue;
@@ -703,7 +703,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             if (property.Type is IArrayTypeSymbol arrayType)
             {
                 var result = helper.ValidateComplexType(arrayType.ElementType);
-                if (!result.IsValid)
+                if (!result.IsValid && result.ContainsGraphInterface)
                 {
                     // This array contains types with graph interfaces, so CG006 will handle it
                     continue;
@@ -753,7 +753,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             if (helper.IsComplexType(property.Type))
             {
                 var result = helper.ValidateComplexType(property.Type);
-                if (!result.IsValid)
+                if (!result.IsValid && result.ContainsGraphInterface)
                 {
                     var diagnostic = Diagnostic.Create(
                         DiagnosticDescriptors.ComplexTypeContainsGraphInterfaceTypes,
@@ -773,7 +773,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 {
                     // Check if this element type contains graph interfaces
                     var result = helper.ValidateComplexType(collectionElementType);
-                    if (!result.IsValid)
+                    if (!result.IsValid && result.ContainsGraphInterface)
                     {
                         var diagnostic = Diagnostic.Create(
                             DiagnosticDescriptors.ComplexTypeContainsGraphInterfaceTypes,
@@ -792,7 +792,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 if (!AnalyzerHelper.IsSimpleType(arrayType.ElementType))
                 {
                     var result = helper.ValidateComplexType(arrayType.ElementType);
-                    if (!result.IsValid)
+                    if (!result.IsValid && result.ContainsGraphInterface)
                     {
                         var diagnostic = Diagnostic.Create(
                             DiagnosticDescriptors.ComplexTypeContainsGraphInterfaceTypes,

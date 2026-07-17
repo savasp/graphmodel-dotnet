@@ -53,33 +53,34 @@ internal static class Deserialization
             GenerateConstructorParameterExtraction(sb, parameter, "entity");
         }
 
-        // Find properties that need to be set via object initializer (only init-only properties like Id)
+        // Find properties handled by the selected constructor before choosing initializer/setter paths.
         var handledByConstructor = new HashSet<string>(constructor.Parameters.Items
             .Select(p => p.Name)
             .Where(name => !string.IsNullOrEmpty(name)), StringComparer.OrdinalIgnoreCase);
 
-        var initOnlyProperties = allProperties
+        var initializerProperties = allProperties
             .Where(p => !handledByConstructor.Contains(p.Name))
-            .Where(p => p.SetterIsInitOnly)
+            .Where(p => p.SetterIsInitOnly || p.IsRequired)
             .ToList();
 
         var settableProperties = allProperties
             .Where(p => !handledByConstructor.Contains(p.Name))
+            .Where(p => !p.IsRequired)
             .Where(p => p.HasSetter &&
                 !p.SetterIsInitOnly &&
                 p.SetterDeclaredPublic)
             .ToList();
 
-        // Generate init-only property extractions (like Id)
-        foreach (var property in initOnlyProperties)
+        // Generate values assigned in the object initializer (init-only and required properties).
+        foreach (var property in initializerProperties)
         {
             GeneratePropertyExtraction(sb, property, "entity");
         }
 
-        // Generate constructor call with object initializer for init-only properties
+        // Generate constructor call with an object initializer when required by the property shape.
         sb.AppendLine();
 
-        if (initOnlyProperties.Count > 0)
+        if (initializerProperties.Count > 0)
         {
             sb.AppendLine($"        var result = new {type.Type.TypeOfName}(");
 
@@ -93,11 +94,11 @@ internal static class Deserialization
             sb.AppendLine("        )");
             sb.AppendLine("        {");
 
-            // Add init-only properties to object initializer
-            for (int i = 0; i < initOnlyProperties.Count; i++)
+            // Add init-only and required properties to the object initializer.
+            for (int i = 0; i < initializerProperties.Count; i++)
             {
-                var property = initOnlyProperties[i];
-                var comma = i < initOnlyProperties.Count - 1 ? "," : "";
+                var property = initializerProperties[i];
+                var comma = i < initializerProperties.Count - 1 ? "," : "";
                 sb.AppendLine($"            {property.Name} = {property.Name.ToLowerInvariant()}Value{comma}");
             }
 
@@ -139,7 +140,8 @@ internal static class Deserialization
         var simplePropVar = $"{propName.ToLowerInvariant()}SimpleProp";
         var complexPropVar = $"{propName.ToLowerInvariant()}ComplexProp";
 
-        sb.AppendLine($"        // Extracting init-only property '{propName}'");
+        var initializerKind = property.IsRequired && !property.SetterIsInitOnly ? "required" : "init-only";
+        sb.AppendLine($"        // Extracting {initializerKind} property '{propName}'");
         sb.AppendLine($"        {propertyType} {variableName};");
         sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
         sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
@@ -331,14 +333,15 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}            .OfType<{elementType.DisplayName}>()");
         }
 
-        if (collectionType.IsArray)
+        // Materialize into a value assignable to the declared collection type. Sets become a
+        // HashSet<T> (never a List<T>), arrays a T[], and every list-compatible shape a List<T>.
+        var constructionCall = collectionType.CollectionConstructionKind switch
         {
-            sb.AppendLine($"{indentStr}            .ToArray()");
-        }
-        else
-        {
-            sb.AppendLine($"{indentStr}            .ToList()");
-        }
+            CollectionConstructionKind.Array => ".ToArray()",
+            CollectionConstructionKind.Set => ".ToHashSet()",
+            _ => ".ToList()",
+        };
+        sb.AppendLine($"{indentStr}            {constructionCall}");
 
         sb.AppendLine($"{indentStr}        : {GetInvalidCollectionValueExpression(propertyLabel, collectionType)};");
     }
@@ -432,13 +435,17 @@ internal static class Deserialization
 
             // Collection-shaped properties (e.g. INode.Labels: IReadOnlyList<string>)
             // that aren't present in the query result get an empty collection rather
-            // than throwing - List<T> is assignable to IEnumerable<T>/ICollection<T>/
-            // IList<T>/IReadOnlyCollection<T>/IReadOnlyList<T> alike.
+            // than throwing. The empty value must match the declared shape: a set gets an
+            // empty HashSet<T> (a List<T> would not be assignable), an array Array.Empty<T>,
+            // and every list-compatible shape a List<T>.
             if (value is null && type.ElementType is not null)
             {
-                value = type.IsArray
-                    ? $"System.Array.Empty<{type.ElementType.DisplayName}>()"
-                    : $"new System.Collections.Generic.List<{type.ElementType.DisplayName}>()";
+                value = type.CollectionConstructionKind switch
+                {
+                    CollectionConstructionKind.Array => $"System.Array.Empty<{type.ElementType.DisplayName}>()",
+                    CollectionConstructionKind.Set => $"new System.Collections.Generic.HashSet<{type.ElementType.DisplayName}>()",
+                    _ => $"new System.Collections.Generic.List<{type.ElementType.DisplayName}>()",
+                };
             }
         }
         else if (type.IsSimple)
@@ -461,10 +468,10 @@ internal static class Deserialization
         {
             // Structs not covered above (e.g. complex value-type properties like
             // Point, which GraphDataModel treats as "simple" but whose SpecialType
-            // switch above doesn't match) still have a well-defined default: C#
-            // guarantees every struct supports `new T()`, which runs its
-            // parameterless constructor (including any field initializers).
-            value = $"new {type.DisplayName}()";
+            // switch above doesn't match) still have a well-defined default. Use
+            // `default(T)` rather than `new T()` because the latter is a compile-time
+            // error when the struct declares required members.
+            value = $"default({type.DisplayName})";
         }
 
         if (value is null)

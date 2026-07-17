@@ -36,11 +36,7 @@ internal sealed class AddressSerializer : IEntitySerializer
 
     public object Deserialize(EntityInfo entity)
     {
-
-        var result = new TestNamespace.Address(
-        );
-
-        // Set remaining properties with setters
+        var result = new TestNamespace.Address();
         // Look for property 'Street' in both simple and complex properties
         var streetPropRep = entity.SimpleProperties.TryGetValue("Street", out var streetSimpleProp) ? streetSimpleProp
                     : entity.ComplexProperties.TryGetValue("Street", out var streetComplexProp) ? streetComplexProp : null;
@@ -50,15 +46,15 @@ internal sealed class AddressSerializer : IEntitySerializer
             : streetPropRep.Value is SimpleValue streetPropRepSimpleValue
                 ? (string)streetPropRepSimpleValue.Object
                 : string.Empty;
-        // Look for property 'City' in both simple and complex properties
-        var cityPropRep = entity.SimpleProperties.TryGetValue("City", out var citySimpleProp) ? citySimpleProp
-                    : entity.ComplexProperties.TryGetValue("City", out var cityComplexProp) ? cityComplexProp : null;
+        // Look for property 'Unit' in both simple and complex properties
+        var unitPropRep = entity.SimpleProperties.TryGetValue("Unit", out var unitSimpleProp) ? unitSimpleProp
+                    : entity.ComplexProperties.TryGetValue("Unit", out var unitComplexProp) ? unitComplexProp : null;
         // Extract simple value - no conversion, just cast
-        result.City = cityPropRep is null
-            ? string.Empty
-            : cityPropRep.Value is SimpleValue cityPropRepSimpleValue
-                ? (string)cityPropRepSimpleValue.Object
-                : string.Empty;
+        result.Unit = unitPropRep is null
+            ? 0
+            : unitPropRep.Value is SimpleValue unitPropRepSimpleValue
+                ? (int)unitPropRepSimpleValue.Object
+                : 0;
         return result;
     }
 
@@ -90,26 +86,24 @@ internal sealed class AddressSerializer : IEntitySerializer
             simpleProperties["Street"] = propertyRep;
         }
 
-        // Serialize property: City
+        // Serialize property: Unit
         {
-            var propInfo = typeof(TestNamespace.Address).GetProperty("City")!;
-            var value = entity.City;
+            var propInfo = typeof(TestNamespace.Address).GetProperty("Unit")!;
+            var value = entity.Unit;
             Serialized? serializedValue;
 
-            serializedValue = value is null
-                ? null
-                : new SimpleValue(
-                    Object: value,
-                    Type: typeof(string)
-                );
+            serializedValue = new SimpleValue(
+                Object: value!,
+                Type: typeof(int)
+            );
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
-                Label: "City",
+                Label: "Unit",
                 IsNullable: false,
                 Value: serializedValue
             );
-            simpleProperties["City"] = propertyRep;
+            simpleProperties["Unit"] = propertyRep;
         }
 
         return new EntityInfo(
@@ -152,7 +146,7 @@ internal sealed class AddressSerializer : IEntitySerializer
             return new EntitySchema(
                 ExpectedType: typeof(TestNamespace.Address),
                 Label: "Address",
-                IsNullable: true,
+                IsNullable: false,
                 IsSimple: false,
                 SimpleProperties: new Dictionary<string, PropertySchema>(),
                 ComplexProperties: new Dictionary<string, PropertySchema>()
@@ -178,12 +172,12 @@ internal sealed class AddressSerializer : IEntitySerializer
             );
         }
 
-        // Schema for property: City
+        // Schema for property: Unit
         {
-            var propInfo = typeof(TestNamespace.Address).GetProperty("City")!;
-            simpleProperties["City"] = new PropertySchema(
+            var propInfo = typeof(TestNamespace.Address).GetProperty("Unit")!;
+            simpleProperties["Unit"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                PropertyName: "City",
+                PropertyName: "Unit",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -193,7 +187,7 @@ internal sealed class AddressSerializer : IEntitySerializer
             var schema = new EntitySchema(
                 ExpectedType: typeof(TestNamespace.Address),
                 Label: "Address",
-                IsNullable: true,
+                IsNullable: false,
                 IsSimple: false,
                 SimpleProperties: simpleProperties,
                 ComplexProperties: complexProperties
@@ -263,13 +257,13 @@ internal sealed class PersonSerializer : IEntitySerializer
                     : entity.ComplexProperties.TryGetValue("HomeAddress", out var homeaddressComplexProp) ? homeaddressComplexProp : null;
         // Extract complex value using registered serializer
         result.HomeAddress = homeaddressPropRep is null
-            ? null
+            ? default(TestNamespace.Address)
             : homeaddressPropRep.Value is EntityInfo homeaddressPropRepComplexEntity
-                ? (TestNamespace.Address?)(_serializerRegistry.GetSerializer(homeaddressPropRepComplexEntity.ActualType)
+                ? (TestNamespace.Address)(_serializerRegistry.GetSerializer(homeaddressPropRepComplexEntity.ActualType)
                     ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.Address))
                     ?? throw new InvalidOperationException($"No serializer found for type {homeaddressPropRepComplexEntity.ActualType}"))
                     .Deserialize(homeaddressPropRepComplexEntity)
-                : null;
+                : throw new InvalidOperationException("Required complex property 'HomeAddress' is missing or null");
         // Look for property 'Labels' in both simple and complex properties
         var labelsPropRep = entity.SimpleProperties.TryGetValue("Labels", out var labelsSimpleProp) ? labelsSimpleProp
                     : entity.ComplexProperties.TryGetValue("Labels", out var labelsComplexProp) ? labelsComplexProp : null;
@@ -319,16 +313,14 @@ internal sealed class PersonSerializer : IEntitySerializer
             var value = entity.HomeAddress;
             Serialized? serializedValue;
 
-            serializedValue = value is null
-                ? null
-                : (_serializerRegistry.GetSerializer(value.GetType())
-                    ?? throw new InvalidOperationException($"No serializer found for type {value.GetType().Name}"))
-                    .Serialize(value);
+            serializedValue = (_serializerRegistry.GetSerializer(value.GetType())
+                ?? throw new InvalidOperationException($"No serializer found for type {value.GetType().Name}"))
+                .Serialize(value);
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
                 Label: "HomeAddress",
-                IsNullable: true,
+                IsNullable: false,
                 Value: serializedValue,
                 RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
             );
@@ -481,7 +473,7 @@ internal sealed class PersonSerializer : IEntitySerializer
                 PropertyInfo: propInfo,
                 PropertyName: "HomeAddress",
                 PropertyType: PropertyType.Complex,
-                IsNullable: true,
+                IsNullable: false,
                 NestedSchema: TestNamespace.Generated.AddressSerializer.GetSchemaStatic(),
                 RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
             );

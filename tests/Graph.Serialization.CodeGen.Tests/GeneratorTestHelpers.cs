@@ -345,7 +345,7 @@ internal static class GeneratorTestHelpers
         if (generatedTrees.Count == 0)
         {
             sb.AppendLine("== No generated sources ==");
-            return sb.ToString();
+            return NormalizeSnapshotText(sb);
         }
 
         foreach (var generated in generatedTrees)
@@ -372,7 +372,12 @@ internal static class GeneratorTestHelpers
             }
         }
 
-        return sb.ToString();
+        return NormalizeSnapshotText(sb);
+    }
+
+    private static string NormalizeSnapshotText(System.Text.StringBuilder sb)
+    {
+        return sb.ToString().TrimEnd() + "\n";
     }
 
     private static ImmutableArray<MetadataReference> BuildReferences()
