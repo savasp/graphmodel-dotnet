@@ -215,16 +215,11 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     {
         var properties = new Dictionary<string, object?>();
 
-        // Extract dynamic properties from simple properties
-        foreach (var kvp in entity.SimpleProperties)
-        {
-            if (kvp.Key != nameof(IEntity.Id)
-                && kvp.Key != nameof(DynamicNode.Labels)
-                && kvp.Value.Value is SimpleValue simpleValue)
-            {
-                properties[kvp.Key] = simpleValue.Object;
-            }
-        }
+        ExtractDynamicSimpleProperties(
+            entity.SimpleProperties,
+            properties,
+            nameof(IEntity.Id),
+            nameof(DynamicNode.Labels));
 
         // Add complex properties as dictionaries
         foreach (var kvp in entity.ComplexProperties)
@@ -294,19 +289,14 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     {
         var properties = new Dictionary<string, object?>();
 
-        // Extract dynamic properties from simple properties
-        foreach (var kvp in entity.SimpleProperties)
-        {
-            if (kvp.Key != nameof(IEntity.Id)
-                && kvp.Key != nameof(DynamicRelationship.Type)
-                && kvp.Key != nameof(DynamicRelationship.StartNodeId)
-                && kvp.Key != nameof(DynamicRelationship.EndNodeId)
-                && kvp.Key != nameof(DynamicRelationship.Direction)
-                && kvp.Value.Value is SimpleValue simpleValue)
-            {
-                properties[kvp.Key] = simpleValue.Object;
-            }
-        }
+        ExtractDynamicSimpleProperties(
+            entity.SimpleProperties,
+            properties,
+            nameof(IEntity.Id),
+            nameof(DynamicRelationship.Type),
+            nameof(DynamicRelationship.StartNodeId),
+            nameof(DynamicRelationship.EndNodeId),
+            nameof(DynamicRelationship.Direction));
 
         // Extract required properties
         string id = "";
@@ -363,6 +353,63 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         {
             Id = id,
         };
+    }
+
+    private static void ExtractDynamicSimpleProperties(
+        IDictionary<string, Property> simpleProperties,
+        Dictionary<string, object?> properties,
+        params string[] reservedPropertyNames)
+    {
+        var reserved = reservedPropertyNames.ToHashSet(StringComparer.Ordinal);
+        foreach (var (propertyName, property) in simpleProperties)
+        {
+            if (reserved.Contains(propertyName))
+            {
+                continue;
+            }
+
+            properties[propertyName] = property.Value switch
+            {
+                SimpleValue simpleValue => simpleValue.Object,
+                SimpleCollection simpleCollection => CreateDynamicSimpleCollection(propertyName, simpleCollection),
+                _ => throw new GraphException(
+                    $"Dynamic property '{propertyName}' has unsupported serialized value type " +
+                    $"'{property.Value?.GetType().Name ?? "null"}'."),
+            };
+        }
+    }
+
+    private static object CreateDynamicSimpleCollection(string propertyName, SimpleCollection collection)
+    {
+        try
+        {
+            var listType = typeof(List<>).MakeGenericType(collection.ElementType);
+            var values = (IList)(Activator.CreateInstance(listType)
+                ?? throw new GraphException($"Failed to create collection type '{listType}' for dynamic property '{propertyName}'."));
+
+            foreach (var simpleValue in collection.Values)
+            {
+                if (simpleValue is null)
+                {
+                    throw new GraphException($"Dynamic collection property '{propertyName}' contains a malformed null item.");
+                }
+
+                values.Add(Results.GraphValueConverter.ConvertTo(simpleValue.Object, collection.ElementType));
+            }
+
+            return values;
+        }
+        catch (GraphException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidCastException or FormatException or OverflowException)
+        {
+            throw new GraphException(
+                $"Failed to deserialize dynamic collection property '{propertyName}' as elements of type " +
+                $"'{collection.ElementType}'.",
+                exception);
+        }
     }
 
     private static void ProcessComplexProperties(
@@ -586,7 +633,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
                 foreach (var item in collection)
                 {
-                    simpleValues.Add(new SimpleValue(item ?? (object)"", item?.GetType() ?? elementType));
+                    simpleValues.Add(new SimpleValue(item!, elementType));
                 }
 
                 simpleProperties[propertyName] = new Property(

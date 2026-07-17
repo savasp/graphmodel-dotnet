@@ -1,6 +1,8 @@
 // Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
 // See LICENSE in the project root for full license terms.
 
+using System.Collections;
+using System.Globalization;
 using System.Threading.Tasks;
 
 namespace Cvoya.Graph.CompatibilityTests;
@@ -439,6 +441,133 @@ public interface IBasicTests : IGraphTest
         Assert.Equal("A", fetched.FirstName);
         Assert.Equal(person.GenericProperty.Count, fetched.GenericProperty.Count);
         Assert.All(fetched.GenericProperty, item => Assert.Contains(item, person.GenericProperty));
+    }
+
+    public enum ValueCollectionKind
+    {
+        First,
+        Second,
+    }
+
+    public record ValueTypeCollectionNode : Node
+    {
+        public List<int> IntegerList { get; set; } = [];
+        public int[] IntegerArray { get; set; } = [];
+        public List<Guid> Guids { get; set; } = [];
+        public ValueCollectionKind[] Kinds { get; set; } = [];
+        public int?[] NullableIntegers { get; set; } = [];
+    }
+
+    [Fact]
+    public async Task ValueTypeSimpleCollections_RoundTripThroughGetAndQuery()
+    {
+        var firstId = Guid.Parse("7a2ef43f-dadf-4c88-a2f6-af730f87a963");
+        var secondId = Guid.Parse("69bd4638-166e-428f-8fd2-3993338e865f");
+        var node = new ValueTypeCollectionNode
+        {
+            IntegerList = [1, 2, 3],
+            IntegerArray = [4, 5],
+            Guids = [firstId, secondId],
+            Kinds = [ValueCollectionKind.First, ValueCollectionKind.Second],
+            // Neo4j rejects null entries in stored property collections. Focused serialization and
+            // materialization tests cover null preservation; the provider contract still verifies
+            // that nullable element types themselves round-trip through every provider.
+            NullableIntegers = [6, 7],
+        };
+
+        await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
+
+        var fetched = await Graph.GetNodeAsync<ValueTypeCollectionNode>(
+            node.Id,
+            null,
+            TestContext.Current.CancellationToken);
+        var queried = await Graph.Nodes<ValueTypeCollectionNode>()
+            .Where(candidate => candidate.Id == node.Id)
+            .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        AssertValueTypeCollections(node, fetched);
+        Assert.NotNull(queried);
+        AssertValueTypeCollections(node, queried);
+    }
+
+    [Fact]
+    public async Task DynamicSimpleCollections_RoundTripForNodesAndRelationships()
+    {
+        var firstId = Guid.Parse("7a2ef43f-dadf-4c88-a2f6-af730f87a963");
+        var secondId = Guid.Parse("69bd4638-166e-428f-8fd2-3993338e865f");
+        var properties = new Dictionary<string, object?>
+        {
+            ["strings"] = new[] { "first", "second" },
+            ["integers"] = new List<int> { 1, 2, 3 },
+            ["guids"] = new[] { firstId, secondId },
+            ["kinds"] = new[] { ValueCollectionKind.First, ValueCollectionKind.Second },
+            ["nullableIntegers"] = new int?[] { 4, 5 },
+            ["emptyIntegers"] = Array.Empty<int>(),
+        };
+        var start = new DynamicNode(["DynamicCollectionStart"], properties);
+        var end = new DynamicNode(["DynamicCollectionEnd"], new Dictionary<string, object?>());
+
+        await Graph.CreateNodeAsync(start, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(end, null, TestContext.Current.CancellationToken);
+        var relationship = new DynamicRelationship(
+            start.Id,
+            end.Id,
+            "DYNAMIC_COLLECTION_RELATIONSHIP",
+            properties);
+        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+
+        var fetchedNode = await Graph.GetDynamicNodeAsync(
+            start.Id,
+            null,
+            TestContext.Current.CancellationToken);
+        var fetchedRelationship = await Graph.GetDynamicRelationshipAsync(
+            relationship.Id,
+            null,
+            TestContext.Current.CancellationToken);
+
+        AssertDynamicCollections(fetchedNode.Properties, firstId, secondId);
+        AssertDynamicCollections(fetchedRelationship.Properties, firstId, secondId);
+    }
+
+    private static void AssertValueTypeCollections(ValueTypeCollectionNode expected, ValueTypeCollectionNode actual)
+    {
+        Assert.Equal(expected.IntegerList, actual.IntegerList);
+        Assert.Equal(expected.IntegerArray, actual.IntegerArray);
+        Assert.Equal(expected.Guids, actual.Guids);
+        Assert.Equal(expected.Kinds, actual.Kinds);
+        Assert.Equal(expected.NullableIntegers, actual.NullableIntegers);
+    }
+
+    private static void AssertDynamicCollections(
+        IReadOnlyDictionary<string, object?> properties,
+        Guid firstId,
+        Guid secondId)
+    {
+        Assert.Collection(
+            CollectionValues(properties["strings"]),
+            value => Assert.Equal("first", value?.ToString()),
+            value => Assert.Equal("second", value?.ToString()));
+        Assert.Collection(
+            CollectionValues(properties["integers"]),
+            value => Assert.Equal(1, Convert.ToInt32(value, CultureInfo.InvariantCulture)),
+            value => Assert.Equal(2, Convert.ToInt32(value, CultureInfo.InvariantCulture)),
+            value => Assert.Equal(3, Convert.ToInt32(value, CultureInfo.InvariantCulture)));
+        Assert.Equal(new[] { firstId, secondId }, CollectionValues(properties["guids"]).Select(value => Guid.Parse(value!.ToString()!)));
+        Assert.Equal(
+            new[] { nameof(ValueCollectionKind.First), nameof(ValueCollectionKind.Second) },
+            CollectionValues(properties["kinds"]).Select(value => value?.ToString()));
+        Assert.Equal(
+            new int?[] { 4, 5 },
+            CollectionValues(properties["nullableIntegers"]).Select(value => value is null
+                ? (int?)null
+                : Convert.ToInt32(value, CultureInfo.InvariantCulture)));
+        Assert.Empty(CollectionValues(properties["emptyIntegers"]));
+    }
+
+    private static List<object?> CollectionValues(object? value)
+    {
+        var collection = Assert.IsAssignableFrom<IEnumerable>(value);
+        return collection.Cast<object?>().ToList();
     }
 
     [Fact]

@@ -8,7 +8,14 @@ namespace Cvoya.Graph.Core.Tests;
 
 public class GraphResultProcessorTests
 {
+    private static readonly int[] ExpectedIntegerList = [1, 2, 3];
+    private static readonly int[] ExpectedIntegerArray = [4, 5];
     private readonly EntityFactory factory = new();
+
+    static GraphResultProcessorTests()
+    {
+        EntitySerializerRegistry.Instance.Register<ValueCollectionNode>(new ValueCollectionNodeSerializer());
+    }
 
     [Fact]
     public async Task EquivalentWireFixtures_MaterializeIdenticalDynamicNodes()
@@ -74,6 +81,60 @@ public class GraphResultProcessorTests
     }
 
     [Fact]
+    public async Task TypedSimpleCollections_PreserveValueTypesOrderAndNulls()
+    {
+        var firstId = Guid.Parse("7a2ef43f-dadf-4c88-a2f6-af730f87a963");
+        var secondId = Guid.Parse("69bd4638-166e-428f-8fd2-3993338e865f");
+        var node = GraphValue.Node(
+            "collections-wire",
+            [nameof(ValueCollectionNode)],
+            new Dictionary<string, GraphValue>
+            {
+                [nameof(ValueCollectionNode.IntegerList)] = GraphValue.List(
+                    [GraphValue.Scalar(1L), GraphValue.Scalar(2L), GraphValue.Scalar(3L)]),
+                [nameof(ValueCollectionNode.IntegerArray)] = GraphValue.List(
+                    [GraphValue.Scalar(4L), GraphValue.Scalar(5L)]),
+                [nameof(ValueCollectionNode.Guids)] = GraphValue.List(
+                    [GraphValue.Scalar(firstId.ToString()), GraphValue.Scalar(secondId.ToString())]),
+                [nameof(ValueCollectionNode.Kinds)] = GraphValue.List(
+                    [GraphValue.Scalar(nameof(CollectionKind.First)), GraphValue.Scalar(nameof(CollectionKind.Second))]),
+                [nameof(ValueCollectionNode.NullableIntegers)] = GraphValue.List(
+                    [GraphValue.Scalar(6L), GraphValue.Scalar(null), GraphValue.Scalar(7L)]),
+            });
+
+        var info = Assert.Single(await new GraphResultProcessor(factory).ProcessAsync(
+            [NodeRecord(node)],
+            typeof(ValueCollectionNode),
+            TestContext.Current.CancellationToken));
+
+        AssertSimpleCollection(info, nameof(ValueCollectionNode.IntegerList), ExpectedIntegerList);
+        AssertSimpleCollection(info, nameof(ValueCollectionNode.IntegerArray), ExpectedIntegerArray);
+        AssertSimpleCollection(info, nameof(ValueCollectionNode.Guids), new[] { firstId, secondId });
+        AssertSimpleCollection(info, nameof(ValueCollectionNode.Kinds), new[] { CollectionKind.First, CollectionKind.Second });
+        AssertSimpleCollection(info, nameof(ValueCollectionNode.NullableIntegers), new int?[] { 6, null, 7 });
+    }
+
+    [Fact]
+    public async Task TypedSimpleCollection_WithNonEnumerableWireValue_ThrowsDiagnosticException()
+    {
+        var node = GraphValue.Node(
+            "invalid-collections-wire",
+            [nameof(ValueCollectionNode)],
+            new Dictionary<string, GraphValue>
+            {
+                [nameof(ValueCollectionNode.IntegerList)] = GraphValue.Scalar(42),
+            });
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() => new GraphResultProcessor(factory).ProcessAsync(
+            [NodeRecord(node)],
+            typeof(ValueCollectionNode),
+            TestContext.Current.CancellationToken));
+
+        Assert.Contains(nameof(ValueCollectionNode.IntegerList), exception.Message, StringComparison.Ordinal);
+        Assert.Contains(typeof(List<int>).ToString(), exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task NestedProjectionCollections_MaterializeNonEmptyAndEmptyArrays()
     {
         var records = new[]
@@ -115,6 +176,15 @@ public class GraphResultProcessorTests
         Assert.Equal("Person", Assert.Single(node.Labels));
         Assert.Equal("person-1", node.Entries["Id"].ScalarValue);
         Assert.Throws<ArgumentException>(() => GraphValue.Path([node, node]));
+    }
+
+    private static void AssertSimpleCollection<T>(EntityInfo entity, string propertyName, IEnumerable<T> expected)
+    {
+        var collection = Assert.IsType<SimpleCollection>(entity.SimpleProperties[propertyName].Value);
+
+        Assert.Equal(typeof(T), collection.ElementType);
+        Assert.Equal(expected.Cast<object?>(), collection.Values.Select(value => value.Object));
+        Assert.All(collection.Values, value => Assert.Equal(typeof(T), value.Type));
     }
 
     private static GraphRecord NodeRecord(GraphValue node, IReadOnlyList<GraphValue>? complexProperties = null) => new(
@@ -198,4 +268,61 @@ public class GraphResultProcessorTests
     private sealed record CollectionProjection(string Name, FriendProjection[] Friends);
 
     private sealed record FriendProjection(string Name, int Age);
+
+    private sealed record ValueCollectionNode : Node
+    {
+        public List<int> IntegerList { get; init; } = [];
+
+        public int[] IntegerArray { get; init; } = [];
+
+        public List<Guid> Guids { get; init; } = [];
+
+        public CollectionKind[] Kinds { get; init; } = [];
+
+        public int?[] NullableIntegers { get; init; } = [];
+    }
+
+    private enum CollectionKind
+    {
+        First,
+        Second,
+    }
+
+    private sealed class ValueCollectionNodeSerializer : IEntitySerializer
+    {
+        public Type EntityType => typeof(ValueCollectionNode);
+
+        public EntityInfo Serialize(object obj) => throw new NotSupportedException();
+
+        public object Deserialize(EntityInfo entity) => throw new NotSupportedException();
+
+        public EntitySchema GetSchema()
+        {
+            var properties = typeof(ValueCollectionNode)
+                .GetProperties()
+                .Where(property => property.Name is
+                    nameof(ValueCollectionNode.IntegerList) or
+                    nameof(ValueCollectionNode.IntegerArray) or
+                    nameof(ValueCollectionNode.Guids) or
+                    nameof(ValueCollectionNode.Kinds) or
+                    nameof(ValueCollectionNode.NullableIntegers))
+                .ToDictionary(
+                    property => property.Name,
+                    property => new PropertySchema(
+                        property,
+                        property.Name,
+                        PropertyType.SimpleCollection,
+                        property.PropertyType.IsArray
+                            ? property.PropertyType.GetElementType()!
+                            : property.PropertyType.GetGenericArguments()[0]));
+
+            return new EntitySchema(
+                typeof(ValueCollectionNode),
+                nameof(ValueCollectionNode),
+                IsNullable: false,
+                IsSimple: false,
+                properties,
+                new Dictionary<string, PropertySchema>());
+        }
+    }
 }

@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Serialization.Results;
 
+using System.Collections;
 using System.Reflection;
 using Cvoya.Graph.Serialization;
 using Microsoft.Extensions.Logging;
@@ -235,7 +236,7 @@ public sealed class GraphResultProcessor
         // Use dynamic extraction for dynamic nodes (including complex property nodes)
         if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
         {
-            simpleProperties = ExtractAllSimplePropertiesForDynamicNode(node.Properties);
+            simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(node.Properties);
             if (!simpleProperties.ContainsKey(nameof(Graph.IEntity.Id)) && node.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
             {
                 simpleProperties[nameof(Graph.IEntity.Id)] = new Property(
@@ -351,7 +352,7 @@ public sealed class GraphResultProcessor
         // Create the base entity info for this node
         Dictionary<string, Property> simpleProperties;
 
-        simpleProperties = ExtractAllSimplePropertiesForDynamicNode(node.Properties);
+        simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(node.Properties);
 
         var entityInfo = new EntityInfo(
             ActualType: nodeType,
@@ -999,28 +1000,61 @@ public sealed class GraphResultProcessor
         return results;
     }
 
-    // Add this method to extract all properties for dynamic nodes
-    private static Dictionary<string, Property> ExtractAllSimplePropertiesForDynamicNode(IReadOnlyDictionary<string, object> properties)
+    private static Dictionary<string, Property> ExtractAllSimplePropertiesForDynamicEntity(
+        IReadOnlyDictionary<string, object> properties)
     {
         var result = new Dictionary<string, Property>();
         foreach (var (key, value) in properties)
         {
             if (key is GraphValueConverter.MetadataPropertyName or GraphValueConverter.EntityKindPropertyName)
                 continue;
-            // Driver-specific values have already been normalized by the wire adapter.
-            object? convertedValue = value is List<object> listValue
-                ? listValue.All(x => x is string || x == null)
-                    ? listValue.Cast<string?>().ToList()
-                    : GraphValueConverter.ConvertTo(listValue, typeof(List<object>))
-                : GraphValueConverter.ConvertTo(value, value?.GetType() ?? typeof(object));
+
+            Serialized serializedValue;
+            if (value is IEnumerable enumerable and not string and not byte[])
+            {
+                var items = enumerable.Cast<object?>().ToList();
+                var elementType = InferDynamicCollectionElementType(items);
+                serializedValue = CreateSimpleCollection(items, elementType);
+            }
+            else
+            {
+                // Driver-specific scalar values have already been normalized by the wire adapter.
+                var convertedValue = GraphValueConverter.ConvertTo(value, value?.GetType() ?? typeof(object));
+                serializedValue = new SimpleValue(convertedValue!, convertedValue?.GetType() ?? typeof(object));
+            }
+
             result[key] = new Property(
                 PropertyInfo: null!,
                 Label: key,
                 IsNullable: value == null,
-                Value: new SimpleValue(convertedValue ?? string.Empty, convertedValue?.GetType() ?? typeof(object))
+                Value: serializedValue
             );
         }
         return result;
+    }
+
+    private static Type InferDynamicCollectionElementType(IReadOnlyList<object?> items)
+    {
+        var elementTypes = items
+            .Where(item => item is not null)
+            .Select(item => item!.GetType())
+            .Distinct()
+            .ToList();
+
+        if (elementTypes.Count != 1)
+        {
+            return typeof(object);
+        }
+
+        var elementType = elementTypes[0];
+        if (items.Any(item => item is null) &&
+            elementType.IsValueType &&
+            Nullable.GetUnderlyingType(elementType) is null)
+        {
+            return typeof(Nullable<>).MakeGenericType(elementType);
+        }
+
+        return elementType;
     }
 
     // In CreateEntityInfoFromNode, use this for dynamic nodes
@@ -1035,7 +1069,7 @@ public sealed class GraphResultProcessor
         // Handle dynamic nodes differently
         if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
         {
-            simpleProperties = ExtractAllSimplePropertiesForDynamicNode(node.Properties);
+            simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(node.Properties);
             // Add Id property if not present
             if (!simpleProperties.ContainsKey(nameof(Graph.IEntity.Id)) && node.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
             {
@@ -1092,20 +1126,7 @@ public sealed class GraphResultProcessor
         // Handle dynamic relationships differently
         if (typeof(Graph.DynamicRelationship).IsAssignableFrom(actualType))
         {
-            simpleProperties = new Dictionary<string, Property>();
-            foreach (var (key, value) in relationship.Properties)
-            {
-                // Skip metadata properties
-                if (GraphValueConverter.MetadataPropertyName == key)
-                    continue;
-                // Store all properties as SimpleValue
-                simpleProperties[key] = new Property(
-                    PropertyInfo: default!, // null is expected for dynamic
-                    Label: key,
-                    IsNullable: value == null,
-                    Value: new SimpleValue(value ?? string.Empty, value?.GetType() ?? typeof(object))
-                );
-            }
+            simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(relationship.Properties);
             // Add Id property if not present
             if (!simpleProperties.ContainsKey(nameof(Graph.IEntity.Id)) && relationship.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
             {
@@ -1380,8 +1401,23 @@ public sealed class GraphResultProcessor
             // Check if this property is in the schema
             if (schema.SimpleProperties.TryGetValue(key, out var propertySchema))
             {
-                var convertedValue = GraphValueConverter.ConvertTo(value, propertySchema.PropertyInfo.PropertyType)
-                    ?? throw new InvalidOperationException($"Failed to convert value for property '{key}' of type '{propertySchema.PropertyInfo.PropertyType}'");
+                object convertedValue;
+                try
+                {
+                    convertedValue = GraphValueConverter.ConvertTo(value, propertySchema.PropertyInfo.PropertyType)
+                        ?? throw new GraphException(
+                            $"Failed to convert value for property '{key}' to '{propertySchema.PropertyInfo.PropertyType}'.");
+                }
+                catch (GraphException)
+                {
+                    throw;
+                }
+                catch (Exception exception) when (exception is ArgumentException or InvalidCastException or FormatException or OverflowException)
+                {
+                    throw new GraphException(
+                        $"Failed to convert value for property '{key}' to '{propertySchema.PropertyInfo.PropertyType}'.",
+                        exception);
+                }
 
                 Property property = new(
                     propertySchema.PropertyInfo,
@@ -1400,13 +1436,17 @@ public sealed class GraphResultProcessor
 
     private static SimpleCollection CreateSimpleCollection(object convertedValue, Type elementType)
     {
-        var items = new List<SimpleValue>();
-        if (convertedValue is IEnumerable<object> enumerable)
+        if (convertedValue is string || convertedValue is not IEnumerable enumerable)
         {
-            foreach (var item in enumerable)
-            {
-                items.Add(new SimpleValue(item, elementType));
-            }
+            throw new GraphException(
+                $"Expected an enumerable value for a simple collection with element type '{elementType}', " +
+                $"but received '{convertedValue.GetType()}'.");
+        }
+
+        var items = new List<SimpleValue>();
+        foreach (var item in enumerable)
+        {
+            items.Add(new SimpleValue(item!, elementType));
         }
 
         return new SimpleCollection(items, elementType);
