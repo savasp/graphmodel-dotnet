@@ -328,6 +328,8 @@ TransientException: Deadlock detected
 | **CG012** | [Node]/[Relationship] on a type that doesn't implement the matching interface | Warning |
 | **CG013** | Both [Node] and [Relationship] applied to the same type | Error |
 | **CG014** | Graph entity types (INode/IRelationship) must be reference types | Error |
+| **CG015** | [ComplexProperty] has no effect on the configured property | Warning |
+| **CG016** | Open generic graph entities are not supported | Error |
 
 **Solutions:**
 See the [Analyzers README](https://github.com/cvoya-com/graph/blob/main/src/Graph.Analyzers/README.md) for detailed examples of each warning and how to fix them.

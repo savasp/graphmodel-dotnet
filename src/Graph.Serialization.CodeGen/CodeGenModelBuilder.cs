@@ -132,7 +132,23 @@ internal sealed class CodeGenModelBuilder
             property.SetMethod is not null,
             property.SetMethod?.IsInitOnly == true,
             property.SetMethod?.DeclaredAccessibility == Accessibility.Public,
-            property.IsRequired);
+            property.IsRequired,
+            HidesOrOverridesBaseProperty(property));
+    }
+
+    private static bool HidesOrOverridesBaseProperty(IPropertySymbol property)
+    {
+        for (var baseType = property.ContainingType.BaseType; baseType is not null; baseType = baseType.BaseType)
+        {
+            if (baseType.GetMembers(property.Name)
+                .OfType<IPropertySymbol>()
+                .Any(candidate => !candidate.IsStatic && candidate.DeclaredAccessibility == Accessibility.Public))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private TypeReferenceModel BuildTypeReference(ITypeSymbol type)
@@ -469,6 +485,11 @@ internal sealed class CodeGenModelBuilder
             .Replace(" ", "")
             .Replace("?", "_Nullable")
             .Replace("+", "_");
+
+        if (Utils.RequiresGenericIdentitySuffix(type))
+        {
+            fullName += $"_{Utils.GetStableTypeIdentitySuffix(type)}";
+        }
 
         return $"{fullName}Serializer.g.cs";
     }

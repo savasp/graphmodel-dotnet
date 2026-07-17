@@ -173,6 +173,7 @@ public class CodeGenModelEqualityTests
         yield return [Property(setterIsInitOnly: true)];
         yield return [Property(setterDeclaredPublic: false)];
         yield return [Property(isRequired: true)];
+        yield return [Property(requiresDeclaredOnlyLookup: true)];
     }
 
     public static IEnumerable<object[]> ParameterInequalityCases()
@@ -256,7 +257,8 @@ public class CodeGenModelEqualityTests
         bool hasSetter = true,
         bool setterIsInitOnly = false,
         bool setterDeclaredPublic = true,
-        bool isRequired = false)
+        bool isRequired = false,
+        bool requiresDeclaredOnlyLookup = false)
     {
         return new SerializablePropertyModel(
             name,
@@ -267,7 +269,8 @@ public class CodeGenModelEqualityTests
             hasSetter,
             setterIsInitOnly,
             setterDeclaredPublic,
-            isRequired);
+            isRequired,
+            requiresDeclaredOnlyLookup);
     }
 
     private static ParameterModel Parameter(

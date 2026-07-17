@@ -25,6 +25,7 @@ public class ConstructorDefaultValueTests
         namespace Defaults;
 
         public enum Priority { Low, Normal, High }
+        public enum @class { @default = 3 }
 
         [Node("Widget")]
         public record Widget(
@@ -44,6 +45,7 @@ public class ConstructorDefaultValueTests
             decimal Money = 3.5m,
             Priority Level = Priority.High,
             Priority Combined = (Priority)7,
+            @class KeywordEnum = @class.@default,
             bool Enabled = true,
             string? Optional = null) : Node;
         """;
@@ -91,6 +93,7 @@ public class ConstructorDefaultValueTests
         Assert.Equal(3.5m, (decimal)widgetType.GetProperty("Money")!.GetValue(widget)!);
         Assert.Equal(2, Convert.ToInt32(widgetType.GetProperty("Level")!.GetValue(widget), CultureInfo.InvariantCulture));
         Assert.Equal(7, Convert.ToInt32(widgetType.GetProperty("Combined")!.GetValue(widget), CultureInfo.InvariantCulture));
+        Assert.Equal(3, Convert.ToInt32(widgetType.GetProperty("KeywordEnum")!.GetValue(widget), CultureInfo.InvariantCulture));
         Assert.True((bool)widgetType.GetProperty("Enabled")!.GetValue(widget)!);
         Assert.Null(widgetType.GetProperty("Optional")!.GetValue(widget));
     }

@@ -16,6 +16,7 @@ public class DefaultValueFormatterTests
 {
     private const string Snippet = """
         public enum Priority { Low, Normal, High }
+        public enum @class { @default = 1 }
 
         public class Holder
         {
@@ -34,6 +35,7 @@ public class DefaultValueFormatterTests
             public decimal M;
             public bool Bo;
             public Priority P;
+            public @class KeywordEnum;
             public int? NullableInt;
         }
         """;
@@ -85,6 +87,7 @@ public class DefaultValueFormatterTests
         // High = 2 names a member; 7 maps to no single member and must be an explicit cast.
         Assert.Equal("global::Priority.High", DefaultValueFormatter.Format(2, type("P")));
         Assert.Equal("(global::Priority)(7)", DefaultValueFormatter.Format(7, type("P")));
+        Assert.Equal("global::@class.@default", DefaultValueFormatter.Format(1, type("KeywordEnum")));
     }
 
     [Fact]

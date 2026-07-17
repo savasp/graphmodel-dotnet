@@ -185,6 +185,49 @@ public class InheritedComplexPropertyTests
         Assert.DoesNotContain("== Compile errors in output compilation ==", generated, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void HiddenBaseComplexProperty_UsesMostDerivedPropertyOnly()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            namespace HiddenComplex;
+
+            public record Details
+            {
+                public string Note { get; set; } = string.Empty;
+            }
+
+            public abstract record PersonBase : Node
+            {
+                public Details Value { get; set; } = new();
+            }
+
+            [Node("Person")]
+            public record Person : PersonBase
+            {
+                public new string Value { get; set; } = string.Empty;
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+
+        // The most-derived declaration is the effective serialized property. The hidden base
+        // declaration must neither emit a second serialization block nor pull its complex type into
+        // the dependency catalog.
+        Assert.Null(assembly.GetType("HiddenComplex.Generated.DetailsSerializer", throwOnError: false));
+
+        var nodeType = assembly.GetType("HiddenComplex.Person", throwOnError: true)!;
+        var serializer = CreateSerializer(assembly, "HiddenComplex.Generated.PersonSerializer");
+        var node = Activator.CreateInstance(nodeType)!;
+        var derivedValueProperty = nodeType.GetProperties()
+            .Single(property => property.Name == "Value" && property.DeclaringType == nodeType);
+        derivedValueProperty.SetValue(node, "derived");
+
+        var roundTripped = serializer.Deserialize(serializer.Serialize(node));
+
+        Assert.Equal("derived", derivedValueProperty.GetValue(roundTripped));
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         var count = 0;
