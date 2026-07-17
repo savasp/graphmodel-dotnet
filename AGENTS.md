@@ -1,6 +1,6 @@
 # CVOYA graph — Project instructions
 
-Type-safe .NET library for graph data and graph databases, with LINQ querying, transactions, and optional Roslyn analyzers and serialization codegen. Neo4j is the in-tree provider; a PostgreSQL + Apache AGE provider is planned (#53, #90). Apache 2.0 licensed. Targets **.NET 10** with **C# 14** (`LangVersion` is set in [Directory.Build.props](Directory.Build.props)).
+Type-safe .NET library for graph data and graph databases, with LINQ querying, transactions, and optional Roslyn analyzers and serialization codegen. Neo4j and PostgreSQL + Apache AGE are the in-tree database providers. Apache 2.0 licensed. Targets **.NET 10** with **C# 14** (`LangVersion` is set in [Directory.Build.props](Directory.Build.props)).
 
 This file is the canonical instruction set for AI coding agents (Claude Code, Codex, Copilot, and others) and a good orientation for humans. Tool-specific configuration lives in `.claude/`, `.codex/`, and `.github/copilot-instructions.md`; see [docs/ai-agents.md](docs/ai-agents.md) for the map.
 
@@ -9,7 +9,9 @@ This file is the canonical instruction set for AI coding agents (Claude Code, Co
 ```
 src/Graph/                          provider-neutral core: IGraph, INode, IRelationship, LINQ surface, attributes
 src/Graph.Neo4j/                    Neo4j provider: LINQ-to-Cypher, transactions, entity managers
+src/Graph.Age/                      PostgreSQL + Apache AGE provider
 src/Graph.InMemory/                 in-memory reference provider: LINQ-to-objects over the shared query model; test double
+src/Graph.Cypher/                   shared typed Cypher AST, validation, and rendering
 src/Graph.Analyzers/                Roslyn analyzers (CG001…) for consumer domain models
 src/Graph.Serialization/            runtime serialization representation (EntityInfo, schemas)
 src/Graph.Serialization.CodeGen/    incremental source generator for entity serializers
@@ -23,9 +25,12 @@ scripts/                            release + container helper scripts
 ## Build and test
 
 ```bash
-dotnet build --configuration Debug     # day-to-day build (project references)
-dotnet test  --configuration Debug     # full suite — needs a local Neo4j (see below)
+dotnet build --configuration Debug
+./scripts/run-tests.sh --configuration Debug --lane fast --disable-diff-engine
+./scripts/run-tests.sh --configuration Debug --lane all --disable-diff-engine
 ```
+
+The runner discovers test projects under `tests/`, separates service-free and provider-backed lanes, and rejects projects that report zero tests. The full lane needs both Neo4j and AGE; use configured services, the repository container scripts, or the runner's `--neo4j --age` options.
 
 The test projects have different requirements — get this right:
 
@@ -53,7 +58,7 @@ Package testing before publishing: `dotnet msbuild eng/PackageValidation.proj -t
 - Apache 2.0 copyright header on new source files: `// Copyright CVOYA. Licensed under the Apache License, Version 2.0.`
 - Conventional commit messages: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.
 - Async: public async APIs take a `CancellationToken` and have an `Async` suffix.
-- Analyzer diagnostics use `CG0XX` prefix (CVOYA Graph codes CG001–CG009). Suppress via `.editorconfig` or `#pragma warning disable CG0XX`.
+- Analyzer diagnostics use the `CG###` series. Check `src/Graph.Analyzers/AnalyzerReleases.*.md` before allocating an unused ID; suppress a diagnostic via `.editorconfig` or `#pragma warning disable CG###`.
 - Keep changes minimal and focused; prefer editing existing files; file follow-up issues instead of expanding scope.
 
 ## Multi-agent workflow

@@ -12,7 +12,7 @@ Code reviewer for the CVOYA graph .NET library. Read-only intent: your output is
 ## Workflow
 
 - Read the full diff against the base branch (`git diff origin/main...HEAD`).
-- Build; run `dotnet test tests/Graph.Analyzers.Tests`; run the full suite after starting Neo4j with `scripts/containers/start-neo4j.sh` when needed (Podman first, Docker second, overridable with `CONTAINER_RUNTIME`) and note in the review whether it ran.
+- Run `./scripts/run-tests.sh --configuration Debug --lane fast --disable-diff-engine`, then the full lane with `--lane all --no-build` when both provider services are configured. Existing endpoints, repository container scripts, or runner options `--neo4j --age` may provide the services. State which provider lanes ran.
 - Review against DECLARED scope; gaps beyond scope become suggested follow-up issues, not blockers.
 
 ## Checklist
