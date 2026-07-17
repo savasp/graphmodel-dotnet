@@ -97,14 +97,31 @@ internal sealed class EntityReader(EntityFactory entityFactory)
     /// </summary>
     public EntityInfo BuildDynamicNodeInfo(NodeRecord record, StoreState state)
     {
+        var entityInfo = BuildDynamicEntityInfo(record, state, includeStructuralProperties: true);
+        return entityInfo with { ActualType = typeof(DynamicNode) };
+    }
+
+    private EntityInfo BuildDynamicEntityInfo(
+        NodeRecord record,
+        StoreState state,
+        bool includeStructuralProperties)
+    {
         var simpleProperties = SnapshotToProperties(record.Properties);
-        OverrideLabels(simpleProperties, record.Labels);
+        if (includeStructuralProperties)
+        {
+            OverrideLabels(simpleProperties, record.Labels);
+        }
+        else
+        {
+            simpleProperties.Remove(nameof(IEntity.Id));
+            simpleProperties.Remove(nameof(INode.Labels));
+        }
 
         var complexProperties = new Dictionary<string, Property>();
         foreach (var group in state.ComplexEdges(record.Key).GroupBy(e => e.Type, StringComparer.Ordinal))
         {
             var children = group.OrderBy(e => e.SequenceNumber)
-                .Select(edge => ChildInfo(edge, state))
+                .Select(edge => DynamicChildInfo(edge, state))
                 .OfType<EntityInfo>()
                 .ToList();
 
@@ -123,11 +140,21 @@ internal sealed class EntityReader(EntityFactory entityFactory)
         }
 
         return new EntityInfo(
-            typeof(DynamicNode),
+            record.ActualType,
             record.Label,
-            [.. record.Labels],
+            includeStructuralProperties ? [.. record.Labels] : [],
             simpleProperties,
             complexProperties);
+    }
+
+    private EntityInfo? DynamicChildInfo(RelationshipRecord edge, StoreState state)
+    {
+        if (edge.EndKey is not { } childKey || !state.Nodes.TryGetValue(childKey, out var child))
+        {
+            return null;
+        }
+
+        return BuildDynamicEntityInfo(child, state, includeStructuralProperties: false);
     }
 
     /// <summary>Rebuilds the serialized form of a relationship record.</summary>

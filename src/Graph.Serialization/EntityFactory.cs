@@ -571,25 +571,42 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 new EntityCollection(elementType, complexValues),
                 RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
         }
-        else if (valueType.IsAssignableTo(typeof(IDictionary<string, object?>)) || valueType.IsAssignableTo(typeof(IDictionary<string, object>)))
+        else if (IsCollectionOfDynamicDictionaries(valueType))
         {
-            // Convert dictionary to EntityInfo, classifying each entry through the same path so that
-            // nested collections and dictionaries are preserved as element data.
-            var dict = (IDictionary<string, object?>)propertyValue!;
-            var dictSimpleProperties = new Dictionary<string, Property>();
-            var dictComplexProperties = new Dictionary<string, Property>();
-
-            foreach (var (key, value) in dict)
+            if (!visited.Add(propertyValue!))
             {
-                ClassifyDynamicValue(key, value, dictSimpleProperties, dictComplexProperties, visited);
+                throw new GraphException(
+                    $"Reference cycle detected while serializing dynamic property '{propertyName}'.");
             }
 
-            var dictEntityInfo = new EntityInfo(
-                valueType,
-                "Dictionary",
-                new List<string>(),
-                dictSimpleProperties,
-                dictComplexProperties);
+            try
+            {
+                var complexValues = new List<EntityInfo>();
+                var elementType = GetElementType(valueType);
+
+                foreach (var item in (IEnumerable)propertyValue!)
+                {
+                    if (item is not null)
+                    {
+                        complexValues.Add(SerializeDynamicDictionary(item, item.GetType(), propertyName, visited));
+                    }
+                }
+
+                complexProperties[propertyName] = new Property(
+                    GetPropertyInfo(valueType, propertyName),
+                    propertyName,
+                    false,
+                    new EntityCollection(elementType, complexValues),
+                    RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
+            }
+            finally
+            {
+                visited.Remove(propertyValue!);
+            }
+        }
+        else if (IsDynamicDictionary(valueType))
+        {
+            var dictEntityInfo = SerializeDynamicDictionary(propertyValue!, valueType, propertyName, visited);
 
             complexProperties[propertyName] = new Property(
                 GetPropertyInfo(valueType, propertyName),
@@ -610,6 +627,59 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
         }
     }
+
+    private void ClassifyDynamicDictionaryEntries(
+        object dictionaryValue,
+        Dictionary<string, Property> simpleProperties,
+        Dictionary<string, Property> complexProperties,
+        HashSet<object> visited)
+    {
+        foreach (var (key, value) in (IEnumerable<KeyValuePair<string, object?>>)dictionaryValue)
+        {
+            ClassifyDynamicValue(key, value, simpleProperties, complexProperties, visited);
+        }
+    }
+
+    private EntityInfo SerializeDynamicDictionary(
+        object dictionaryValue,
+        Type dictionaryType,
+        string propertyName,
+        HashSet<object> visited)
+    {
+        if (!visited.Add(dictionaryValue))
+        {
+            throw new GraphException(
+                $"Reference cycle detected while serializing dynamic property '{propertyName}'.");
+        }
+
+        try
+        {
+            var simpleProperties = new Dictionary<string, Property>();
+            var complexProperties = new Dictionary<string, Property>();
+            ClassifyDynamicDictionaryEntries(dictionaryValue, simpleProperties, complexProperties, visited);
+
+            return new EntityInfo(
+                dictionaryType,
+                "Dictionary",
+                [],
+                simpleProperties,
+                complexProperties);
+        }
+        finally
+        {
+            visited.Remove(dictionaryValue);
+        }
+    }
+
+    private static bool IsCollectionOfDynamicDictionaries(Type type) =>
+        type != typeof(string) &&
+        typeof(IEnumerable).IsAssignableFrom(type) &&
+        !GraphDataModel.IsDictionary(type) &&
+        IsDynamicDictionary(GetElementType(type));
+
+    private static bool IsDynamicDictionary(Type type) =>
+        GraphDataModel.IsDictionary(type) &&
+        typeof(IEnumerable<KeyValuePair<string, object?>>).IsAssignableFrom(type);
 
     private static EntityInfo SerializeComplexObject(object obj, Type objectType)
     {

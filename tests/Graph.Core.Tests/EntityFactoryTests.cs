@@ -392,6 +392,7 @@ public class EntityFactoryTests
         // collection class's Length/Rank/... instead of its elements. It must serialize as a
         // SimpleCollection of the elements.
         var factory = new EntityFactory();
+        var expectedTags = new[] { "a", "b" };
         var node = new DynamicNode(
             "dynamic-nested-serialize",
             ["Person"],
@@ -399,7 +400,7 @@ public class EntityFactoryTests
             {
                 ["address"] = new Dictionary<string, object?>
                 {
-                    ["tags"] = new[] { "a", "b" },
+                    ["tags"] = expectedTags,
                 },
             });
 
@@ -493,6 +494,7 @@ public class EntityFactoryTests
     public void DynamicNode_RoundTripsSimpleCollectionNestedInDictionaryWithinDictionary()
     {
         var factory = new EntityFactory();
+        var expectedTags = new[] { "x", "y", "z" };
         var node = new DynamicNode(
             "dynamic-deep-nested",
             ["Person"],
@@ -502,7 +504,7 @@ public class EntityFactoryTests
                 {
                     ["inner"] = new Dictionary<string, object?>
                     {
-                        ["tags"] = new[] { "x", "y", "z" },
+                        ["tags"] = expectedTags,
                     },
                 },
             });
@@ -512,7 +514,60 @@ public class EntityFactoryTests
         var outer = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(roundTripped.Properties["outer"]);
         var inner = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(outer["inner"]);
         var tags = Assert.IsType<List<string>>(inner["tags"]);
-        Assert.Equal(new[] { "x", "y", "z" }, tags);
+        Assert.Equal(expectedTags, tags);
+    }
+
+    [Fact]
+    public void DynamicNode_RoundTripsCollectionOfDictionariesNestedInDictionaryProperty()
+    {
+        var factory = new EntityFactory();
+        var firstTags = new[] { "a", "b" };
+        var secondTags = new[] { "c" };
+        var node = new DynamicNode(
+            "dynamic-dictionary-collection",
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["bag"] = new Dictionary<string, object?>
+                {
+                    ["entries"] = new List<Dictionary<string, object?>>
+                    {
+                        new() { ["name"] = "first", ["tags"] = firstTags },
+                        new() { ["name"] = "second", ["tags"] = secondTags },
+                    },
+                },
+            });
+
+        var entity = factory.Serialize(node);
+
+        var bagInfo = Assert.IsType<EntityInfo>(entity.ComplexProperties["bag"].Value);
+        var entriesInfo = Assert.IsType<EntityCollection>(bagInfo.ComplexProperties["entries"].Value);
+        Assert.Equal(2, entriesInfo.Entities.Count);
+        Assert.All(entriesInfo.Entities, entry => Assert.DoesNotContain("Count", entry.SimpleProperties.Keys));
+
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
+        var bag = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(roundTripped.Properties["bag"]);
+        var entries = Assert.IsType<List<Dictionary<string, object?>>>(bag["entries"]);
+        Assert.Equal(["first", "second"], entries.Select(entry => entry["name"]));
+        Assert.Equal(firstTags, Assert.IsType<List<string>>(entries[0]["tags"]));
+        Assert.Equal(secondTags, Assert.IsType<List<string>>(entries[1]["tags"]));
+    }
+
+    [Fact]
+    public void DynamicNode_WithSelfReferentialDictionary_ThrowsGraphException()
+    {
+        var factory = new EntityFactory();
+        var bag = new Dictionary<string, object?>();
+        bag["self"] = bag;
+        var node = new DynamicNode(
+            "dynamic-dictionary-cycle",
+            ["Person"],
+            new Dictionary<string, object?> { ["bag"] = bag });
+
+        var exception = Assert.Throws<GraphException>(() => factory.Serialize(node));
+
+        Assert.Contains("Reference cycle", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("self", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

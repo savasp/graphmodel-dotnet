@@ -674,6 +674,7 @@ public interface IBasicTests : IGraphTest
         // #405: a simple collection nested inside a dynamic node's dictionary/complex property value
         // must survive create/get. It was previously mangled on write (reflected over as an opaque
         // collection object) or dropped on read (only nested scalar members were materialized).
+        var expectedTags = new[] { "home", "billing" };
         var node = new DynamicNode(
             ["DynamicNestedComplex"],
             new Dictionary<string, object?>
@@ -681,7 +682,11 @@ public interface IBasicTests : IGraphTest
                 ["address"] = new Dictionary<string, object?>
                 {
                     ["street"] = "1 Main",
-                    ["tags"] = new[] { "home", "billing" },
+                    ["tags"] = expectedTags,
+                    ["location"] = new Dictionary<string, object?>
+                    {
+                        ["country"] = "UK",
+                    },
                 },
             });
 
@@ -693,10 +698,14 @@ public interface IBasicTests : IGraphTest
             TestContext.Current.CancellationToken);
 
         var address = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(fetched.Properties["address"]);
+        Assert.Equal(["location", "street", "tags"], address.Keys.Order(StringComparer.Ordinal));
         Assert.Equal("1 Main", address["street"]?.ToString());
         Assert.Equal(
-            new[] { "home", "billing" },
+            expectedTags,
             CollectionValues(address["tags"]).Select(value => value?.ToString()));
+        var location = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(address["location"]);
+        Assert.Equal(["country"], location.Keys);
+        Assert.Equal("UK", location["country"]?.ToString());
     }
 
     private static void AssertValueTypeCollections(ValueTypeCollectionNode expected, ValueTypeCollectionNode actual)
