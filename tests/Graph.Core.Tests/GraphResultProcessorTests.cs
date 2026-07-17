@@ -135,6 +135,33 @@ public class GraphResultProcessorTests
     }
 
     [Fact]
+    public async Task DynamicMapWireProperty_PassesThroughAsDictionary()
+    {
+        var node = GraphValue.Node(
+            "map-wire",
+            ["Place"],
+            new Dictionary<string, GraphValue>
+            {
+                [nameof(IEntity.Id)] = GraphValue.Scalar("place-1"),
+                ["address"] = GraphValue.Map(new Dictionary<string, GraphValue>
+                {
+                    ["city"] = GraphValue.Scalar("Berlin"),
+                    ["zip"] = GraphValue.Scalar("10115"),
+                }),
+            });
+
+        var info = Assert.Single(await new GraphResultProcessor(factory).ProcessAsync(
+            [NodeRecord(node)],
+            typeof(DynamicNode),
+            TestContext.Current.CancellationToken));
+        var result = Assert.IsType<DynamicNode>(factory.Deserialize(info));
+
+        var address = Assert.IsType<Dictionary<string, object>>(result.Properties["address"]);
+        Assert.Equal("Berlin", address["city"]);
+        Assert.Equal("10115", address["zip"]);
+    }
+
+    [Fact]
     public async Task NestedProjectionCollections_MaterializeNonEmptyAndEmptyArrays()
     {
         var records = new[]

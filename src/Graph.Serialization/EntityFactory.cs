@@ -233,15 +233,6 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                     if (prop.Value.Value is SimpleValue sv)
                         dict[prop.Key] = sv.Object;
                 }
-                // Always set to an empty dictionary if no properties
-                if (dict.Count == 0)
-                    dict = new Dictionary<string, object?>();
-                // Debug output
-                if (kvp.Key == "address")
-                {
-                    var keys = dict != null ? string.Join(", ", dict.Keys) : "<null>";
-                    System.Diagnostics.Debug.WriteLine($"[DeserializeDynamicNode] address property type: {dict?.GetType().FullName}, keys: {keys}");
-                }
                 properties[kvp.Key] = dict;
             }
             else if (kvp.Value.Value is EntityCollection collection)
@@ -370,11 +361,13 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
             properties[propertyName] = property.Value switch
             {
+                // Generated serializers represent a null property as a Property with a null Value.
+                null => null,
                 SimpleValue simpleValue => simpleValue.Object,
                 SimpleCollection simpleCollection => CreateDynamicSimpleCollection(propertyName, simpleCollection),
                 _ => throw new GraphException(
                     $"Dynamic property '{propertyName}' has unsupported serialized value type " +
-                    $"'{property.Value?.GetType().Name ?? "null"}'."),
+                    $"'{property.Value.GetType().Name}'."),
             };
         }
     }
@@ -392,6 +385,17 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 if (simpleValue is null)
                 {
                     throw new GraphException($"Dynamic collection property '{propertyName}' contains a malformed null item.");
+                }
+
+                // GraphValueConverter.ConvertTo would coerce null to default(T) for non-nullable
+                // value types, silently inventing an element; fail explicitly instead.
+                if (simpleValue.Object is null &&
+                    collection.ElementType.IsValueType &&
+                    Nullable.GetUnderlyingType(collection.ElementType) is null)
+                {
+                    throw new GraphException(
+                        $"Dynamic collection property '{propertyName}' contains a null element, but its element " +
+                        $"type '{collection.ElementType}' cannot represent null.");
                 }
 
                 values.Add(Results.GraphValueConverter.ConvertTo(simpleValue.Object, collection.ElementType));
@@ -808,7 +812,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
                     foreach (var item in collection)
                     {
-                        simpleValues.Add(new SimpleValue(item ?? (object)"", item?.GetType() ?? elementType));
+                        simpleValues.Add(new SimpleValue(item!, elementType));
                     }
 
                     simpleProperties[propertyName] = new Property(

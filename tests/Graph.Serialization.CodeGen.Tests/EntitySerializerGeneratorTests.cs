@@ -119,6 +119,27 @@ public class EntitySerializerGeneratorTests
     }
 
     [Fact]
+    public Task NodeWithNullableSimpleCollections()
+    {
+        const string source = """
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            namespace NullableCollections;
+
+            [Node("Tracked")]
+            public record TrackedNode : Node
+            {
+                public List<int?> Scores { get; set; } = new();
+                public List<Guid?> RelatedIds { get; set; } = new();
+            }
+            """;
+
+        return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
+    [Fact]
     public void NodeWithNullableSimpleCollections_RoundTripsNullElements()
     {
         const string source = """

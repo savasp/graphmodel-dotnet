@@ -1010,11 +1010,12 @@ public sealed class GraphResultProcessor
                 continue;
 
             Serialized serializedValue;
-            if (value is IEnumerable enumerable and not string and not byte[])
+            // Dictionaries (wire maps) are not simple collections; they pass through as scalar values.
+            if (value is IEnumerable enumerable and not string and not byte[] and not IDictionary)
             {
                 var items = enumerable.Cast<object?>().ToList();
                 var elementType = InferDynamicCollectionElementType(items);
-                serializedValue = CreateSimpleCollection(items, elementType);
+                serializedValue = CreateSimpleCollection(key, items, elementType);
             }
             else
             {
@@ -1057,7 +1058,6 @@ public sealed class GraphResultProcessor
         return elementType;
     }
 
-    // In CreateEntityInfoFromNode, use this for dynamic nodes
     private EntityInfo CreateEntityInfoFromNode(GraphValue node, Type targetType)
     {
         // Discover the actual type from metadata, labels, or fall back to target type
@@ -1424,7 +1424,7 @@ public sealed class GraphResultProcessor
                     propertySchema.PropertyName,
                     propertySchema.IsNullable,
                     propertySchema.PropertyType == PropertyType.SimpleCollection
-                        ? global::Cvoya.Graph.Serialization.Results.GraphResultProcessor.CreateSimpleCollection(convertedValue, propertySchema.ElementType!)
+                        ? CreateSimpleCollection(key, convertedValue, propertySchema.ElementType!)
                         : new SimpleValue(convertedValue, propertySchema.PropertyInfo.PropertyType));
 
                 result[key] = property;
@@ -1434,13 +1434,13 @@ public sealed class GraphResultProcessor
         return result;
     }
 
-    private static SimpleCollection CreateSimpleCollection(object convertedValue, Type elementType)
+    private static SimpleCollection CreateSimpleCollection(string propertyName, object convertedValue, Type elementType)
     {
         if (convertedValue is string || convertedValue is not IEnumerable enumerable)
         {
             throw new GraphException(
-                $"Expected an enumerable value for a simple collection with element type '{elementType}', " +
-                $"but received '{convertedValue.GetType()}'.");
+                $"Expected an enumerable value for simple collection property '{propertyName}' with element type " +
+                $"'{elementType}', but received '{convertedValue.GetType()}'.");
         }
 
         var items = new List<SimpleValue>();

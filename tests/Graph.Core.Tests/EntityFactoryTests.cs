@@ -212,6 +212,59 @@ public class EntityFactoryTests
     }
 
     [Fact]
+    public void DynamicCollection_WithNullElementForNonNullableValueType_ThrowsGraphException()
+    {
+        var factory = new EntityFactory();
+        var entity = factory.Serialize(new DynamicNode("dynamic-null-element", ["Person"], new Dictionary<string, object?>()));
+        entity.SimpleProperties["invalid"] = new Property(
+            PropertyInfo: null!,
+            Label: "invalid",
+            IsNullable: false,
+            Value: new SimpleCollection([new SimpleValue(null!, typeof(int))], typeof(int)));
+
+        var exception = Assert.Throws<GraphException>(() => factory.Deserialize<DynamicNode>(entity));
+
+        Assert.Contains("invalid", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("null element", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(typeof(int).ToString(), exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DynamicProperty_WithNullSerializedValue_DeserializesAsNull()
+    {
+        var factory = new EntityFactory();
+        var entity = factory.Serialize(new DynamicNode("dynamic-null-value", ["Person"], new Dictionary<string, object?>()));
+        entity.SimpleProperties["optional"] = new Property(
+            PropertyInfo: null!,
+            Label: "optional",
+            IsNullable: true,
+            Value: null);
+
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
+
+        Assert.True(roundTripped.Properties.ContainsKey("optional"));
+        Assert.Null(roundTripped.Properties["optional"]);
+    }
+
+    [Fact]
+    public void ComplexValueSimpleCollections_PreserveNullElementsAndDeclaredElementType()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-complex-collections",
+            ["Person"],
+            new Dictionary<string, object?> { ["survey"] = new FactorySurvey() });
+
+        var entity = factory.Serialize(node);
+
+        var complex = Assert.IsType<EntityInfo>(entity.ComplexProperties["survey"].Value);
+        var scores = Assert.IsType<SimpleCollection>(complex.SimpleProperties[nameof(FactorySurvey.Scores)].Value);
+        Assert.Equal(typeof(int?), scores.ElementType);
+        Assert.Equal(new object?[] { 1, null, 3 }, scores.Values.Select(value => value.Object));
+        Assert.All(scores.Values, value => Assert.Equal(typeof(int?), value.Type));
+    }
+
+    [Fact]
     public void DynamicNode_RoundTripsDictionaryComplexPropertyAsDictionary()
     {
         var factory = new EntityFactory();
@@ -376,6 +429,11 @@ public class EntityFactoryTests
     private sealed record UnregisteredNode : Node;
 
     private sealed record FactoryAddress(string Street, string City);
+
+    private sealed record FactorySurvey
+    {
+        public List<int?> Scores { get; init; } = [1, null, 3];
+    }
 
     private sealed record LabeledContact
     {
