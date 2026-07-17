@@ -30,8 +30,8 @@ dotnet build --configuration Debug
 # Test package references locally
 dotnet build --configuration LocalFeed
 
-# Create a release version
-./scripts/create-release.sh -v 1.2.3
+# Cut a release (--plan previews the tag without pushing)
+./scripts/release.sh 1.2.3
 
 # Build production packages
 dotnet build --configuration Release
@@ -90,63 +90,69 @@ CVOYA graph uses **four distinct build configurations** optimized for different 
 
 ## 🏷️ Version Management
 
-CVOYA graph uses a **VERSION file-based system** that ensures consistent versioning across all packages and prevents accidental releases.
+CVOYA graph releases are **tag-authoritative**: the pushed tag *is* the version.
+Nothing in CI writes or stamps a version, which is what keeps package versions
+consistent and prevents accidental releases.
 
-### VERSION File Format
+### Version Scheme
 
-The `VERSION` file contains a single line with the version:
+```text
+MAJOR.MINOR.PATCH[-(alpha|beta|rc).YYYYMMDD[.N]]
+```
 
 ```text
 # Stable release
 1.2.3
 
-# Pre-release
-1.2.3-alpha
-1.2.3-beta.1
-1.2.3-rc.2
+# Date-anchored pre-releases (the .1 is a same-day counter)
+1.2.3-alpha.20260716
+1.2.3-rc.20260716.1
 ```
 
 ### Creating Releases
 
-`scripts/create-release.sh` updates `VERSION` (and the separate `VERSION.ASSEMBLY`
-stamp used for the numeric `AssemblyVersion`/`FileVersion`). It is the only thing
-that writes those files — `Directory.Build.props` reads them at build time, so
-nothing else needs to change and nothing gets stamped twice.
+`scripts/release.sh` computes the version, pushes the tag, and `release.yml` reads
+it back — nothing writes a version to a file, so nothing can be stamped twice.
 
 ```bash
-# Create a release version
-./scripts/create-release.sh -v 1.2.3
+# Preview the computed tag without pushing anything
+./scripts/release.sh 1.2.3 --pre alpha --plan
 
-# Create a pre-release version
-./scripts/create-release.sh -v 1.2.3-alpha
+# Cut a stable release  -> v1.2.3
+./scripts/release.sh 1.2.3
 
-# Preview without writing any files
-./scripts/create-release.sh -v 1.2.3 --dry-run
+# Cut a date-anchored pre-release  -> v1.2.3-alpha.20260716
+./scripts/release.sh 1.2.3 --pre alpha
 
-# Update and commit in one step
-./scripts/create-release.sh -v 1.2.3 --commit
+# ...and make it the current Latest on GitHub
+./scripts/release.sh 1.2.3 --pre alpha --latest
 ```
 
-See `./scripts/create-release.sh --help` for the full option list.
+The base version is positional and pre-release suffixes come from `--pre` — they
+are never typed by hand. See `./scripts/release.sh --help` for the full option
+list, and [release-process.md](release-process.md) for the full process.
 
-### Version Requirements
+### The VERSION file
 
-- **Debug/Benchmark**: No VERSION file needed (uses default version with timestamp)
-- **Release**: VERSION file required for consistent package versions
+`VERSION` is the **development default** for untagged local and CI builds, not the
+release source of truth. Editing it does not cut a release, and cutting a release
+does not edit it. `release.yml` passes the tag's version to the pack job as
+`GRAPH_RELEASE_VERSION`, which `Directory.Build.props` prefers over the file.
 
 ### Publishing a Release
 
 Publishing is entirely tag-triggered — there is no manual publish step:
 
-1. Update `VERSION` with `./scripts/create-release.sh -v X.Y.Z --commit` (or edit
-   `VERSION` directly and commit it).
-2. Push a `vX.Y.Z` tag that matches the `VERSION` file content exactly:
-   `git tag vX.Y.Z && git push origin vX.Y.Z`.
-3. `.github/workflows/release.yml` verifies the tag matches `VERSION` (failing
-   loudly on any mismatch), runs the full test suite including the Neo4j
-   provider tests, packs all five packages, publishes to NuGet using **Trusted
-   Publishing** (OIDC — no stored API key), attests build provenance, and
-   creates the GitHub Release with generated notes.
+1. Run `./scripts/release.sh X.Y.Z [--pre alpha|beta|rc]` from a checkout whose
+   HEAD is on `origin/main`. It computes the version, runs the pre-flight checks,
+   and pushes the `vX.Y.Z` tag.
+2. `.github/workflows/release.yml` reads the version off the tag and rejects it
+   if it doesn't match the version scheme, runs the full test suite including the
+   Neo4j and Apache AGE provider tests, packs every package, publishes to NuGet
+   using **Trusted Publishing** (OIDC — no stored API key), attests build
+   provenance, and creates the GitHub Release with generated notes.
+3. `release.sh` watches that run and then verifies every published package
+   actually resolves on nuget.org before reporting success.
 
 See [docs/release-process.md](release-process.md) for the full process,
 including the one-time NuGet Trusted Publishing portal setup.
@@ -213,21 +219,23 @@ To include CodeQL in the full build-system validation pass:
 ### Release Preparation Workflow
 
 ```bash
-# 1. Create release version
-./scripts/create-release.sh -v 1.2.3
-
-# 2. Verify release build works
+# 1. Verify the release build works
 dotnet build --configuration Release
 
-# 3. Run full test suite
+# 2. Run the full test suite
 dotnet test --configuration Release
 
-# 4. Commit and tag — pushing the tag triggers release.yml
-git add VERSION VERSION.ASSEMBLY
-git commit -m "chore: release 1.2.3"
-git tag v1.2.3
-git push origin v1.2.3
+# 3. Preview the tag that would be cut
+./scripts/release.sh 1.2.3 --plan
+
+# 4. Cut it — release.sh pushes the tag, watches release.yml, and verifies
+#    the published packages resolve on nuget.org
+./scripts/release.sh 1.2.3
 ```
+
+`release.sh` must run from a checkout whose HEAD is on `origin/main`; it refuses
+to tag anything else. Steps 1 and 2 are a local smoke test — `release.yml` reruns
+the full suite against the tagged commit regardless.
 
 ### Package Testing Workflow
 
@@ -265,13 +273,10 @@ dotnet msbuild -target:CleanLocalFeed
 #### Method 3: Legacy Manual Testing
 
 ```bash
-# 1. Create test version
-./scripts/create-release.sh -v 1.2.3-test
+# 1. Build and test packages at an arbitrary version, without touching VERSION
+GRAPH_RELEASE_VERSION=1.2.3-test dotnet build --configuration Release
 
-# 2. Build and test packages
-dotnet build --configuration Release
-
-# 3. Test in examples/tests
+# 2. Test in examples/tests
 dotnet test --configuration Release
 ```
 
@@ -280,10 +285,10 @@ dotnet test --configuration Release
 ### Version Management
 
 ```bash
-# Create new release version
-./scripts/create-release.sh -v X.Y.Z
+# Cut a release (pushes the tag; --plan to preview)
+./scripts/release.sh X.Y.Z [--pre alpha|beta|rc]
 
-# Show current version
+# Show the version the current tree would build as
 dotnet msbuild -target:ShowVersion
 ```
 
@@ -323,12 +328,11 @@ dotnet nuget locals all --clear
 
 ```text
 graphmodel/
-├── VERSION                    # Current release version (single source of truth)
-├── VERSION.ASSEMBLY           # Numeric AssemblyVersion/FileVersion stamp
+├── VERSION                    # Development default version for untagged builds
 ├── Directory.Build.props      # MSBuild configuration
 ├── artifacts/                # Built packages
 └── scripts/
-    ├── create-release.sh     # Release creation helper
+    ├── release.sh            # Release orchestration (tag, watch, verify)
     ├── run-benchmarks.sh     # Benchmark runner
     └── cleanup-local-feed.sh # Legacy cleanup script
 ```
@@ -340,8 +344,8 @@ graphmodel/
 #### "VERSION file is required for package generation"
 
 ```bash
-# Solution: Create a release version first
-./scripts/create-release.sh -v 1.2.3
+# Solution: supply a version for this build without editing VERSION
+GRAPH_RELEASE_VERSION=1.2.3 dotnet build --configuration Release
 ```
 
 #### "Package reference could not be resolved"
@@ -350,6 +354,22 @@ graphmodel/
 # Solution: Ensure packages are built and available
 dotnet build --configuration Release
 ```
+
+#### `NU5026`, or a package whose contents don't match its version
+
+Always build before packing locally:
+
+```bash
+GRAPH_RELEASE_VERSION=1.2.3 dotnet build --configuration Release
+GRAPH_RELEASE_VERSION=1.2.3 dotnet pack --configuration Release --no-build -o ./artifacts src/Graph/Graph.csproj
+```
+
+`dotnet pack` on its own does **not** build here. `Release` sets
+`GeneratePackageOnBuild=true`, and NuGet drops `Build` from the pack graph when
+that is on (`NuGet.Build.Tasks.Pack.targets`), so packing either fails with
+`NU5026` on a clean tree or — worse — silently packs whatever stale assemblies are
+already in `bin/Release` under whatever version you just passed. Releases are
+unaffected: `release.yml` always builds first, on a fresh checkout.
 
 #### Build cache issues
 
@@ -418,6 +438,6 @@ CI step that stamps a version. See [docs/release-process.md](release-process.md)
 
 ### Version Issues
 
-1. Check current version: `dotnet msbuild -target:ShowVersion`
-2. Recreate version: `./scripts/create-release.sh -v X.Y.Z`
+1. Check the resolved version: `dotnet msbuild -target:ShowVersion`
+2. Override it for one build: `GRAPH_RELEASE_VERSION=X.Y.Z dotnet build -c Release`
 3. Verify VERSION file format (single line, no extra whitespace)

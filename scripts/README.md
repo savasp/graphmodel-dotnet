@@ -17,22 +17,32 @@ This directory contains utility scripts for the CVOYA graph project.
 ./scripts/validate-build.sh --codeql
 ```
 
-### Version Management
+### Releasing
+
+Releases are tag-authoritative — the tag is the version, and `release.sh` is the
+only supported way to cut one. It pushes the tag, watches
+`.github/workflows/release.yml` (build, test, pack, attest, publish to NuGet,
+create the GitHub Release), then verifies every package resolves on nuget.org.
 
 ```bash
-# Create a new release version (updates VERSION and VERSION.ASSEMBLY)
-./scripts/create-release.sh -v 1.2.3
+# Preview the computed tag without pushing anything
+./scripts/release.sh 1.2.3 --pre alpha --plan
 
-# Preview without writing any files
-./scripts/create-release.sh -v 1.2.3 --dry-run
+# Cut a stable release  -> v1.2.3
+./scripts/release.sh 1.2.3
 
-# Show current version
+# Cut a date-anchored pre-release  -> v1.2.3-alpha.20260716
+./scripts/release.sh 1.2.3 --pre alpha
+
+# ...and make it the current Latest on GitHub
+./scripts/release.sh 1.2.3 --pre alpha --latest
+
+# Show the version the current tree would build as
 dotnet msbuild -target:ShowVersion
 ```
 
-Pushing a `v1.2.3` tag (matching the `VERSION` file) triggers `.github/workflows/release.yml`,
-which builds, tests, packs, publishes to NuGet, and creates the GitHub Release. See
-[docs/release-process.md](../docs/release-process.md) for the full process.
+See [docs/release-process.md](../docs/release-process.md) for the version scheme
+and the full process.
 
 ### Build Commands
 

@@ -100,26 +100,37 @@
         <DevelopmentDependency Condition="'$(Configuration)' == 'LocalFeed'">false</DevelopmentDependency>
     </PropertyGroup>
 
-    <!-- Version Management -->
+    <!-- Version Management
+
+         Releases are tag-authoritative: scripts/release.sh pushes v<semver> and
+         release.yml hands that version to the pack job as GRAPH_RELEASE_VERSION.
+         The VERSION file is only the development default for untagged local and
+         CI builds — it is not the release source of truth, and nothing in CI
+         ever writes it. See docs/release-process.md.
+
+         AssemblyVersion/FileVersion are derived here rather than tracked in a
+         second file because they must be four numeric parts and cannot carry a
+         semver prerelease suffix. The full version, prerelease suffix and commit
+         sha included, still ships via InformationalVersion, which
+         GenerateAssemblyInfo emits from Version + SourceRevisionId. -->
     <PropertyGroup>
         <VersionFile>$(MSBuildThisFileDirectory)VERSION</VersionFile>
-        <AssemblyVersionFile>$(MSBuildThisFileDirectory)VERSION.ASSEMBLY</AssemblyVersionFile>
 
-        <FullVersion Condition="Exists('$(VersionFile)')">$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</FullVersion>
-        <AssemblyVersionString Condition="Exists('$(AssemblyVersionFile)')">$([System.IO.File]::ReadAllText('$(AssemblyVersionFile)').Trim())</AssemblyVersionString>
+        <FullVersion Condition="'$(GRAPH_RELEASE_VERSION)' != ''">$(GRAPH_RELEASE_VERSION)</FullVersion>
+        <FullVersion Condition="'$(FullVersion)' == '' AND Exists('$(VersionFile)')">$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</FullVersion>
 
-        <Version Condition="Exists('$(VersionFile)')">$(FullVersion)</Version>
-        <PackageVersion Condition="Exists('$(VersionFile)')">$(FullVersion)</PackageVersion>
-        <AssemblyVersion Condition="Exists('$(AssemblyVersionFile)')">$(AssemblyVersionString)</AssemblyVersion>
-        <FileVersion Condition="Exists('$(AssemblyVersionFile)')">$(AssemblyVersionString)</FileVersion>
+        <Version Condition="'$(FullVersion)' != ''">$(FullVersion)</Version>
+        <PackageVersion Condition="'$(FullVersion)' != ''">$(FullVersion)</PackageVersion>
+
+        <!-- Strip any prerelease suffix: 1.0.0-alpha.20260716 -> 1.0.0 -->
+        <NumericVersion Condition="'$(FullVersion)' != ''">$(FullVersion.Split('-')[0])</NumericVersion>
+        <AssemblyVersion Condition="'$(NumericVersion)' != ''">$(NumericVersion).0</AssemblyVersion>
+        <FileVersion Condition="'$(NumericVersion)' != ''">$(NumericVersion).0</FileVersion>
     </PropertyGroup>
 
     <Target Name="ShowVersion">
-        <PropertyGroup Condition="Exists('$(VersionFile)')">
-            <CurrentVersion>$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</CurrentVersion>
-        </PropertyGroup>
-        <Message Text="Current version: $(CurrentVersion)" Importance="high" Condition="'$(CurrentVersion)' != ''" />
-        <Message Text="No VERSION file found" Importance="high" Condition="'$(CurrentVersion)' == ''" />
+        <Message Text="Current version: $(FullVersion)" Importance="high" Condition="'$(FullVersion)' != ''" />
+        <Message Text="No version resolved (no GRAPH_RELEASE_VERSION and no VERSION file)" Importance="high" Condition="'$(FullVersion)' == ''" />
     </Target>
 
     <!-- Local NuGet Feed Management Targets -->

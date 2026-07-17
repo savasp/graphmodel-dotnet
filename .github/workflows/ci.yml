@@ -55,7 +55,6 @@ jobs:
               - 'global.json'
               - '.config/dotnet-tools.json'
               - 'VERSION'
-              - 'VERSION.ASSEMBLY'
               - '.github/workflows/ci.yml'
             workflow_files:
               - '.github/workflows/**'

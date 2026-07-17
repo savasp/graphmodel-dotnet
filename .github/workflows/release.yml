@@ -23,8 +23,8 @@ env:
   SourceRevisionId: ${{ github.sha }}
 
 jobs:
-  verify-version:
-    name: Verify tag matches VERSION
+  resolve-version:
+    name: Resolve version from tag
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -38,26 +38,38 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Compare tag to VERSION file
+      - name: Resolve version
         id: check
         shell: bash
         run: |
-          VERSION_FILE=$(cat VERSION | tr -d '[:space:]')
-
+          # Releases are tag-authoritative: the tag IS the version, and this
+          # workflow only ever reads it. No step here writes or stamps a version
+          # — a step that did is what produced the old mangled
+          # 1.0.0-alpha.20251014.0.20251014.0 (see docs/release-process.md).
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG_VERSION="$VERSION_FILE"
-            echo "::notice::Manual dispatch — using VERSION file content ($VERSION_FILE) as the version, no tag to verify."
+            # Dry run: no tag to read, so build at the VERSION file's development
+            # default. Deliberately NOT scheme-checked — VERSION is never what
+            # ships, and requiring it to look like a real release version is what
+            # would force a misleading date into the file.
+            VERSION=$(tr -d '[:space:]' < VERSION)
+            echo "::notice::Manual dispatch — dry run at the VERSION file's development default ($VERSION). No tag involved."
           else
-            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-            if [[ "$TAG_VERSION" != "$VERSION_FILE" ]]; then
-              echo "::error::Tag 'v$TAG_VERSION' does not match VERSION file content '$VERSION_FILE'. Update VERSION and re-tag."
+            VERSION="${GITHUB_REF#refs/tags/v}"
+
+            # scripts/release.sh is the only supported way to cut a tag. Reject
+            # anything that doesn't match the scheme it produces, so a hand-made
+            # tag cannot publish an off-scheme version to nuget.org — where a
+            # published version is immutable and cannot be taken back. Only the
+            # tag path is checked: this is the only path that can publish.
+            if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]{8}(\.[0-9]+)?)?$ ]]; then
+              echo "::error::Tag 'v$VERSION' does not match MAJOR.MINOR.PATCH[-(alpha|beta|rc).YYYYMMDD[.N]]. Cut releases with ./scripts/release.sh."
               exit 1
             fi
           fi
 
-          echo "version=$VERSION_FILE" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          if [[ "$VERSION_FILE" == *-* ]]; then
+          if [[ "$VERSION" == *-* ]]; then
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
@@ -66,7 +78,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: verify-version
+    needs: resolve-version
     timeout-minutes: 15
     permissions:
       contents: read
@@ -97,7 +109,7 @@ jobs:
   test-core:
     name: Test Core
     runs-on: ubuntu-latest
-    needs: verify-version
+    needs: resolve-version
     timeout-minutes: 15
     permissions:
       contents: read
@@ -145,7 +157,7 @@ jobs:
   test-analyzers:
     name: Test Analyzers
     runs-on: ubuntu-latest
-    needs: verify-version
+    needs: resolve-version
     timeout-minutes: 15
     permissions:
       contents: read
@@ -179,7 +191,7 @@ jobs:
   test-translation:
     name: Test LINQ-to-Cypher translation
     runs-on: ubuntu-latest
-    needs: verify-version
+    needs: resolve-version
     timeout-minutes: 15
     permissions:
       contents: read
@@ -213,7 +225,7 @@ jobs:
   test-codegen:
     name: Test serialization code generator
     runs-on: ubuntu-latest
-    needs: verify-version
+    needs: resolve-version
     timeout-minutes: 15
     permissions:
       contents: read
@@ -247,7 +259,7 @@ jobs:
   test-neo4j:
     name: Test Neo4j Provider
     runs-on: ubuntu-latest
-    needs: verify-version
+    needs: resolve-version
     timeout-minutes: 20
     permissions:
       contents: read
@@ -309,7 +321,7 @@ jobs:
   test-age:
     name: Test Apache AGE Provider
     runs-on: ubuntu-latest
-    needs: verify-version
+    needs: resolve-version
     timeout-minutes: 20
     permissions:
       contents: read
@@ -362,7 +374,7 @@ jobs:
     name: Pack
     runs-on: ubuntu-latest
     needs:
-      - verify-version
+      - resolve-version
       - build
       - test-core
       - test-analyzers
@@ -375,6 +387,15 @@ jobs:
       contents: read
       id-token: write
       attestations: write
+
+    # The version reaches every dotnet invocation in this job — build, pack, and
+    # the msbuild evaluation inside verify-package-set.sh — as an environment
+    # variable that Directory.Build.props prefers over the VERSION file. Set at
+    # job level rather than per step so no packing step can silently fall back to
+    # the development default. This is the only job that packs, so it is the only
+    # one that needs it.
+    env:
+      GRAPH_RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -420,7 +441,7 @@ jobs:
       - name: Verify package versions
         shell: bash
         run: |
-          EXPECTED="${NEEDS_VERIFY_VERSION_OUTPUTS_VERSION}"
+          EXPECTED="${NEEDS_RESOLVE_VERSION_OUTPUTS_VERSION}"
           for pkg in ./artifacts/*.nupkg; do
             name=$(basename "$pkg")
             if [[ "$name" != *"$EXPECTED"* ]]; then
@@ -430,12 +451,12 @@ jobs:
           done
           ls -la ./artifacts
         env:
-          NEEDS_VERIFY_VERSION_OUTPUTS_VERSION: ${{ needs.verify-version.outputs.version }}
+          NEEDS_RESOLVE_VERSION_OUTPUTS_VERSION: ${{ needs.resolve-version.outputs.version }}
 
       - name: Verify release package set
-        run: ./scripts/verify-package-set.sh ./artifacts "${NEEDS_VERIFY_VERSION_OUTPUTS_VERSION}"
+        run: ./scripts/verify-package-set.sh ./artifacts "${NEEDS_RESOLVE_VERSION_OUTPUTS_VERSION}"
         env:
-          NEEDS_VERIFY_VERSION_OUTPUTS_VERSION: ${{ needs.verify-version.outputs.version }}
+          NEEDS_RESOLVE_VERSION_OUTPUTS_VERSION: ${{ needs.resolve-version.outputs.version }}
 
       - name: Verify a clean consumer can restore the release packages
         shell: bash
@@ -457,7 +478,7 @@ jobs:
       - name: Create tagged source archive
         shell: bash
         env:
-          RELEASE_VERSION: ${{ needs.verify-version.outputs.version }}
+          RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           set -euo pipefail
           git archive \
@@ -477,7 +498,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: packages-${{ needs.verify-version.outputs.version }}
+          name: packages-${{ needs.resolve-version.outputs.version }}
           path: ./artifacts/
           retention-days: 30
 
@@ -485,7 +506,7 @@ jobs:
     name: Publish to NuGet
     runs-on: ubuntu-latest
     needs:
-      - verify-version
+      - resolve-version
       - pack
     # Real publishing only ever happens on an actual `v*` tag push.
     # workflow_dispatch is a validation/dry-run path only — it always stops
@@ -501,7 +522,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: packages-${{ needs.verify-version.outputs.version }}
+          name: packages-${{ needs.resolve-version.outputs.version }}
           path: ./artifacts
 
       - name: Setup .NET
@@ -538,7 +559,7 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs:
-      - verify-version
+      - resolve-version
       - pack
       - publish
     if: ${{ github.event_name == 'push' }}
@@ -554,14 +575,14 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: packages-${{ needs.verify-version.outputs.version }}
+          name: packages-${{ needs.resolve-version.outputs.version }}
           path: ./artifacts
 
       - name: Create GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          IS_PRERELEASE: ${{ needs.verify-version.outputs.is_prerelease }}
+          IS_PRERELEASE: ${{ needs.resolve-version.outputs.is_prerelease }}
           RELEASE_INTRO: |
             <p><a href="https://cvoya.com"><img src="https://raw.githubusercontent.com/cvoya-com/.github/main/profile/cvoya-wordmark.png" alt="CVOYA" width="260"></a></p>
 
