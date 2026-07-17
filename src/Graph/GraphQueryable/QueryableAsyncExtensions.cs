@@ -163,6 +163,7 @@ public static class QueryableAsyncExtensions
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(predicate);
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
@@ -688,71 +689,135 @@ public static class QueryableAsyncExtensions
         return await Task.Run(() => Enumerable.Aggregate(source, TResult.Zero, (acc, x) => acc + compiled(x)), cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Asynchronously computes the average of the sequence.
-    /// </summary>
-    public static async Task<TResult> AverageAsync<TResult>(
-        this IGraphQueryable<TResult> source,
-        CancellationToken cancellationToken = default)
-        where TResult : INumberBase<TResult>
+    // Average result types follow standard LINQ (Enumerable/Queryable.Average): int and long
+    // average to double, float to float, double to double, decimal to decimal, and every nullable
+    // input yields the corresponding nullable result. Explicit overloads (rather than a single
+    // INumberBase<T> definition returning the input type) are what make the correct result type
+    // visible at compile time and keep providers from truncating an integer average. Non-nullable
+    // empty sequences throw InvalidOperationException; nullable empty or all-null sequences return
+    // null.
+
+    /// <summary>Asynchronously computes the average of a sequence of <see cref="int"/> values, as a <see cref="double"/>. Throws <see cref="InvalidOperationException"/> if the sequence is empty.</summary>
+    public static Task<double> AverageAsync(this IGraphQueryable<int> source, CancellationToken cancellationToken = default) =>
+        AverageAsync<int, double>(source, values => values.Average(), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of a sequence of nullable <see cref="int"/> values, as a nullable <see cref="double"/>. Returns <see langword="null"/> if the sequence is empty or contains only nulls.</summary>
+    public static Task<double?> AverageAsync(this IGraphQueryable<int?> source, CancellationToken cancellationToken = default) =>
+        AverageAsync<int?, double?>(source, values => values.Average(), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of a sequence of <see cref="long"/> values, as a <see cref="double"/>. Throws <see cref="InvalidOperationException"/> if the sequence is empty.</summary>
+    public static Task<double> AverageAsync(this IGraphQueryable<long> source, CancellationToken cancellationToken = default) =>
+        AverageAsync<long, double>(source, values => values.Average(), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of a sequence of nullable <see cref="long"/> values, as a nullable <see cref="double"/>. Returns <see langword="null"/> if the sequence is empty or contains only nulls.</summary>
+    public static Task<double?> AverageAsync(this IGraphQueryable<long?> source, CancellationToken cancellationToken = default) =>
+        AverageAsync<long?, double?>(source, values => values.Average(), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of a sequence of <see cref="float"/> values, as a <see cref="float"/>. Throws <see cref="InvalidOperationException"/> if the sequence is empty.</summary>
+    public static Task<float> AverageAsync(this IGraphQueryable<float> source, CancellationToken cancellationToken = default) =>
+        AverageAsync<float, float>(source, values => values.Average(), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of a sequence of nullable <see cref="float"/> values, as a nullable <see cref="float"/>. Returns <see langword="null"/> if the sequence is empty or contains only nulls.</summary>
+    public static Task<float?> AverageAsync(this IGraphQueryable<float?> source, CancellationToken cancellationToken = default) =>
+        AverageAsync<float?, float?>(source, values => values.Average(), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of a sequence of <see cref="double"/> values. Throws <see cref="InvalidOperationException"/> if the sequence is empty.</summary>
+    public static Task<double> AverageAsync(this IGraphQueryable<double> source, CancellationToken cancellationToken = default) =>
+        AverageAsync<double, double>(source, values => values.Average(), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of a sequence of nullable <see cref="double"/> values. Returns <see langword="null"/> if the sequence is empty or contains only nulls.</summary>
+    public static Task<double?> AverageAsync(this IGraphQueryable<double?> source, CancellationToken cancellationToken = default) =>
+        AverageAsync<double?, double?>(source, values => values.Average(), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of a sequence of <see cref="decimal"/> values. Throws <see cref="InvalidOperationException"/> if the sequence is empty.</summary>
+    public static Task<decimal> AverageAsync(this IGraphQueryable<decimal> source, CancellationToken cancellationToken = default) =>
+        AverageAsync<decimal, decimal>(source, values => values.Average(), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of a sequence of nullable <see cref="decimal"/> values. Returns <see langword="null"/> if the sequence is empty or contains only nulls.</summary>
+    public static Task<decimal?> AverageAsync(this IGraphQueryable<decimal?> source, CancellationToken cancellationToken = default) =>
+        AverageAsync<decimal?, decimal?>(source, values => values.Average(), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of the projected <see cref="int"/> values, as a <see cref="double"/>. Throws <see cref="InvalidOperationException"/> if the sequence is empty.</summary>
+    public static Task<double> AverageAsync<TSource>(this IGraphQueryable<TSource> source, Expression<Func<TSource, int>> selector, CancellationToken cancellationToken = default) =>
+        AverageAsync<TSource, int, double>(source, selector, (values, project) => values.Average(project), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of the projected nullable <see cref="int"/> values, as a nullable <see cref="double"/>. Returns <see langword="null"/> if the sequence is empty or projects only nulls.</summary>
+    public static Task<double?> AverageAsync<TSource>(this IGraphQueryable<TSource> source, Expression<Func<TSource, int?>> selector, CancellationToken cancellationToken = default) =>
+        AverageAsync<TSource, int?, double?>(source, selector, (values, project) => values.Average(project), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of the projected <see cref="long"/> values, as a <see cref="double"/>. Throws <see cref="InvalidOperationException"/> if the sequence is empty.</summary>
+    public static Task<double> AverageAsync<TSource>(this IGraphQueryable<TSource> source, Expression<Func<TSource, long>> selector, CancellationToken cancellationToken = default) =>
+        AverageAsync<TSource, long, double>(source, selector, (values, project) => values.Average(project), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of the projected nullable <see cref="long"/> values, as a nullable <see cref="double"/>. Returns <see langword="null"/> if the sequence is empty or projects only nulls.</summary>
+    public static Task<double?> AverageAsync<TSource>(this IGraphQueryable<TSource> source, Expression<Func<TSource, long?>> selector, CancellationToken cancellationToken = default) =>
+        AverageAsync<TSource, long?, double?>(source, selector, (values, project) => values.Average(project), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of the projected <see cref="float"/> values, as a <see cref="float"/>. Throws <see cref="InvalidOperationException"/> if the sequence is empty.</summary>
+    public static Task<float> AverageAsync<TSource>(this IGraphQueryable<TSource> source, Expression<Func<TSource, float>> selector, CancellationToken cancellationToken = default) =>
+        AverageAsync<TSource, float, float>(source, selector, (values, project) => values.Average(project), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of the projected nullable <see cref="float"/> values, as a nullable <see cref="float"/>. Returns <see langword="null"/> if the sequence is empty or projects only nulls.</summary>
+    public static Task<float?> AverageAsync<TSource>(this IGraphQueryable<TSource> source, Expression<Func<TSource, float?>> selector, CancellationToken cancellationToken = default) =>
+        AverageAsync<TSource, float?, float?>(source, selector, (values, project) => values.Average(project), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of the projected <see cref="double"/> values. Throws <see cref="InvalidOperationException"/> if the sequence is empty.</summary>
+    public static Task<double> AverageAsync<TSource>(this IGraphQueryable<TSource> source, Expression<Func<TSource, double>> selector, CancellationToken cancellationToken = default) =>
+        AverageAsync<TSource, double, double>(source, selector, (values, project) => values.Average(project), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of the projected nullable <see cref="double"/> values. Returns <see langword="null"/> if the sequence is empty or projects only nulls.</summary>
+    public static Task<double?> AverageAsync<TSource>(this IGraphQueryable<TSource> source, Expression<Func<TSource, double?>> selector, CancellationToken cancellationToken = default) =>
+        AverageAsync<TSource, double?, double?>(source, selector, (values, project) => values.Average(project), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of the projected <see cref="decimal"/> values. Throws <see cref="InvalidOperationException"/> if the sequence is empty.</summary>
+    public static Task<decimal> AverageAsync<TSource>(this IGraphQueryable<TSource> source, Expression<Func<TSource, decimal>> selector, CancellationToken cancellationToken = default) =>
+        AverageAsync<TSource, decimal, decimal>(source, selector, (values, project) => values.Average(project), cancellationToken);
+
+    /// <summary>Asynchronously computes the average of the projected nullable <see cref="decimal"/> values. Returns <see langword="null"/> if the sequence is empty or projects only nulls.</summary>
+    public static Task<decimal?> AverageAsync<TSource>(this IGraphQueryable<TSource> source, Expression<Func<TSource, decimal?>> selector, CancellationToken cancellationToken = default) =>
+        AverageAsync<TSource, decimal?, decimal?>(source, selector, (values, project) => values.Average(project), cancellationToken);
+
+    private static async Task<TResult> AverageAsync<TInput, TResult>(
+        IGraphQueryable<TInput> source,
+        Func<IEnumerable<TInput>, TResult> fallbackAverage,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
+        // Use IQueryable.Provider rather than IGraphQueryable<T>.Provider so custom queryables that
+        // expose a non-graph LINQ provider can take the documented LINQ-to-objects fallback.
+        if (((IQueryable)source).Provider is IGraphQueryProvider graphProvider)
         {
-            var method = ((Func<IQueryable<TResult>, TResult>)QueryTerminals.AverageAsyncMarker<TResult, TResult>).Method;
+            var method = ((Func<IQueryable<TInput>, TInput>)QueryTerminals.AverageAsyncMarker<TInput, TInput>).Method;
             return await graphProvider.ExecuteAsync<TResult>(
                 Expression.Call(null, method, source.Expression),
                 cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() =>
-        {
-            var count = TResult.Zero;
-            var sum = TResult.Zero;
-            foreach (var item in source)
-            {
-                sum += item;
-                count += TResult.One;
-            }
-
-            return count == TResult.Zero ? TResult.Zero : sum / count;
-        }, cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() => fallbackAverage(source), cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Asynchronously computes the average of the projected values.
-    /// </summary>
-    public static async Task<TResult> AverageAsync<TSource, TResult>(
-        this IGraphQueryable<TSource> source,
-        Expression<Func<TSource, TResult>> selector,
-        CancellationToken cancellationToken = default)
-        where TResult : INumberBase<TResult>
+    private static async Task<TResult> AverageAsync<TSource, TInput, TResult>(
+        IGraphQueryable<TSource> source,
+        Expression<Func<TSource, TInput>> selector,
+        Func<IEnumerable<TSource>, Func<TSource, TInput>, TResult> fallbackAverage,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(selector);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
+        // See the source-overload helper above: the base IQueryable provider makes this fallback
+        // reachable without changing the strongly typed graph-provider surface.
+        if (((IQueryable)source).Provider is IGraphQueryProvider graphProvider)
         {
-            var method = ((Func<IQueryable<TSource>, Expression<Func<TSource, TResult>>, TResult>)QueryTerminals.AverageAsyncMarker).Method;
+            var method = ((Func<IQueryable<TSource>, Expression<Func<TSource, TInput>>, TInput>)QueryTerminals.AverageAsyncMarker<TSource, TInput>).Method;
             return await graphProvider.ExecuteAsync<TResult>(
                 Expression.Call(null, method, source.Expression, selector),
                 cancellationToken).ConfigureAwait(false);
         }
 
         var compiled = selector.Compile();
-        return await Task.Run(() =>
-        {
-            var count = TResult.Zero;
-            var sum = TResult.Zero;
-            foreach (var item in source)
-            {
-                sum += compiled(item);
-                count += TResult.One;
-            }
-
-            return count == TResult.Zero ? TResult.Zero : sum / count;
-        }, cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() => fallbackAverage(source, compiled), cancellationToken).ConfigureAwait(false);
     }
 
     #endregion

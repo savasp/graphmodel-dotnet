@@ -49,4 +49,40 @@ public class IdentifierEscapingTranslationTests : TranslationTestBase
         var query = Root.Nodes<SpacedLabelNode>().Search("alice");
         return VerifyTranslation(query);
     }
+
+    /// <summary>
+    /// A typed property whose custom storage name contains a space must render as a single
+    /// backtick-escaped identifier in the WHERE predicate (#367), not a bare name that would break
+    /// the property-access position.
+    /// </summary>
+    [Fact]
+    public Task Where_OnTypedPropertyWithSpacedLabel_EscapesPropertyName()
+    {
+        var query = Root.Nodes<HostilePropertyLabelNode>().Where(n => n.LastName == "Smith");
+        return VerifyTranslation(query);
+    }
+
+    /// <summary>
+    /// A custom property label that itself looks like a backtick break-out plus an injected clause
+    /// must be rendered as one escaped identifier with its embedded backtick doubled.
+    /// </summary>
+    [Fact]
+    public Task Where_OnTypedPropertyWithBacktickBreakoutLabel_DoublesBacktick()
+    {
+        var query = Root.Nodes<HostilePropertyLabelNode>().Where(n => n.Score > 0);
+        return VerifyTranslation(query);
+    }
+
+    /// <summary>
+    /// Escaping applies across the read path: projecting and ordering by an escapable typed
+    /// property name must escape it everywhere it is rendered, not only in predicates.
+    /// </summary>
+    [Fact]
+    public Task ProjectAndOrderByTypedPropertyWithSpacedLabel_EscapesPropertyName()
+    {
+        var query = Root.Nodes<HostilePropertyLabelNode>()
+            .OrderBy(n => n.LastName)
+            .Select(n => n.LastName);
+        return VerifyTranslation(query);
+    }
 }

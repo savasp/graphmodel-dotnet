@@ -261,7 +261,7 @@ internal class Neo4jSchemaManager
                 var keyPropertyNames = schema.GetKeyProperties().Select(property => property.Name).ToList();
                 var compositeKeyConstraintName =
                     $"composite_key_{label}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
-                var cypherPropertyNames = keyPropertyNames.Select(property => $"n.{property}");
+                var cypherPropertyNames = keyPropertyNames.Select(property => EscapedProperty("n", property));
 
                 var createdCompositeKeyConstraint = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
@@ -300,7 +300,7 @@ internal class Neo4jSchemaManager
                                 Neo4jSchemaEntityType.Node,
                                 [label],
                                 [propertySchema.Name]),
-                            $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(uniqueConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE n.{propertySchema.Name} IS UNIQUE"),
+                            $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(uniqueConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE {EscapedProperty("n", propertySchema.Name)} IS UNIQUE"),
                         existingSchema,
                         cancellationToken).ConfigureAwait(false);
                     if (createdUniqueConstraint)
@@ -338,7 +338,7 @@ internal class Neo4jSchemaManager
                             Neo4jSchemaEntityType.Node,
                             [label],
                             [propertySchema.Name]),
-                        $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(notNullConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE n.{propertySchema.Name} IS NOT NULL"),
+                        $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(notNullConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE {EscapedProperty("n", propertySchema.Name)} IS NOT NULL"),
                     existingSchema,
                     cancellationToken).ConfigureAwait(false);
                 if (createdNotNullConstraint)
@@ -387,7 +387,7 @@ internal class Neo4jSchemaManager
                 var keyPropertyNames = schema.GetKeyProperties().Select(property => property.Name).ToList();
                 var compositeKeyConstraintName =
                     $"composite_key_rel_{type}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
-                var cypherPropertyNames = keyPropertyNames.Select(property => $"r.{property}");
+                var cypherPropertyNames = keyPropertyNames.Select(property => EscapedProperty("r", property));
 
                 var createdCompositeKeyConstraint = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
@@ -426,7 +426,7 @@ internal class Neo4jSchemaManager
                                 Neo4jSchemaEntityType.Relationship,
                                 [type],
                                 [propertySchema.Name]),
-                            $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(uniqueConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.{propertySchema.Name} IS UNIQUE"),
+                            $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(uniqueConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE {EscapedProperty("r", propertySchema.Name)} IS UNIQUE"),
                         existingSchema,
                         cancellationToken).ConfigureAwait(false);
                     if (createdUniqueConstraint)
@@ -456,7 +456,7 @@ internal class Neo4jSchemaManager
                             Neo4jSchemaEntityType.Relationship,
                             [type],
                             [propertySchema.Name]),
-                        $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(notNullConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.{propertySchema.Name} IS NOT NULL"),
+                        $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(notNullConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE {EscapedProperty("r", propertySchema.Name)} IS NOT NULL"),
                     existingSchema,
                     cancellationToken).ConfigureAwait(false);
                 if (createdNotNullConstraint)
@@ -785,7 +785,7 @@ internal class Neo4jSchemaManager
                         Neo4jSchemaEntityType.Node,
                         [label],
                         [propertySchema.Name]),
-                    $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR (n:{EscapedLabel(label)}) ON (n.{propertySchema.Name})"),
+                    $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR (n:{EscapedLabel(label)}) ON ({EscapedProperty("n", propertySchema.Name)})"),
                 existingSchema,
                 cancellationToken).ConfigureAwait(false);
             if (created)
@@ -821,7 +821,7 @@ internal class Neo4jSchemaManager
                         Neo4jSchemaEntityType.Relationship,
                         [type],
                         [propertySchema.Name]),
-                    $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR ()-[r:{EscapedType(type)}]-() ON (r.{propertySchema.Name})"),
+                    $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR ()-[r:{EscapedType(type)}]-() ON ({EscapedProperty("r", propertySchema.Name)})"),
                 existingSchema,
                 cancellationToken).ConfigureAwait(false);
             if (created)
@@ -864,7 +864,7 @@ internal class Neo4jSchemaManager
                 var orderedLabels = nodeLabels.Order(StringComparer.Ordinal).ToList();
                 var orderedProperties = nodeStringProps.Order(StringComparer.Ordinal).ToList();
                 var labelList = string.Join("|", orderedLabels.Select(EscapedLabel));
-                var propList = string.Join(", ", orderedProperties.Select(property => $"n.{property}"));
+                var propList = string.Join(", ", orderedProperties.Select(property => EscapedProperty("n", property)));
 
                 var createdNodeIndex = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
@@ -913,7 +913,7 @@ internal class Neo4jSchemaManager
                 var orderedTypes = relTypes.Order(StringComparer.Ordinal).ToList();
                 var orderedProperties = relStringProps.Order(StringComparer.Ordinal).ToList();
                 var typeList = string.Join("|", orderedTypes.Select(EscapedType));
-                var propList = string.Join(", ", orderedProperties.Select(property => $"r.{property}"));
+                var propList = string.Join(", ", orderedProperties.Select(property => EscapedProperty("r", property)));
 
                 var createdRelationshipIndex = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
@@ -985,6 +985,12 @@ internal class Neo4jSchemaManager
 
     private static string EscapedType(string type) =>
         CypherIdentifier.EscapeIfNeeded(type, "relationship type");
+
+    // Property names can be custom [Property(Label = ...)] storage names containing spaces,
+    // punctuation, or backticks; escape them before interpolating into constraint/index DDL, while
+    // leaving the descriptor's stored property list on the original name for discovery comparison (#367).
+    private static string EscapedProperty(string alias, string propertyName) =>
+        $"{alias}.{CypherIdentifier.EscapeIfNeeded(propertyName, "property name")}";
 
     /// <summary>
     /// Clears the processed schemas cache and resets the initialization state.

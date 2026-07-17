@@ -701,6 +701,79 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_LowersAllTerminalToSatisfyingCountEqualsTotalWithoutSourceFilter()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 18;
+        var model = Model(terminal: TerminalOperation.All) with
+        {
+            TerminalPredicate = new PredicateFragment(predicate, "src"),
+        };
+
+        var statement = planner.Plan(model);
+
+        // The universal-quantification predicate must never be lowered as a source WHERE filter;
+        // doing so is exactly the Any-shaped mistranslation this guards against.
+        Assert.Empty(statement.Clauses.OfType<WhereClause>());
+
+        var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
+        Assert.Equal("exists", item.Alias);
+
+        // count(CASE WHEN <predicate> THEN 1 END) = count(1): satisfying rows equal total rows.
+        var equality = Assert.IsType<AstBinaryExpression>(item.Expression);
+        Assert.Equal(CypherBinaryOperator.Equal, equality.Op);
+        Assert.Equal("count", Assert.IsType<FunctionCall>(equality.Left).Name);
+        var totalCount = Assert.IsType<FunctionCall>(equality.Right);
+        Assert.Equal("count", totalCount.Name);
+        Assert.Equal(1, Assert.IsType<Literal>(Assert.Single(totalCount.Arguments)).Value);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_RewritesAllTerminalPredicateThroughScalarProjection()
+    {
+        Expression<Func<Person, int>> projection = person => person.Age;
+        Expression<Func<int, bool>> predicate = age => age >= 18;
+        var model = Model(
+            projection: new ProjectionShape(ProjectionKind.Scalar, projection),
+            terminal: TerminalOperation.All) with
+        {
+            TerminalPredicate = new PredicateFragment(predicate, "src"),
+        };
+
+        var statement = planner.Plan(model);
+
+        var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
+        var equality = Assert.IsType<AstBinaryExpression>(item.Expression);
+        var satisfyingCount = Assert.IsType<FunctionCall>(equality.Left);
+        var @case = Assert.IsType<CaseExpression>(Assert.Single(satisfyingCount.Arguments));
+        var condition = Assert.IsType<AstBinaryExpression>(@case.Condition);
+        var property = Assert.IsType<PropertyAccess>(condition.Left);
+        Assert.Equal("Age", property.Property);
+        Assert.Equal("src", Assert.IsType<VariableRef>(property.Target).Alias);
+    }
+
+    [Fact]
+    public void Plan_RejectsAllTerminalWithoutTerminalPredicate()
+    {
+        var exception = Assert.Throws<GraphException>(() =>
+            planner.Plan(Model(terminal: TerminalOperation.All)));
+
+        Assert.Contains("requires a terminal predicate", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Plan_RejectsTerminalPredicateOnNonAllTerminal()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 18;
+        var model = Model(terminal: TerminalOperation.Any) with
+        {
+            TerminalPredicate = new PredicateFragment(predicate, "src"),
+        };
+
+        Assert.Throws<GraphException>(() => planner.Plan(model));
+    }
+
+    [Fact]
     public void Plan_LowersJoinToTwoMatchesEqualityAndProjection()
     {
         Expression<Func<Knows, string>> outerKey = relationship => relationship.StartNodeId;

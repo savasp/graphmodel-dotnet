@@ -30,7 +30,7 @@ internal sealed class CypherEngine
 
     private static readonly Dictionary<MethodInfo, ElementTerminal> ElementTerminalMethods = CreateElementTerminalMethods();
 
-    private static readonly HashSet<MethodInfo> MinMaxTerminalMethods = CreateMinMaxTerminalMethods();
+    private static readonly HashSet<MethodInfo> NonEmptyAggregateTerminalMethods = CreateNonEmptyAggregateTerminalMethods();
 
     private readonly EntityFactory _entityFactory;
     private readonly ILogger<CypherEngine> _logger;
@@ -91,7 +91,7 @@ internal sealed class CypherEngine
                 cancellationToken).ConfigureAwait(false);
 
             ValidateElementTerminalRecordCount(GetElementTerminal(expression), records.Count);
-            ValidateMinMaxTerminalValue<T>(expression, records);
+            ValidateNonEmptyAggregateValue<T>(expression, records);
 
             // Let the materializer handle everything - no need to duplicate logic here
             var adapted = _recordAdapter.Adapt(records);
@@ -233,11 +233,15 @@ internal sealed class CypherEngine
         }
     }
 
-    private static HashSet<MethodInfo> CreateMinMaxTerminalMethods()
+    private static HashSet<MethodInfo> CreateNonEmptyAggregateTerminalMethods()
     {
+        // Min, Max, and non-nullable Average require a non-empty sequence: each returns a single
+        // record whose aggregate value is null over zero rows, which must surface as an empty-
+        // sequence error rather than default(T). Sum and Count are excluded — they return 0.
         return typeof(QueryTerminals)
             .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
-            .Where(m => m.Name is nameof(QueryTerminals.MinAsyncMarker) or nameof(QueryTerminals.MaxAsyncMarker))
+            .Where(m => m.Name is nameof(QueryTerminals.MinAsyncMarker) or nameof(QueryTerminals.MaxAsyncMarker)
+                or nameof(QueryTerminals.AverageAsyncMarker))
             .ToHashSet();
     }
 
@@ -255,21 +259,23 @@ internal sealed class CypherEngine
             : ElementTerminal.None;
     }
 
-    private static void ValidateMinMaxTerminalValue<T>(Expression expression, List<AgeRecord> records)
+    private static void ValidateNonEmptyAggregateValue<T>(Expression expression, List<AgeRecord> records)
     {
         if (!typeof(T).IsValueType || Nullable.GetUnderlyingType(typeof(T)) is not null)
             return;
 
-        if (!IsMinMaxTerminal(expression))
+        if (!IsNonEmptyAggregateTerminal(expression))
             return;
 
-        // min()/max() over zero rows yields a single record holding a null aggregate value,
-        // not zero records, so the empty-sequence signal cannot come from the record count.
+        // min()/max()/avg() over zero rows yields a single record holding a null aggregate value,
+        // not zero records, so the empty-sequence signal cannot come from the record count. A
+        // nullable result type (handled above) legitimately materializes that null; a non-nullable
+        // one must raise the standard empty-sequence error instead of returning default(T).
         if (records is [var record] && record.Values.Count == 1 && record.Values.Values.First() is null)
             throw new InvalidOperationException("Sequence contains no elements");
     }
 
-    private static bool IsMinMaxTerminal(Expression expression)
+    private static bool IsNonEmptyAggregateTerminal(Expression expression)
     {
         if (expression is not MethodCallExpression methodCall)
             return false;
@@ -278,7 +284,7 @@ internal sealed class CypherEngine
             ? methodCall.Method.GetGenericMethodDefinition()
             : methodCall.Method;
 
-        return MinMaxTerminalMethods.Contains(key);
+        return NonEmptyAggregateTerminalMethods.Contains(key);
     }
 
     private static void ValidateElementTerminalRecordCount(ElementTerminal terminal, int recordCount)

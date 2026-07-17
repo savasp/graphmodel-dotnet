@@ -74,7 +74,13 @@ public sealed class AgeDialect : ICypherDialect
     public string RenderPropertyAccess(string target, string property, bool escape)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
-        return $"{target}.{(escape ? CypherIdentifier.Escape(property, "property name") : property)}";
+        // A compile-time data-model property identifier (escape == false, including custom
+        // [Property(Label = ...)] names) is escaped only when it is not a plain symbolic name, so
+        // ordinary properties stay byte-stable while spaces/punctuation/backticks can no longer break
+        // out of the identifier. Dynamic access (escape == true, #150) is always quoted.
+        return $"{target}.{(escape
+            ? CypherIdentifier.Escape(property, "property name")
+            : CypherIdentifier.EscapeIfNeeded(property, "property name"))}";
     }
 
     /// <inheritdoc/>

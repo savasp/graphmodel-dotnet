@@ -50,6 +50,12 @@ Marker overload families to support:
 - Quantifiers/counts: `AnyAsyncMarker`, `AllAsyncMarker`, `ContainsAsyncMarker`, `CountAsyncMarker`, `LongCountAsyncMarker`.
 - Aggregates: `SumAsyncMarker`, `AverageAsyncMarker`, `MinAsyncMarker`, `MaxAsyncMarker`.
 
+`AverageAsyncMarker` is closed over the numeric input type, not necessarily the public terminal
+result type. In particular, `int` and `long` inputs use an input-typed marker while
+`ExecuteAsync<double>` materializes the LINQ result. Nullable inputs similarly materialize the
+corresponding nullable result. Providers must inspect the marker input/selector type for aggregate
+translation and use the requested `ExecuteAsync<TResult>` type for result shaping.
+
 The current Neo4j visitor dispatch table covers:
 
 - Standard LINQ (both `System.Linq.Queryable`'s methods, reached when a chain degrades to plain `IQueryable<T>`, and `GraphQueryableExtensions`'s own graph-typed-chain-preserving equivalents): `Where`, `Select`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Take`, `Skip`, `Distinct`, `SelectMany`, `GroupBy`, `Join`, `Union`, `Concat`.

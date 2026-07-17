@@ -8,6 +8,80 @@ using Cvoya.Graph.Age.Querying.Cypher.Execution;
 public sealed class AgeQueryRunnerTests
 {
     [Fact]
+    public void MaskQuotedContent_PreservesLengthAndMasksEscapedDelimiterContent()
+    {
+        const string cypher =
+            "RETURN src.`net`` worth, (order by)`, 'literal\\' RETURN, (limit)' ORDER BY src.Id";
+
+        var masked = AgeQueryRunner.MaskQuotedContent(cypher);
+
+        Assert.Equal(cypher.Length, masked.Length);
+        Assert.DoesNotContain("worth", masked, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("literal", masked, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(" ORDER BY src.Id", masked, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NormalizeProjectionAliases_IgnoresKeywordsAndPunctuationInsideStringLiterals()
+    {
+        const string cypher =
+            "MATCH (src:Person) RETURN 'value, (order by) RETURN limit', src.Name LIMIT 1";
+
+        var normalized = AgeQueryRunner.NormalizeProjectionAliases(
+            cypher,
+            ["value, (order by) RETURN limit", "Name"]);
+
+        Assert.Equal(
+            "MATCH (src:Person) RETURN 'value, (order by) RETURN limit' AS age_column_0, " +
+            "src.Name LIMIT 1",
+            normalized.Cypher);
+        Assert.Equal(["age_column_0", "Name"], normalized.Columns);
+    }
+
+    [Fact]
+    public void NormalizeProjectionAliases_IgnoresKeywordsAndPunctuationInsideEscapedIdentifiers()
+    {
+        const string cypher =
+            "MATCH (src:Person) RETURN src.`net, worth (order by)`, src.Name ORDER BY src.`net, worth (order by)`";
+
+        var normalized = AgeQueryRunner.NormalizeProjectionAliases(
+            cypher,
+            ["net, worth (order by)", "Name"]);
+
+        Assert.Equal(
+            "MATCH (src:Person) RETURN src.`net, worth (order by)` AS age_column_0, src.Name " +
+            "ORDER BY src.`net, worth (order by)`",
+            normalized.Cypher);
+        Assert.Equal(["age_column_0", "Name"], normalized.Columns);
+    }
+
+    [Fact]
+    public void NormalizeProjectionAliases_IgnoresDoubledBacktickAndLimitInsideEscapedIdentifier()
+    {
+        const string cypher = "MATCH (src:Person) RETURN src.`note`` LIMIT, (x)` LIMIT 1";
+
+        var normalized = AgeQueryRunner.NormalizeProjectionAliases(
+            cypher,
+            ["note` LIMIT, (x)"]);
+
+        Assert.Equal(
+            "MATCH (src:Person) RETURN src.`note`` LIMIT, (x)` AS age_column_0 LIMIT 1",
+            normalized.Cypher);
+        Assert.Equal(["age_column_0"], normalized.Columns);
+    }
+
+    [Fact]
+    public void InferProjectionColumns_UsesOriginalEscapedIdentifiersAtMaskedBoundaries()
+    {
+        const string cypher =
+            "MATCH (src:Person) RETURN src.`net, worth (order by)`, src.`note`` value` AS `output alias`";
+
+        var columns = AgeQueryRunner.InferProjectionColumns(cypher);
+
+        Assert.Equal(["net, worth (order by)", "output alias"], columns);
+    }
+
+    [Fact]
     public async Task StreamingCursorFetchesOnDemandAndDisposesAbandonedSource()
     {
         var source = new RecordingAgeRecordSource(

@@ -1,0 +1,10 @@
+== Cypher ==
+MATCH (src:HostilePropertyLabelNode)
+WHERE src.`family name` = $p0
+RETURN {
+                Node: src,
+                ComplexProperties: []
+            } AS Node
+
+== Parameters ==
+p0 = "Smith"

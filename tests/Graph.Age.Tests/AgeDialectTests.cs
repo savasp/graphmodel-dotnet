@@ -51,6 +51,13 @@ public sealed class AgeDialectTests
     }
 
     [Fact]
+    public void PropertyAccessQuotesReservedKeywordsButLeavesOrdinaryNamesStable()
+    {
+        Assert.Equal("src.`match`", AgeDialect.Instance.RenderPropertyAccess("src", "match", false));
+        Assert.Equal("src.Name", AgeDialect.Instance.RenderPropertyAccess("src", "Name", false));
+    }
+
+    [Fact]
     public void QuotesOnlyValidatedSqlProjectionColumns()
     {
         Assert.Equal("\"safe_column\"", AgeSqlIdentifier.Quote("safe_column", "projection column"));

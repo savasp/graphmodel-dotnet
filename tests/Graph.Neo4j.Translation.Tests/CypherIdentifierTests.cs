@@ -175,6 +175,15 @@ public class CypherIdentifierTests
     }
 
     [Theory]
+    [InlineData("MATCH", "`MATCH`")]
+    [InlineData("return", "`return`")]
+    [InlineData("Order", "`Order`")]
+    public void EscapeIfNeeded_ReservedKeyword_IsBacktickQuoted(string identifier, string expected)
+    {
+        Assert.Equal(expected, CypherIdentifier.EscapeIfNeeded(identifier));
+    }
+
+    [Theory]
     [InlineData("Label With Space", "`Label With Space`")]
     [InlineData("PIPE|SEPARATED", "`PIPE|SEPARATED`")]
     [InlineData("2StartsWithDigit", "`2StartsWithDigit`")]

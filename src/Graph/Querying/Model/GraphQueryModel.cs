@@ -297,6 +297,18 @@ public sealed record GraphQueryModel
     /// <summary>Gets sequence operations applied after the primary paging window, when present.</summary>
     public PostPagingStage? PostPaging { get; }
 
+    /// <summary>
+    /// Gets the predicate owned by the terminal operation, when present.
+    /// </summary>
+    /// <remarks>
+    /// Only <see cref="TerminalOperation.All"/> carries a terminal predicate: its universal
+    /// quantification cannot be expressed by filtering the source, so the predicate must stay
+    /// distinct from <see cref="Predicates"/>. Predicates of existential terminals such as
+    /// <c>First(p)</c> or <c>Any(p)</c> are equivalent to a preceding <c>Where</c> and remain
+    /// source predicates.
+    /// </remarks>
+    public PredicateFragment? TerminalPredicate { get; init; }
+
     /// <summary>Gets relationship-existence filters applied to their declared source scopes.</summary>
     public IReadOnlyList<RelationshipExistenceFragment> RelationshipExistence
     {

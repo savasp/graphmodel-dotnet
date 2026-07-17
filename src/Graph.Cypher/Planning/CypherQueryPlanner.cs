@@ -114,6 +114,7 @@ public sealed class CypherQueryPlanner
             pathSegmentSourceAlias);
 
         var predicates = LowerPredicates(model, state, lowerer);
+        var terminalPredicate = LowerTerminalPredicate(model, state, lowerer);
         var ordering = LowerOrdering(model, state, lowerer);
         var projection = model.PathShape is null
             ? LowerProjection(model, state, lowerer)
@@ -193,6 +194,7 @@ public sealed class CypherQueryPlanner
                 ordering,
                 projection!,
                 parameters,
+                terminalPredicate,
                 postPagingLowerer,
                 postPagingPredicates,
                 postPagingOrdering);
@@ -1328,6 +1330,24 @@ public sealed class CypherQueryPlanner
         return predicates;
     }
 
+    private static CypherExpression? LowerTerminalPredicate(
+        GraphQueryModel model,
+        PlanningState state,
+        ExpressionToCypherAstLowerer lowerer)
+    {
+        if (model.TerminalPredicate is not { } terminal)
+        {
+            return null;
+        }
+
+        var alias = ResolveLambdaAlias(model, state, terminal.Alias);
+        var predicate = RewriteLambdaAfterProjection(
+            model.Projection?.Selector,
+            terminal.Predicate,
+            "terminal predicate");
+        return lowerer.LowerLambda(predicate, alias);
+    }
+
     private static PatternSubqueryExpression LowerRelationshipExistence(
         GraphQueryModel model,
         PlanningState state,
@@ -1916,6 +1936,7 @@ public sealed class CypherQueryPlanner
         OrderByItem[] ordering,
         ProjectionPlan projection,
         CypherParameterRegistry parameters,
+        CypherExpression? terminalPredicate,
         ExpressionToCypherAstLowerer? postPagingLowerer,
         IReadOnlyList<CypherExpression> postPagingPredicates,
         IReadOnlyList<OrderByItem> postPagingOrdering)
@@ -1938,7 +1959,7 @@ public sealed class CypherQueryPlanner
         var paging = EffectivePaging(model);
         var hasPaging = paging.Skip is not null || paging.Take is not null;
 
-        if (model.Terminal is TerminalOperation.Any or TerminalOperation.All)
+        if (model.Terminal is TerminalOperation.Any)
         {
             clauses.Add(new ReturnClause(
             [
@@ -1947,6 +1968,27 @@ public sealed class CypherQueryPlanner
                         CypherBinaryOperator.GreaterThan,
                         Function("COUNT", new VariableRef(state.CurrentAlias)),
                         new Literal(0)),
+                    "exists")
+            ], distinct: false));
+            return;
+        }
+
+        if (model.Terminal is TerminalOperation.All)
+        {
+            // Universal quantification, expressed as "the number of rows satisfying the predicate
+            // equals the total row count". An empty source gives 0 = 0 → true (vacuously), and a
+            // row whose predicate is null (for example a comparison against a missing property) is
+            // not counted as satisfying, so it makes All false — matching LINQ's two-valued
+            // predicate semantics. This avoids COALESCE(boolean, ...), which AGE rejects, and reuses
+            // the count(CASE WHEN ... THEN 1 END) shape already used for Contains.
+            var satisfyingCount = Function("count", new CaseExpression(terminalPredicate!, new Literal(1)));
+            // count(1) is a row count. count(alias) would silently exclude a row if a future
+            // supported shape allowed the current alias to be null.
+            var totalCount = Function("count", new Literal(1));
+            clauses.Add(new ReturnClause(
+            [
+                new ReturnItem(
+                    new AstBinaryExpression(CypherBinaryOperator.Equal, satisfyingCount, totalCount),
                     "exists")
             ], distinct: false));
             return;

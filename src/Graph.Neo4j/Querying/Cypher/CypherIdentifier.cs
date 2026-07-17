@@ -33,6 +33,22 @@ namespace Cvoya.Graph.Neo4j.Querying.Cypher;
 /// </remarks>
 internal static class CypherIdentifier
 {
+    private static readonly HashSet<string> ReservedKeywords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ADD", "ALL", "AND", "ANY", "AS", "ASC", "ASCENDING", "ASSERT", "BY", "CALL", "CASE", "COMMIT",
+        "CONSTRAINT", "CONTAINS", "CREATE", "CSV", "CURRENT", "DELETE", "DESC", "DESCENDING",
+        "DETACH", "DISTINCT", "DO", "DROP", "EACH", "ELSE", "END", "ENDS", "EXISTS", "EXPLAIN", "FALSE",
+        "FOREACH", "FOR", "GRANT", "GRAPH", "HEADERS", "HOME", "IN", "INDEX", "IS", "JOIN",
+        "KEY", "LABEL", "LIMIT", "LOAD", "LOOKUP", "MANAGEMENT", "MATCH", "MERGE", "NODE",
+        "MANDATORY", "NOT", "NULL", "OF", "ON", "ONLY", "OPTIONAL", "OPTIONS", "OR", "ORDER", "PASSWORD",
+        "PATH", "PATHS", "PERIODIC", "PRIMARY", "PRIVILEGES", "READ", "REMOVE", "RENAME",
+        "REQUIRE", "RETURN", "REVOKE", "ROLE", "ROLES", "ROW", "ROWS", "SCALAR", "SCAN", "SECONDARY",
+        "SEEK", "SET", "SHOW", "SKIP", "START", "STARTS", "STATUS", "STOP", "SUPPORTED", "TERMINATE",
+        "THEN", "TO", "TRANSACTION", "TRANSACTIONS", "TRAVERSE", "TRIM", "TRUE", "UNION",
+        "UNIQUE", "UNWIND", "USE", "USER", "USERS", "USING", "WAIT", "WHEN", "WHERE", "WITH",
+        "WITHOUT", "WRITE", "XOR", "YIELD",
+    };
+
     /// <summary>
     /// Validates <paramref name="identifier"/> and returns it wrapped in backticks, with any embedded
     /// backtick doubled, suitable for direct interpolation into Cypher text as a label, relationship
@@ -55,9 +71,9 @@ internal static class CypherIdentifier
 
     /// <summary>
     /// Validates <paramref name="identifier"/> and returns it backtick-quoted only when it is not a
-    /// plain Cypher symbolic name (an ASCII letter or underscore followed by ASCII letters, digits,
-    /// or underscores). Use this on read-path rendering, where ordinary identifiers must appear
-    /// unquoted so generated Cypher stays byte-stable.
+    /// plain, non-reserved Cypher symbolic name (an ASCII letter or underscore followed by ASCII
+    /// letters, digits, or underscores). Use this on read-path rendering, where ordinary identifiers
+    /// must appear unquoted so generated Cypher stays byte-stable.
     /// </summary>
     /// <param name="identifier">The identifier to validate and, when needed, escape.</param>
     /// <param name="kind">
@@ -71,7 +87,9 @@ internal static class CypherIdentifier
     public static string EscapeIfNeeded(string? identifier, string kind = "identifier")
     {
         Validate(identifier, kind);
-        return IsPlainSymbolicName(identifier!) ? identifier! : $"`{identifier!.Replace("`", "``")}`";
+        return IsPlainSymbolicName(identifier!) && !ReservedKeywords.Contains(identifier!)
+            ? identifier!
+            : $"`{identifier!.Replace("`", "``")}`";
     }
 
     private static bool IsPlainSymbolicName(string identifier)
