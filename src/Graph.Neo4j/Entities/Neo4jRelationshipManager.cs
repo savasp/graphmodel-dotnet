@@ -6,6 +6,7 @@ namespace Cvoya.Graph.Neo4j.Entities;
 using System.Reflection;
 using Cvoya.Graph.Neo4j.Core;
 using Cvoya.Graph.Neo4j.Querying.Cypher;
+using Cvoya.Graph.Neo4j.Serialization;
 using Cvoya.Graph.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -18,6 +19,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </summary>
 internal sealed class Neo4jRelationshipManager(GraphContext context)
 {
+    private const string RelationshipIdentityChangeMessage =
+        "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.";
+
     private readonly ILogger<Neo4jRelationshipManager> _logger = context.LoggerFactory?.CreateLogger<Neo4jRelationshipManager>()
         ?? NullLogger<Neo4jRelationshipManager>.Instance;
     private readonly EntityFactory _serializer = new();
@@ -131,6 +135,17 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                     $"Stored direction is {updated.StoredDirection}; incoming direction is {relationship.Direction}.");
             }
 
+            if (!updated.PhysicalTypeMatches || !updated.LogicalTypeMatches || !updated.ClrTypeMatches)
+            {
+                var incomingClrType = SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
+                var storedClrIdentity = updated.StoredClrMetadata ?? updated.StoredLegacyClrLabel ?? "<missing>";
+                throw new GraphException(
+                    $"{RelationshipIdentityChangeMessage} " +
+                    $"Stored physical type is '{updated.StoredPhysicalType}', logical type is '{updated.StoredLogicalType}', " +
+                    $"and CLR identity is '{storedClrIdentity}'; incoming relationship type is '{entity.Label}' " +
+                    $"and CLR type is '{incomingClrType}'.");
+            }
+
             // Validate property constraints after confirming the target row exists. If validation
             // fails, the transaction rolls back the guarded update statement above.
             ValidateRelationshipProperties(relationship);
@@ -208,11 +223,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             CREATE (source)-[r:{relationshipType} $props]->(target)
             RETURN r IS NOT NULL AS created";
 
-        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
-            .Where(kv => !_ignoredProperties.Contains(kv.Key))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
-
-        properties[nameof(Graph.IRelationship.Type)] = entity.Label;
+        var properties = BuildRelationshipProperties(entity);
 
         var result = await transaction.RunAsync(cypher, new
         {
@@ -226,7 +237,17 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     }
 
 
-    private static async Task<(bool Exists, bool DirectionMatches, RelationshipDirection StoredDirection)> UpdateRelationshipPropertiesAsync(
+    private static async Task<(
+        bool Exists,
+        bool DirectionMatches,
+        bool PhysicalTypeMatches,
+        bool LogicalTypeMatches,
+        bool ClrTypeMatches,
+        RelationshipDirection StoredDirection,
+        string? StoredPhysicalType,
+        string? StoredLogicalType,
+        string? StoredClrMetadata,
+        string? StoredLegacyClrLabel)> UpdateRelationshipPropertiesAsync(
         string relationshipId,
         EntityInfo entity,
         RelationshipDirection incomingDirection,
@@ -237,34 +258,98 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             OPTIONAL MATCH ()-[r {Id: $relId}]->()
             WITH r,
                  r.Direction AS storedDirection,
+                 type(r) AS storedPhysicalType,
+                 r.Type AS storedLogicalType,
+                 r.__metadata__ AS storedClrMetadata,
+                 head(r.Labels) AS storedLegacyClrLabel
+            WITH r,
+                 storedDirection,
+                 storedPhysicalType,
+                 storedLogicalType,
+                 storedClrMetadata,
+                 storedLegacyClrLabel,
                  CASE
                      WHEN r IS NULL THEN false
                      WHEN r.Direction IS NULL THEN $incomingDirection = $defaultDirection
                      ELSE toString(r.Direction) = $incomingDirection
-                 END AS directionMatches
-            FOREACH (_ IN CASE WHEN r IS NOT NULL AND directionMatches THEN [1] ELSE [] END |
+                 END AS directionMatches,
+                 CASE
+                     WHEN r IS NULL THEN false
+                     ELSE storedPhysicalType = $incomingStorageType
+                 END AS physicalTypeMatches,
+                 CASE
+                     WHEN r IS NULL THEN false
+                     WHEN storedLogicalType IS NULL OR storedLogicalType = '' THEN true
+                     ELSE storedLogicalType = $incomingStorageType
+                 END AS logicalTypeMatches,
+                 CASE
+                     WHEN r IS NULL THEN false
+                     WHEN storedClrMetadata IS NULL THEN $allowLegacyClrLabel AND storedLegacyClrLabel = $incomingClrLabel
+                     ELSE storedClrMetadata = $incomingClrType
+                 END AS clrTypeMatches
+            FOREACH (_ IN CASE WHEN r IS NOT NULL
+                                      AND directionMatches
+                                      AND physicalTypeMatches
+                                      AND logicalTypeMatches
+                                      AND clrTypeMatches THEN [1] ELSE [] END |
                 SET r = $props, r.Direction = storedDirection)
             RETURN r IS NOT NULL AS exists,
                    directionMatches AS directionMatches,
-                   storedDirection AS storedDirection";
+                   physicalTypeMatches AS physicalTypeMatches,
+                   logicalTypeMatches AS logicalTypeMatches,
+                   clrTypeMatches AS clrTypeMatches,
+                   storedDirection AS storedDirection,
+                   storedPhysicalType AS storedPhysicalType,
+                   storedLogicalType AS storedLogicalType,
+                   storedClrMetadata AS storedClrMetadata,
+                   storedLegacyClrLabel AS storedLegacyClrLabel";
 
-        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
-            .Where(kv => !_ignoredProperties.Contains(kv.Key))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
+        var properties = BuildRelationshipProperties(entity);
+        var incomingClrType = SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
+        var incomingClrLabel = Labels.GetLabelFromType(entity.ActualType);
 
         var result = await transaction.RunAsync(cypher, new
         {
             relId = relationshipId,
             props = properties,
             incomingDirection = incomingDirection.ToString(),
-            defaultDirection = RelationshipDirection.Outgoing.ToString()
+            defaultDirection = RelationshipDirection.Outgoing.ToString(),
+            incomingStorageType = entity.Label,
+            incomingClrType,
+            incomingClrLabel,
+            allowLegacyClrLabel = !entity.ActualType.IsConstructedGenericType
         }).ConfigureAwait(false);
 
         var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
         var exists = record["exists"].As<bool>();
         var directionMatches = record["directionMatches"].As<bool>();
+        var physicalTypeMatches = record["physicalTypeMatches"].As<bool>();
+        var logicalTypeMatches = record["logicalTypeMatches"].As<bool>();
+        var clrTypeMatches = record["clrTypeMatches"].As<bool>();
         var storedDirectionValue = record["storedDirection"];
-        return (exists, directionMatches, ToRelationshipDirection(storedDirectionValue));
+        return (
+            exists,
+            directionMatches,
+            physicalTypeMatches,
+            logicalTypeMatches,
+            clrTypeMatches,
+            ToRelationshipDirection(storedDirectionValue),
+            record["storedPhysicalType"] as string,
+            record["storedLogicalType"] as string,
+            record["storedClrMetadata"] as string,
+            record["storedLegacyClrLabel"] as string);
+    }
+
+    internal static Dictionary<string, object?> BuildRelationshipProperties(EntityInfo entity)
+    {
+        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
+            .Where(kv => !_ignoredProperties.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        properties[nameof(Graph.IRelationship.Type)] = entity.Label;
+        properties[SerializationBridge.MetadataPropertyName] =
+            SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
+        return properties;
     }
 
     private static RelationshipDirection ToRelationshipDirection(object? value)

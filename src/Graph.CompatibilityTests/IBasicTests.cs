@@ -390,6 +390,145 @@ public interface IBasicTests : IGraphTest
     }
 
     [Fact]
+    public async Task RelationshipType_ChangedOnUpdate_ThrowsAndPreservesOriginalRelationship()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var originalSince = DateTime.UtcNow;
+        var knows = new Knows
+        {
+            StartNodeId = p1.Id,
+            EndNodeId = p2.Id,
+            Direction = RelationshipDirection.Incoming,
+            Since = originalSince
+        };
+        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+
+        var friend = new Friend(p1.Id, p2.Id)
+        {
+            Id = knows.Id,
+            Direction = RelationshipDirection.Incoming,
+            Since = originalSince.AddDays(1)
+        };
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            this.Graph.UpdateRelationshipAsync(friend, null, TestContext.Current.CancellationToken));
+
+        Assert.StartsWith(
+            "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.",
+            exception.Message);
+
+        var fetched = await this.Graph.GetRelationshipAsync<Knows>(
+            knows.Id,
+            null,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(Labels.GetLabelFromType(typeof(Knows)), fetched.Type);
+        Assert.Equal(p1.Id, fetched.StartNodeId);
+        Assert.Equal(p2.Id, fetched.EndNodeId);
+        Assert.Equal(RelationshipDirection.Incoming, fetched.Direction);
+        Assert.Equal(originalSince, fetched.Since);
+
+        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            this.Graph.GetRelationshipAsync<Friend>(knows.Id, null, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task DynamicRelationshipType_ChangedAfterValidUpdate_ThrowsAndPreservesLastSuccessfulUpdate()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var relationship = new DynamicRelationship(
+            p1.Id,
+            p2.Id,
+            "DYNAMIC_TYPE_A",
+            new Dictionary<string, object?> { ["status"] = "original" });
+        await this.Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+
+        var validUpdate = new DynamicRelationship(
+            p1.Id,
+            p2.Id,
+            "DYNAMIC_TYPE_A",
+            new Dictionary<string, object?> { ["status"] = "updated" })
+        {
+            Id = relationship.Id
+        };
+        await this.Graph.UpdateRelationshipAsync(validUpdate, null, TestContext.Current.CancellationToken);
+
+        var changedType = new DynamicRelationship(
+            p1.Id,
+            p2.Id,
+            "DYNAMIC_TYPE_B",
+            new Dictionary<string, object?> { ["status"] = "rejected" })
+        {
+            Id = relationship.Id
+        };
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            this.Graph.UpdateRelationshipAsync(changedType, null, TestContext.Current.CancellationToken));
+
+        Assert.StartsWith(
+            "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.",
+            exception.Message);
+
+        var fetched = await this.Graph.GetDynamicRelationshipAsync(
+            relationship.Id,
+            null,
+            TestContext.Current.CancellationToken);
+        Assert.Equal("DYNAMIC_TYPE_A", fetched.Type);
+        Assert.Equal(p1.Id, fetched.StartNodeId);
+        Assert.Equal(p2.Id, fetched.EndNodeId);
+        Assert.Equal(RelationshipDirection.Outgoing, fetched.Direction);
+        Assert.Equal("updated", fetched.Properties["status"]);
+    }
+
+    [Fact]
+    public async Task RelationshipConcreteClrType_ChangedWithSameStoredType_ThrowsAndPreservesOriginalRelationship()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var originalSince = DateTime.UtcNow;
+        var knows = new Knows(p1.Id, p2.Id) { Since = originalSince };
+        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+
+        var friend = new Friend(p1.Id, p2.Id)
+        {
+            Id = knows.Id,
+            Type = Labels.GetLabelFromType(typeof(Knows)),
+            Direction = RelationshipDirection.Outgoing,
+            Since = originalSince.AddDays(1)
+        };
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            this.Graph.UpdateRelationshipAsync(friend, null, TestContext.Current.CancellationToken));
+
+        Assert.StartsWith(
+            "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.",
+            exception.Message);
+
+        var fetched = await this.Graph.GetRelationshipAsync<Knows>(
+            knows.Id,
+            null,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(Labels.GetLabelFromType(typeof(Knows)), fetched.Type);
+        Assert.Equal(p1.Id, fetched.StartNodeId);
+        Assert.Equal(p2.Id, fetched.EndNodeId);
+        Assert.Equal(RelationshipDirection.Outgoing, fetched.Direction);
+        Assert.Equal(originalSince, fetched.Since);
+
+        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            this.Graph.GetRelationshipAsync<Friend>(knows.Id, null, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task CanBeginTransactionAndRollback()
     {
         var tx = await this.Graph.GetTransactionAsync(TestContext.Current.CancellationToken);

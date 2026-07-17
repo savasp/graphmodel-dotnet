@@ -49,7 +49,9 @@ public sealed class ComplianceInventoryTests
     // +5 for #341: parameterless LongCount over a scalar group — Enumerable and Queryable forms,
     // both projection forms, the empty-source contract, and the LongCount(predicate) rejection.
     // +2 for #359 and #364: typed and dynamic simple-collection round trips.
-    private const int ExpectedTotalTestMethods = 424;
+    // +4 for #370: typed, dynamic, same-storage-type/different-CLR, and transaction relationship
+    // update identity contracts.
+    private const int ExpectedTotalTestMethods = 428;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()
