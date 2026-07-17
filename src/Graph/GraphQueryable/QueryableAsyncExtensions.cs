@@ -163,6 +163,7 @@ public static class QueryableAsyncExtensions
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(predicate);
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
@@ -783,7 +784,9 @@ public static class QueryableAsyncExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
+        // Use IQueryable.Provider rather than IGraphQueryable<T>.Provider so custom queryables that
+        // expose a non-graph LINQ provider can take the documented LINQ-to-objects fallback.
+        if (((IQueryable)source).Provider is IGraphQueryProvider graphProvider)
         {
             var method = ((Func<IQueryable<TInput>, TInput>)QueryTerminals.AverageAsyncMarker<TInput, TInput>).Method;
             return await graphProvider.ExecuteAsync<TResult>(
@@ -803,7 +806,9 @@ public static class QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(selector);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
+        // See the source-overload helper above: the base IQueryable provider makes this fallback
+        // reachable without changing the strongly typed graph-provider surface.
+        if (((IQueryable)source).Provider is IGraphQueryProvider graphProvider)
         {
             var method = ((Func<IQueryable<TSource>, Expression<Func<TSource, TInput>>, TInput>)QueryTerminals.AverageAsyncMarker<TSource, TInput>).Method;
             return await graphProvider.ExecuteAsync<TResult>(

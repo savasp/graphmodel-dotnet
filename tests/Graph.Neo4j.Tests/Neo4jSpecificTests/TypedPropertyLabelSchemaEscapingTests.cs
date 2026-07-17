@@ -8,10 +8,11 @@ using Cvoya.Graph.CompatibilityTests;
 /// <summary>
 /// Neo4j schema-DDL coverage for #367: a typed property may carry an arbitrary storage name through
 /// <c>[Property(Label = ...)]</c>, and <c>Neo4jSchemaManager</c> interpolates that name into
-/// CREATE CONSTRAINT / CREATE INDEX statements. A label containing a space, punctuation, or an
-/// embedded backtick must be rendered as one escaped identifier in every schema-object kind
-/// (uniqueness, existence/required, range index, composite key), so schema initialization parses
-/// and installs the objects, stays idempotent across re-discovery, and actually enforces them.
+/// CREATE CONSTRAINT / CREATE INDEX statements. Node and relationship labels containing a space,
+/// punctuation, or an embedded backtick must be rendered as one escaped identifier in every
+/// schema-object kind (uniqueness, existence/required, range index, full-text index, composite
+/// key), so schema initialization parses and installs the objects, stays idempotent across
+/// re-discovery, and actually enforces them.
 /// </summary>
 [Node("HostileSchemaLabelNode")]
 public record HostileSchemaLabelNode : Node
@@ -24,10 +25,41 @@ public record HostileSchemaLabelNode : Node
     public string Department { get; set; } = string.Empty;
 
     // Unique + required + indexed, all rendered off the same escaped label.
-    [Property(Label = "e-mail (primary)", IsUnique = true, IsRequired = true, IsIndexed = true)]
+    [Property(
+        Label = "e-mail (primary)",
+        IsUnique = true,
+        IsRequired = true,
+        IsIndexed = true,
+        IncludeInFullTextSearch = true)]
     public string Email { get; set; } = string.Empty;
 
     // Plain range index over a spaced label.
+    [Property(Label = "display name", IsIndexed = true)]
+    public string DisplayName { get; set; } = string.Empty;
+}
+
+[Relationship("HostileSchemaLabelRelationship")]
+public record HostileSchemaLabelRelationship : Relationship
+{
+    public HostileSchemaLabelRelationship() : base(string.Empty, string.Empty) { }
+
+    public HostileSchemaLabelRelationship(string startNodeId, string endNodeId)
+        : base(startNodeId, endNodeId) { }
+
+    [Property(Label = "region key", IsKey = true)]
+    public string Region { get; set; } = string.Empty;
+
+    [Property(Label = "dept`key", IsKey = true)]
+    public string Department { get; set; } = string.Empty;
+
+    [Property(
+        Label = "e-mail (primary)",
+        IsUnique = true,
+        IsRequired = true,
+        IsIndexed = true,
+        IncludeInFullTextSearch = true)]
+    public string Email { get; set; } = string.Empty;
+
     [Property(Label = "display name", IsIndexed = true)]
     public string DisplayName { get; set; } = string.Empty;
 }
@@ -80,5 +112,41 @@ public sealed class TypedPropertyLabelSchemaEscapingTests(Neo4jHarness harness)
         };
         await Assert.ThrowsAnyAsync<Exception>(
             () => Graph.CreateNodeAsync(duplicate, null, cancellationToken));
+
+        var firstRelationship = new HostileSchemaLabelRelationship(first.Id, second.Id)
+        {
+            Region = "NA",
+            Department = "Eng",
+            Email = "relationship-first@example.com",
+            DisplayName = "First relationship",
+        };
+        await Graph.CreateRelationshipAsync(firstRelationship, null, cancellationToken);
+
+        var secondRelationship = new HostileSchemaLabelRelationship(first.Id, second.Id)
+        {
+            Region = "EU",
+            Department = "Sales",
+            Email = "relationship-second@example.com",
+            DisplayName = "Second relationship",
+        };
+        await Graph.CreateRelationshipAsync(secondRelationship, null, cancellationToken);
+
+        var roundTrippedRelationship =
+            await Graph.GetRelationshipAsync<HostileSchemaLabelRelationship>(
+                firstRelationship.Id,
+                null,
+                cancellationToken);
+        Assert.Equal("relationship-first@example.com", roundTrippedRelationship.Email);
+        Assert.Equal("Eng", roundTrippedRelationship.Department);
+
+        var duplicateRelationship = new HostileSchemaLabelRelationship(second.Id, first.Id)
+        {
+            Region = "APAC",
+            Department = "Support",
+            Email = "relationship-first@example.com",
+            DisplayName = "Duplicate relationship",
+        };
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => Graph.CreateRelationshipAsync(duplicateRelationship, null, cancellationToken));
     }
 }

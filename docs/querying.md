@@ -581,6 +581,12 @@ var maybeAlice = await graph.Nodes<Person>()
 
 Value aggregates such as `SumAsync`, `MinAsync`, `MaxAsync`, and `AverageAsync` after unordered `Take` or `Skip` operate over an arbitrary row subset; add `OrderBy` before pagination when deterministic results matter.
 
+`AverageAsync` follows the standard LINQ result matrix for both source and selector overloads:
+`int` and `long` average to `double`, `float` to `float`, `double` to `double`, and `decimal` to
+`decimal`. Nullable inputs return the corresponding nullable result and ignore null values. A
+non-nullable empty sequence throws `InvalidOperationException`; a nullable empty or all-null
+sequence returns `null`. Other numeric input types are not part of the API.
+
 ### GroupBy and Aggregates
 
 ```csharp

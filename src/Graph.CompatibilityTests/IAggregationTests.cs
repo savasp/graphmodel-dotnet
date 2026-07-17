@@ -14,6 +14,10 @@ public interface IAggregationTests : IGraphTest
         public double Height { get; set; }
         public float Weight { get; set; }
         public int? Score { get; set; }
+        public long? NullableSalary { get; set; }
+        public float? NullableWeight { get; set; }
+        public double? NullableHeight { get; set; }
+        public decimal? NullableNetWorth { get; set; }
         public DateTime CreatedAt { get; set; }
         public Guid TrackingId { get; set; }
     }
@@ -581,6 +585,80 @@ public interface IAggregationTests : IGraphTest
             .AverageAsync(p => p.Score, TestContext.Current.CancellationToken);
 
         Assert.Null(average);
+    }
+
+    [Fact]
+    public async Task Average_SourceAndSelectorOverloadMatrix_MatchesLinqResultTypes()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"Average-matrix-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers
+            {
+                FirstName = group, Age = 10, Salary = 100, Weight = 1, Height = 4, NetWorth = 7,
+                Score = 10, NullableSalary = 100, NullableWeight = 1, NullableHeight = 4,
+                NullableNetWorth = 7,
+            },
+            new PersonWithNumbers
+            {
+                FirstName = group, Age = 11, Salary = 101, Weight = 2, Height = 5, NetWorth = 8,
+                Score = null, NullableSalary = null, NullableWeight = null, NullableHeight = null,
+                NullableNetWorth = null,
+            },
+            new PersonWithNumbers
+            {
+                FirstName = group, Age = 12, Salary = 102, Weight = 3, Height = 6, NetWorth = 9,
+                Score = 20, NullableSalary = 200, NullableWeight = 3, NullableHeight = 8,
+                NullableNetWorth = 9,
+            },
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, cancellationToken);
+        }
+
+        var query = Graph.Nodes<PersonWithNumbers>().Where(person => person.FirstName == group);
+
+        double selectorInt = await query.AverageAsync(person => person.Age, cancellationToken);
+        double selectorLong = await query.AverageAsync(person => person.Salary, cancellationToken);
+        float selectorFloat = await query.AverageAsync(person => person.Weight, cancellationToken);
+        double selectorDouble = await query.AverageAsync(person => person.Height, cancellationToken);
+        decimal selectorDecimal = await query.AverageAsync(person => person.NetWorth, cancellationToken);
+        Assert.Equal(11, selectorInt);
+        Assert.Equal(101, selectorLong);
+        Assert.Equal(2, selectorFloat);
+        Assert.Equal(5, selectorDouble);
+        Assert.Equal(8, selectorDecimal);
+
+        double sourceInt = await query.Select(person => person.Age).AverageAsync(cancellationToken);
+        double sourceLong = await query.Select(person => person.Salary).AverageAsync(cancellationToken);
+        float sourceFloat = await query.Select(person => person.Weight).AverageAsync(cancellationToken);
+        double sourceDouble = await query.Select(person => person.Height).AverageAsync(cancellationToken);
+        decimal sourceDecimal = await query.Select(person => person.NetWorth).AverageAsync(cancellationToken);
+        Assert.Equal(selectorInt, sourceInt);
+        Assert.Equal(selectorLong, sourceLong);
+        Assert.Equal(selectorFloat, sourceFloat);
+        Assert.Equal(selectorDouble, sourceDouble);
+        Assert.Equal(selectorDecimal, sourceDecimal);
+
+        double? nullableInt = await query.AverageAsync(person => person.Score, cancellationToken);
+        double? nullableLong = await query.AverageAsync(person => person.NullableSalary, cancellationToken);
+        float? nullableFloat = await query.AverageAsync(person => person.NullableWeight, cancellationToken);
+        double? nullableDouble = await query.AverageAsync(person => person.NullableHeight, cancellationToken);
+        decimal? nullableDecimal = await query.AverageAsync(person => person.NullableNetWorth, cancellationToken);
+        Assert.Equal(15, nullableInt);
+        Assert.Equal(150, nullableLong);
+        Assert.Equal(2, nullableFloat);
+        Assert.Equal(6, nullableDouble);
+        Assert.Equal(8, nullableDecimal);
+
+        Assert.Equal(nullableInt, await query.Select(person => person.Score).AverageAsync(cancellationToken));
+        Assert.Equal(nullableLong, await query.Select(person => person.NullableSalary).AverageAsync(cancellationToken));
+        Assert.Equal(nullableFloat, await query.Select(person => person.NullableWeight).AverageAsync(cancellationToken));
+        Assert.Equal(nullableDouble, await query.Select(person => person.NullableHeight).AverageAsync(cancellationToken));
+        Assert.Equal(nullableDecimal, await query.Select(person => person.NullableNetWorth).AverageAsync(cancellationToken));
     }
 
     [Fact]

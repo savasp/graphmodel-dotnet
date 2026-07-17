@@ -619,6 +619,11 @@ public interface IQueryTests : IGraphTest
         // All-false: no member satisfies the predicate.
         Assert.False(await groupMembers.AllAsync(p => p.Age >= 100, cancellationToken));
 
+        // The terminal predicate ranges over the projected values, not the root node alias.
+        var projectedAges = groupMembers.Select(p => p.Age);
+        Assert.True(await projectedAges.AllAsync(age => age >= 18, cancellationToken));
+        Assert.False(await projectedAges.AllAsync(age => age >= 35, cancellationToken));
+
         // Empty effective source is vacuously true, even for an always-false predicate.
         var empty = this.Graph.Nodes<Person>().Where(p => p.LastName == missingGroup);
         Assert.True(await empty.AllAsync(p => p.Age >= 100, cancellationToken));

@@ -28,6 +28,16 @@ public class QuerySurfaceCompilationFixtureTests
             public string FirstName { get; set; } = string.Empty;
             public string LastName { get; set; } = string.Empty;
             public int Age { get; set; }
+            public long Salary { get; set; }
+            public float Weight { get; set; }
+            public double Height { get; set; }
+            public decimal NetWorth { get; set; }
+            public int? Score { get; set; }
+            public long? NullableSalary { get; set; }
+            public float? NullableWeight { get; set; }
+            public double? NullableHeight { get; set; }
+            public decimal? NullableNetWorth { get; set; }
+            public byte ByteValue { get; set; }
         }
 
         [Node("Company")]
@@ -241,7 +251,87 @@ public class QuerySurfaceCompilationFixtureTests
         Assert.False(result.HasErrors, result.DescribeErrors());
     }
 
+    [Fact]
+    public void AverageAsync_SelectorOverloadsExposeLinqResultTypeMatrix_Compiles()
+    {
+        var source = WithDomainModel("""
+            public static class Queries
+            {
+                public static void Run(IGraphQueryable<Person> people)
+                {
+                    Task<double> intAverage = people.AverageAsync(person => person.Age);
+                    Task<double> longAverage = people.AverageAsync(person => person.Salary);
+                    Task<float> floatAverage = people.AverageAsync(person => person.Weight);
+                    Task<double> doubleAverage = people.AverageAsync(person => person.Height);
+                    Task<decimal> decimalAverage = people.AverageAsync(person => person.NetWorth);
+                    Task<double?> nullableIntAverage = people.AverageAsync(person => person.Score);
+                    Task<double?> nullableLongAverage = people.AverageAsync(person => person.NullableSalary);
+                    Task<float?> nullableFloatAverage = people.AverageAsync(person => person.NullableWeight);
+                    Task<double?> nullableDoubleAverage = people.AverageAsync(person => person.NullableHeight);
+                    Task<decimal?> nullableDecimalAverage = people.AverageAsync(person => person.NullableNetWorth);
+                }
+            }
+            """);
+
+        var result = CompilationFixture.Compile(source);
+
+        Assert.False(result.HasErrors, result.DescribeErrors());
+    }
+
+    [Fact]
+    public void AverageAsync_SourceOverloadsExposeLinqResultTypeMatrix_Compiles()
+    {
+        var source = WithDomainModel("""
+            public static class Queries
+            {
+                public static void Run(
+                    IGraphQueryable<int> ints,
+                    IGraphQueryable<long> longs,
+                    IGraphQueryable<float> floats,
+                    IGraphQueryable<double> doubles,
+                    IGraphQueryable<decimal> decimals,
+                    IGraphQueryable<int?> nullableInts,
+                    IGraphQueryable<long?> nullableLongs,
+                    IGraphQueryable<float?> nullableFloats,
+                    IGraphQueryable<double?> nullableDoubles,
+                    IGraphQueryable<decimal?> nullableDecimals)
+                {
+                    Task<double> intAverage = ints.AverageAsync();
+                    Task<double> longAverage = longs.AverageAsync();
+                    Task<float> floatAverage = floats.AverageAsync();
+                    Task<double> doubleAverage = doubles.AverageAsync();
+                    Task<decimal> decimalAverage = decimals.AverageAsync();
+                    Task<double?> nullableIntAverage = nullableInts.AverageAsync();
+                    Task<double?> nullableLongAverage = nullableLongs.AverageAsync();
+                    Task<float?> nullableFloatAverage = nullableFloats.AverageAsync();
+                    Task<double?> nullableDoubleAverage = nullableDoubles.AverageAsync();
+                    Task<decimal?> nullableDecimalAverage = nullableDecimals.AverageAsync();
+                }
+            }
+            """);
+
+        var result = CompilationFixture.Compile(source);
+
+        Assert.False(result.HasErrors, result.DescribeErrors());
+    }
+
     // ---- Must NOT compile ----
+
+    [Fact]
+    public void AverageAsync_UnsupportedNumericType_DoesNotCompile()
+    {
+        var source = WithDomainModel("""
+            public static class Queries
+            {
+                public static Task<byte> Run(IGraphQueryable<Person> people) =>
+                    people.AverageAsync(person => person.ByteValue);
+            }
+            """);
+
+        var result = CompilationFixture.Compile(source);
+
+        Assert.True(result.HasErrors, "Expected AverageAsync over byte to fail to compile.");
+    }
 
     [Fact]
     public void TraverseOnNonNodeSource_DoesNotCompile()

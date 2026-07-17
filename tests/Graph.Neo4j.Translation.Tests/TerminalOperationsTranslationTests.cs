@@ -113,6 +113,24 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task All_AfterScalarProjection_RewritesPredicateToSourceExpression()
+    {
+        var source = Root.Nodes<Person>().Select(p => p.Age);
+        Expression<Func<int, bool>> predicate = age => age >= 18;
+        var expr = MarkerExpressions.Call<int>("AllAsyncMarker", source.Expression, predicate);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public async Task All_WithNullPredicate_ThrowsArgumentNullException()
+    {
+        var source = Root.Nodes<Person>();
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
+            source.AllAsync(null!, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public Task Count_NoPredicate()
     {
         var source = Root.Nodes<Person>();

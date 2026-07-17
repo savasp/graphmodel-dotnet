@@ -178,8 +178,9 @@ internal sealed class InMemoryQueryExecutor(
                 return values.Count > 0;
             case TerminalOperation.All:
                 // Universal quantification over the effective source: vacuously true when empty.
-                return model.TerminalPredicate is not { } allPredicate ||
-                    values.All(v => EvaluatePredicate(allPredicate.Predicate, v));
+                var allPredicate = model.TerminalPredicate ?? throw new GraphException(
+                    $"Terminal operation '{TerminalOperation.All}' requires a terminal predicate.");
+                return values.All(v => EvaluatePredicate(allPredicate.Predicate, v));
             case TerminalOperation.Count:
                 return values.Count;
             case TerminalOperation.Contains:

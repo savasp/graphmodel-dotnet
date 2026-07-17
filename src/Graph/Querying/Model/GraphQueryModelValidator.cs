@@ -189,6 +189,12 @@ public static class GraphQueryModelValidator
             ValidateLambdaReferences(model.Ordering[i].KeySelector, possibleScopeTypes, $"Ordering key {i}");
         }
 
+        if (model.Terminal == TerminalOperation.All && model.TerminalPredicate is null)
+        {
+            throw new GraphException(
+                $"Terminal operation '{TerminalOperation.All}' requires a terminal predicate.");
+        }
+
         if (model.TerminalPredicate is { } terminalPredicate)
         {
             if (model.Terminal != TerminalOperation.All)

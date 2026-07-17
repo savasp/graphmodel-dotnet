@@ -398,7 +398,7 @@ internal sealed partial class AgeQueryRunner
         return new AgeRecord(values);
     }
 
-    private static (string Cypher, IReadOnlyList<string> Columns) NormalizeProjectionAliases(
+    internal static (string Cypher, IReadOnlyList<string> Columns) NormalizeProjectionAliases(
         string cypher,
         IReadOnlyList<string> projectionColumns)
     {
@@ -407,14 +407,16 @@ internal sealed partial class AgeQueryRunner
             return (cypher, projectionColumns);
         }
 
-        var matches = ReturnRegex().Matches(cypher);
+        var matches = ReturnRegex().Matches(MaskQuotedContent(cypher));
         if (matches.Count == 0)
         {
             return (cypher, projectionColumns);
         }
 
         var match = matches[^1];
-        var items = SplitTopLevel(match.Groups[1].Value).ToArray();
+        var returnBody = match.Groups[1];
+        var capturedBody = cypher.Substring(returnBody.Index, returnBody.Length);
+        var items = SplitTopLevel(capturedBody).Select(item => item.Trim()).ToArray();
         if (items.Length != projectionColumns.Count)
         {
             throw new GraphException("AGE projection metadata does not match the rendered RETURN shape.");
@@ -436,10 +438,9 @@ internal sealed partial class AgeQueryRunner
         // boundary before ORDER BY / SKIP / LIMIT, so it includes the separating whitespace. Rebuilt
         // items are trimmed, and dropping that whitespace would fuse the last alias into the
         // following clause keyword (for example "age_column_0ORDER BY").
-        var capturedBody = match.Groups[1].Value;
         var trailingWhitespace = capturedBody[capturedBody.TrimEnd().Length..];
         var replacement = string.Join(", ", items) + trailingWhitespace;
-        cypher = $"{cypher[..match.Groups[1].Index]}{replacement}{cypher[(match.Groups[1].Index + match.Groups[1].Length)..]}";
+        cypher = $"{cypher[..returnBody.Index]}{replacement}{cypher[(returnBody.Index + returnBody.Length)..]}";
         return (cypher, normalizedColumns);
     }
 
@@ -548,42 +549,45 @@ internal sealed partial class AgeQueryRunner
             .ToDictionary(property => property.Name, property => property.GetValue(parameters), StringComparer.Ordinal);
     }
 
-    private static string[] InferProjectionColumns(string cypher)
+    internal static string[] InferProjectionColumns(string cypher)
     {
-        var matches = ReturnRegex().Matches(cypher);
+        var matches = ReturnRegex().Matches(MaskQuotedContent(cypher));
         if (matches.Count == 0)
         {
             return [];
         }
 
-        var returnText = matches[^1].Groups[1].Value;
+        var returnBody = matches[^1].Groups[1];
+        var returnText = cypher.Substring(returnBody.Index, returnBody.Length);
         return SplitTopLevel(returnText).Select(item =>
         {
-            var alias = AliasRegex().Match(item);
+            var alias = AliasRegex().Match(MaskQuotedContent(item));
             if (alias.Success)
             {
-                return alias.Groups[1].Value.Trim('`');
+                var aliasGroup = alias.Groups[1];
+                return UnescapeIdentifier(item.Substring(aliasGroup.Index, aliasGroup.Length));
             }
 
             var expression = item.Trim();
-            var dot = expression.LastIndexOf('.');
-            return (dot >= 0 ? expression[(dot + 1)..] : expression).Trim('`', ' ');
+            var dot = MaskQuotedContent(expression).LastIndexOf('.');
+            return UnescapeIdentifier(dot >= 0 ? expression[(dot + 1)..] : expression);
         }).ToArray();
     }
 
     private static IEnumerable<string> SplitTopLevel(string value)
     {
+        var masked = MaskQuotedContent(value);
         var start = 0;
         var depth = 0;
         for (var index = 0; index < value.Length; index++)
         {
-            depth += value[index] switch
+            depth += masked[index] switch
             {
                 '(' or '[' or '{' => 1,
                 ')' or ']' or '}' => -1,
                 _ => 0,
             };
-            if (value[index] == ',' && depth == 0)
+            if (masked[index] == ',' && depth == 0)
             {
                 yield return value[start..index];
                 start = index + 1;
@@ -593,10 +597,76 @@ internal sealed partial class AgeQueryRunner
         yield return value[start..];
     }
 
+    /// <summary>
+    /// Produces a length-preserving copy whose quoted contents cannot be mistaken for RETURN
+    /// boundaries or projection punctuation. Backtick identifiers retain their delimiters so alias
+    /// recognition still works; doubled backticks and backslash-escaped string characters stay
+    /// inside their quoted value rather than toggling the quoted state.
+    /// </summary>
+    internal static string MaskQuotedContent(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        var masked = value.ToCharArray();
+        var delimiter = '\0';
+        for (var index = 0; index < masked.Length; index++)
+        {
+            if (delimiter == '\0')
+            {
+                if (masked[index] is '`' or '\'' or '"')
+                {
+                    delimiter = masked[index];
+                }
+
+                continue;
+            }
+
+            if (delimiter == '`' && masked[index] == '`')
+            {
+                if (index + 1 < masked.Length && masked[index + 1] == '`')
+                {
+                    masked[index] = '_';
+                    masked[++index] = '_';
+                }
+                else
+                {
+                    delimiter = '\0';
+                }
+
+                continue;
+            }
+
+            if (delimiter != '`' && masked[index] == '\\' && index + 1 < masked.Length)
+            {
+                masked[index] = '_';
+                masked[++index] = '_';
+                continue;
+            }
+
+            if (masked[index] == delimiter)
+            {
+                delimiter = '\0';
+                continue;
+            }
+
+            masked[index] = '_';
+        }
+
+        return new string(masked);
+    }
+
+    private static string UnescapeIdentifier(string identifier)
+    {
+        var trimmed = identifier.Trim();
+        return trimmed.Length >= 2 && trimmed[0] == '`' && trimmed[^1] == '`'
+            ? trimmed[1..^1].Replace("``", "`", StringComparison.Ordinal)
+            : trimmed;
+    }
+
     [GeneratedRegex(@"\bRETURN\s+(.+?)(?=\b(?:ORDER\s+BY|SKIP|LIMIT)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant)]
     private static partial Regex ReturnRegex();
 
-    [GeneratedRegex(@"\bAS\s+(`?[A-Za-z_][A-Za-z0-9_]*`?)\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\bAS\s+(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex AliasRegex();
 
     [GeneratedRegex(@"\bRETURN\s+DISTINCT\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

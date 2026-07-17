@@ -1341,7 +1341,11 @@ public sealed class CypherQueryPlanner
         }
 
         var alias = ResolveLambdaAlias(model, state, terminal.Alias);
-        return lowerer.LowerLambda(terminal.Predicate, alias);
+        var predicate = RewriteLambdaAfterProjection(
+            model.Projection?.Selector,
+            terminal.Predicate,
+            "terminal predicate");
+        return lowerer.LowerLambda(predicate, alias);
     }
 
     private static PatternSubqueryExpression LowerRelationshipExistence(
@@ -1978,7 +1982,9 @@ public sealed class CypherQueryPlanner
             // predicate semantics. This avoids COALESCE(boolean, ...), which AGE rejects, and reuses
             // the count(CASE WHEN ... THEN 1 END) shape already used for Contains.
             var satisfyingCount = Function("count", new CaseExpression(terminalPredicate!, new Literal(1)));
-            var totalCount = Function("count", new VariableRef(state.CurrentAlias));
+            // count(1) is a row count. count(alias) would silently exclude a row if a future
+            // supported shape allowed the current alias to be null.
+            var totalCount = Function("count", new Literal(1));
             clauses.Add(new ReturnClause(
             [
                 new ReturnItem(

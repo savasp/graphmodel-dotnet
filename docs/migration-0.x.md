@@ -288,8 +288,16 @@ numeric `Sum`/`Average` marker overloads are collapsed from one-per-numeric-type
 generic definition per shape. This type was never public API (`internal`), so this only matters if
 you were reflecting into it directly (e.g. a custom provider or test harness) — update the type
 name and, if you built `SumAsyncMarker`/`AverageAsyncMarker` calls by matching a specific numeric
-`MethodInfo` overload, match the single generic definition and close it over your result type
-instead.
+`MethodInfo` overload, match the single generic definition instead. Close `SumAsyncMarker` over
+its numeric input/result type. Close `AverageAsyncMarker` over its numeric **input** type; integer
+and long averages now materialize as `double`, so the LINQ result type is carried separately by the
+provider's `ExecuteAsync<TResult>` call.
+
+The public `AverageAsync` surface now follows the LINQ overload matrix instead of accepting any
+`INumberBase<T>`: `int` and `long` return `double`, `float` returns `float`, `double` returns
+`double`, and `decimal` returns `decimal`, with nullable inputs returning the corresponding nullable
+result. Non-nullable empty sequences throw `InvalidOperationException`; nullable empty or all-null
+sequences return `null`. Calls over other numeric types no longer compile.
 
 If you're building a provider, see
 [`docs/provider-implementers-guide.md`](provider-implementers-guide.md) for the updated
