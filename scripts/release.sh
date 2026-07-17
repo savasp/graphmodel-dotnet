@@ -24,7 +24,6 @@
 #                           package version stays a semantic pre-release either
 #                           way — this only moves the GitHub Release badge.
 #   --plan                  Dry-run: print the computed tag and exit 0 without pushing.
-#   --force-retag           Skip the idempotency guard (re-tag an existing version).
 #   -h, --help              Show this help and exit.
 #
 # Examples:
@@ -50,19 +49,20 @@
 #   - gh CLI authenticated (`gh auth status`) with repo + workflow scopes
 #   - git remote `origin` pointing at cvoya-com/graph with push access
 #   - curl (for the nuget.org availability check; skipped with --plan)
-#   - Run from a clean checkout of main.
+#   - Run from a clean checkout exactly at the current origin/main commit.
 
 set -euo pipefail
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="cvoya-com/graph"
 WORKFLOW_NAME="release.yml"
 
 # nuget.org indexes a pushed package a short while after the API accepts it, so
 # the availability check below polls rather than asking once.
-NUGET_POLL_ATTEMPTS=30
-NUGET_POLL_INTERVAL=20
+NUGET_POLL_ATTEMPTS="${NUGET_POLL_ATTEMPTS:-30}"
+NUGET_POLL_INTERVAL="${NUGET_POLL_INTERVAL:-20}"
 
 print_brand_banner() {
   printf '%s\n' \
@@ -80,7 +80,6 @@ print_brand_banner
 
 PRE_RELEASE=""
 DRY_RUN=false
-FORCE_RETAG=false
 MARK_LATEST=false
 BASE_SEMVER=""
 
@@ -106,10 +105,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --plan)
       DRY_RUN=true
-      shift
-      ;;
-    --force-retag)
-      FORCE_RETAG=true
       shift
       ;;
     -h|--help)
@@ -142,9 +137,11 @@ if [[ -z "$BASE_SEMVER" ]]; then
   usage 1
 fi
 
-# Normalize: strip leading v, validate MAJOR.MINOR.PATCH
+# Normalize: strip leading v and validate MAJOR.MINOR.PATCH. Leading zeroes are
+# rejected because NuGet normalizes them (1.01.0 becomes 1.1.0), which would
+# make the tag, package filename, and published version disagree.
 BASE_SEMVER="${BASE_SEMVER#v}"
-if ! [[ "$BASE_SEMVER" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+if ! [[ "$BASE_SEMVER" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   echo "::error::Invalid semver '$BASE_SEMVER'. Expected MAJOR.MINOR.PATCH (e.g. 1.0.0)."
   echo "         Pre-release suffixes are not passed here — use --pre alpha|beta|rc."
   exit 1
@@ -160,27 +157,49 @@ fi
 
 TODAY="$(date -u +%Y%m%d)"
 
-# Returns 0 (true) if `v<arg>` exists either as a remote tag on origin or as a
-# local tag in the current worktree.
+# Returns 0 if `v<arg>` exists on origin. A transport/authentication failure is
+# not the same thing as a missing tag and must stop the release.
+remote_tag_exists() {
+  local v="$1"
+  local status
+
+  if git ls-remote --exit-code --refs --tags origin "refs/tags/v${v}" >/dev/null 2>&1; then
+    return 0
+  else
+    status=$?
+  fi
+
+  if [[ "$status" -eq 2 ]]; then
+    return 1
+  fi
+
+  echo "::error::Could not query tags on origin while checking v${v}."
+  exit 1
+}
+
+# Returns 0 (true) if `v<arg>` exists either remotely or locally.
 tag_exists() {
   local v="$1"
-  git ls-remote --exit-code --tags origin "v${v}" >/dev/null 2>&1 && return 0
+  remote_tag_exists "$v" && return 0
   git tag -l "v${v}" | grep -q .
 }
 
 if [[ -n "$PRE_RELEASE" ]]; then
   FULL_SEMVER="${BASE_SEMVER}-${PRE_RELEASE}.${TODAY}"
-  if [[ "$FORCE_RETAG" != "true" ]]; then
-    CANDIDATE="${FULL_SEMVER}"
-    COUNTER=1
-    while tag_exists "${CANDIDATE}"; do
-      CANDIDATE="${FULL_SEMVER}.${COUNTER}"
-      COUNTER=$((COUNTER + 1))
-    done
-    FULL_SEMVER="${CANDIDATE}"
-  fi
+  CANDIDATE="${FULL_SEMVER}"
+  COUNTER=1
+  while tag_exists "${CANDIDATE}"; do
+    CANDIDATE="${FULL_SEMVER}.${COUNTER}"
+    COUNTER=$((COUNTER + 1))
+  done
+  FULL_SEMVER="${CANDIDATE}"
 else
   FULL_SEMVER="${BASE_SEMVER}"
+fi
+
+if ! version_error="$("$SCRIPT_DIR/validate-release-version.sh" "$FULL_SEMVER" 2>&1)"; then
+  echo "::error::$version_error"
+  exit 1
 fi
 
 RELEASE_VERSION="v${FULL_SEMVER}"
@@ -227,73 +246,56 @@ if [[ "$DRY_RUN" == "true" ]]; then
   exit 0
 fi
 
-# ── HEAD must be on origin/main ──────────────────────────────────────────────
+# ── Destructive-operation preflight ──────────────────────────────────────────
 #
-# Tags point to HEAD. If HEAD is not reachable from origin/main, releasing would
-# tag commits that aren't in the canonical history — and `git push origin <tag>`
-# would ship those unreviewed commits to the remote alongside the tag, bypassing
-# branch protection on main. Fail fast here.
+# Complete every local tooling, authentication, repository, and revision check
+# before pushing the tag. Once the tag is pushed, release.yml can publish
+# immutable packages even if this local script exits immediately afterwards.
 
-git fetch origin main --quiet 2>/dev/null || true
-LOCAL_SHA="$(git rev-parse HEAD)"
-ORIGIN_SHA="$(git rev-parse origin/main 2>/dev/null || true)"
-if [[ -z "$ORIGIN_SHA" ]] || ! git merge-base --is-ancestor "${LOCAL_SHA}" origin/main 2>/dev/null; then
-  echo "::error::HEAD (${LOCAL_SHA:0:12}) is not on origin/main."
-  echo "         Push your commits to origin/main (via PR) before releasing."
+for required_command in git gh curl; do
+  if ! command -v "$required_command" >/dev/null 2>&1; then
+    echo "::error::Required command '$required_command' was not found on PATH."
+    exit 1
+  fi
+done
+
+if ! gh auth status --hostname github.com >/dev/null 2>&1; then
+  echo "::error::GitHub CLI is not authenticated for github.com. Run 'gh auth login' and retry."
   exit 1
 fi
 
-# ── Local main behind origin/main? ───────────────────────────────────────────
-#
-# The ancestor check above PASSES when HEAD is merely BEHIND origin/main (HEAD is
-# still reachable from it). Tagging then cuts the release from a stale commit,
-# silently omitting changes already merged to origin/main — e.g. a fix merged via
-# PR but not pulled locally. Surface the gap and let the operator choose: sync to
-# origin/main, or deliberately release the current commit.
+ORIGIN_FETCH_URL="$(git remote get-url origin 2>/dev/null || true)"
+ORIGIN_PUSH_URL="$(git remote get-url --push origin 2>/dev/null || true)"
+if [[ -z "$ORIGIN_FETCH_URL" || -z "$ORIGIN_PUSH_URL" ]]; then
+  echo "::error::Git remote 'origin' is not configured."
+  exit 1
+fi
 
-BEHIND_COUNT="$(git rev-list --count "${LOCAL_SHA}..origin/main" 2>/dev/null || echo 0)"
-if [[ "${BEHIND_COUNT}" -gt 0 ]]; then
-  echo ""
-  echo "⚠  Local HEAD is ${BEHIND_COUNT} commit(s) behind origin/main."
-  echo "     HEAD         ${LOCAL_SHA:0:12}  $(git log -1 --format=%s "${LOCAL_SHA}" 2>/dev/null)"
-  echo "     origin/main  ${ORIGIN_SHA:0:12}  $(git log -1 --format=%s origin/main 2>/dev/null)"
-  echo ""
-  echo "   Releasing now tags ${LOCAL_SHA:0:12} and OMITS these commits already on origin/main:"
-  git log --oneline "${LOCAL_SHA}..origin/main" 2>/dev/null | sed 's/^/       /'
-  echo ""
+ORIGIN_FETCH_REPO="$(gh repo view "$ORIGIN_FETCH_URL" --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)"
+ORIGIN_PUSH_REPO="$(gh repo view "$ORIGIN_PUSH_URL" --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)"
+if [[ "$ORIGIN_FETCH_REPO" != "$REPO" || "$ORIGIN_PUSH_REPO" != "$REPO" ]]; then
+  echo "::error::Remote 'origin' must fetch from and push to ${REPO}."
+  echo "         fetch: ${ORIGIN_FETCH_URL} (${ORIGIN_FETCH_REPO:-unresolved})"
+  echo "         push:  ${ORIGIN_PUSH_URL} (${ORIGIN_PUSH_REPO:-unresolved})"
+  exit 1
+fi
 
-  if [[ -t 0 ]] || [[ -r /dev/tty ]]; then
-    REPLY_SYNC=""
-    printf '   (s)ync to origin/main and release that, (p)roceed on current HEAD, or (a)bort? [s/p/a] '
-    if [[ -t 0 ]]; then
-      IFS= read -r REPLY_SYNC || REPLY_SYNC=""
-    else
-      IFS= read -r REPLY_SYNC </dev/tty || REPLY_SYNC=""
-    fi
-    case "${REPLY_SYNC}" in
-      [Ss]*)
-        echo "   Fast-forwarding local main to origin/main …"
-        if ! git merge --ff-only origin/main; then
-          echo "::error::Could not fast-forward to origin/main (uncommitted changes, or not on main?)."
-          echo "         Resolve with 'git pull --ff-only', then rerun."
-          exit 1
-        fi
-        LOCAL_SHA="$(git rev-parse HEAD)"
-        echo "   Synced — now at ${LOCAL_SHA:0:12}; releasing from origin/main."
-        ;;
-      [Pp]*)
-        echo "   Proceeding on current HEAD (${LOCAL_SHA:0:12}); the commits above will NOT be in this release."
-        ;;
-      *)
-        echo "   Aborted. Run 'git pull --ff-only' to sync, then rerun (or choose 'p' to release this commit deliberately)."
-        exit 1
-        ;;
-    esac
-  else
-    echo "::error::Local main is behind origin/main and there is no terminal to confirm intent."
-    echo "         Sync with 'git pull --ff-only origin main' and rerun, or run interactively to choose."
-    exit 1
-  fi
+if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+  echo "::error::The checkout has tracked or untracked changes. Commit, stash, or remove them before releasing."
+  exit 1
+fi
+
+if ! git fetch origin main --quiet; then
+  echo "::error::Could not refresh origin/main; refusing to release from potentially stale state."
+  exit 1
+fi
+
+LOCAL_SHA="$(git rev-parse HEAD)"
+ORIGIN_SHA="$(git rev-parse origin/main)"
+if [[ "$LOCAL_SHA" != "$ORIGIN_SHA" ]]; then
+  echo "::error::HEAD (${LOCAL_SHA:0:12}) is not the current origin/main commit (${ORIGIN_SHA:0:12})."
+  echo "         Check out main, run 'git pull --ff-only', and retry."
+  exit 1
 fi
 
 # ── Local/remote tag divergence check ────────────────────────────────────────
@@ -304,8 +306,7 @@ fi
 # operator can decide: delete the local tag and reuse this version, or start
 # fresh with a new one.
 
-if git tag -l "${RELEASE_TAG}" | grep -q . &&
-   ! git ls-remote --exit-code --tags origin "${RELEASE_TAG}" >/dev/null 2>&1; then
+if git tag -l "${RELEASE_TAG}" | grep -q . && ! remote_tag_exists "${FULL_SEMVER}"; then
   echo "::error::Local tag '${RELEASE_TAG}' exists but is not on origin."
   echo ""
   echo "         The remote tag was likely deleted without cleaning up locally."
@@ -314,19 +315,22 @@ if git tag -l "${RELEASE_TAG}" | grep -q . &&
   exit 1
 fi
 
-# ── Idempotency guard (stable releases only — pre-release handled above) ──────
+# ── Idempotency guard ─────────────────────────────────────────────────────────
 #
 # Re-tagging a version that already published is not recoverable on nuget.org:
 # package versions are immutable and cannot be replaced, so a re-run would push
-# different bits under a version that already exists (--skip-duplicate makes the
-# workflow pass while silently publishing nothing).
+# different bits under a version that already exists. If a workflow failed,
+# rerun that workflow against the existing tag instead of moving the tag.
 
-if [[ -z "$PRE_RELEASE" && "$FORCE_RETAG" != "true" ]]; then
-  if git ls-remote --exit-code --tags origin "${RELEASE_TAG}" >/dev/null 2>&1; then
-    echo "::error::Tag '${RELEASE_TAG}' already exists on origin."
-    echo "         Use --force-retag to override (this will re-trigger the workflow)."
-    exit 1
-  fi
+if remote_tag_exists "${FULL_SEMVER}"; then
+  echo "::error::Tag '${RELEASE_TAG}' already exists on origin."
+  echo "         Rerun its existing release workflow, or choose a new version. Tags are never moved."
+  exit 1
+fi
+
+if ! git push --dry-run origin "${LOCAL_SHA}:refs/tags/${RELEASE_TAG}" >/dev/null; then
+  echo "::error::The release tag cannot be pushed to origin. No remote state was changed."
+  exit 1
 fi
 
 # ── Helper: push the tag and wait for the triggered workflow ──────────────────
@@ -338,7 +342,7 @@ push_and_wait() {
   echo ""
   echo "▶  Pushing tag ${tag} …"
   git tag "${tag}"
-  git push origin "${tag}"
+  git push origin "refs/tags/${tag}"
 
   echo "   Waiting for workflow '${workflow_name}' to register …"
   local run_id=""
@@ -360,10 +364,13 @@ push_and_wait() {
   done
 
   echo "   Watching run ${run_id} …"
-  gh run watch \
-    --repo "${REPO}" \
-    --exit-status \
-    "${run_id}"
+  if ! gh run watch \
+      --repo "${REPO}" \
+      --exit-status \
+      "${run_id}"; then
+    echo "::error::${workflow_name} failed for ${tag}. The tag remains immutable; rerun workflow ${run_id} after fixing the failure."
+    exit 1
+  fi
 
   echo "✓  ${workflow_name} succeeded."
 }
@@ -391,12 +398,20 @@ push_and_wait "${RELEASE_TAG}" "${WORKFLOW_NAME}"
 echo ""
 echo "▶  Verifying nuget.org availability for every published package …"
 
-mapfile -t PACKAGE_IDS < <(
+PACKAGE_IDS=()
+PACKAGE_SUFFIX=".${FULL_SEMVER}.nupkg"
+while IFS= read -r asset_name; do
+  [[ -z "$asset_name" ]] && continue
+  if [[ "$asset_name" != *"$PACKAGE_SUFFIX" ]]; then
+    echo "::error::Release asset '$asset_name' does not end in the expected version suffix '$PACKAGE_SUFFIX'."
+    exit 1
+  fi
+  PACKAGE_IDS+=("${asset_name%"$PACKAGE_SUFFIX"}")
+done < <(
   gh release view "${RELEASE_TAG}" \
     --repo "${REPO}" \
     --json assets \
     --jq '.assets[].name | select(endswith(".nupkg"))' 2>/dev/null \
-    | sed "s/\.${FULL_SEMVER}\.nupkg\$//" \
     | sort -u
 )
 
@@ -411,10 +426,11 @@ fi
 # package IDs in these URLs.
 nuget_has_version() {
   local id_lower
+  local response
   id_lower="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-  curl --fail --silent --max-time 30 \
-    "https://api.nuget.org/v3-flatcontainer/${id_lower}/index.json" 2>/dev/null \
-    | grep -Fq "\"${FULL_SEMVER}\""
+  response="$(curl --fail --silent --max-time 30 \
+    "https://api.nuget.org/v3-flatcontainer/${id_lower}/index.json" 2>/dev/null)" || return 1
+  grep -Fq "\"${FULL_SEMVER}\"" <<< "$response"
 }
 
 FAILED=()

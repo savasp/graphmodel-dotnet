@@ -14,15 +14,13 @@
 ## Quick reference
 
 ```bash
-dotnet build --configuration Debug   # build
-dotnet test  --configuration Debug   # full suite — Neo4j required; see AGENTS.md "Build and test"
-dotnet test tests/Graph.Analyzers.Tests --configuration Debug   # fast lane, no Docker
+./scripts/run-tests.sh --configuration Debug --lane fast --disable-diff-engine
+./scripts/run-tests.sh --configuration Debug --lane all --neo4j --age --disable-diff-engine
+dotnet msbuild eng/PackageValidation.proj -target:Validate   # package behavior only
 ```
 
-Test-project semantics (contract suite vs. integration vs. analyzers) are in AGENTS.md — do not assume `src/Graph.CompatibilityTests` runs the unit tests; it is an abstract provider contract suite (packed as `Cvoya.Graph.CompatibilityTests`).
+The repository runner discovers test projects under `tests/`; service requirements and compatibility-suite semantics are canonical in AGENTS.md.
 
 ## Diagnostic codes
 
-Compile-time analyzer codes use the `CG0XX` prefix (CVOYA Graph):
-- `CG001`–`CG009` — core validation rules
-- Suppressed via `.editorconfig` or `#pragma warning disable CG0XX`
+Compile-time analyzer codes use the `CG###` series. Consult `src/Graph.Analyzers/AnalyzerReleases.*.md` before allocating the next unused ID. Suppress a diagnostic via `.editorconfig` or `#pragma warning disable CG###`.

@@ -6,20 +6,20 @@ QA / test engineer for the CVOYA graph .NET library.
 
 ## Required reading
 
-- `AGENTS.md` § "Build and test" — the four test projects have very different requirements — mandatory
+- `AGENTS.md` § "Build and test" — canonical test and provider-service requirements — mandatory
 - `docs/core-concepts.md` — understand what to test
 
-## Test-project semantics (get this right)
+## Test placement
 
-- `tests/Graph.Tests` — ABSTRACT provider contract suite; executes ~no tests standalone. Provider-agnostic tests go here so every provider inherits them.
-- `tests/Graph.Neo4j.Tests` — where the contract suite actually runs; requires a running Neo4j (`scripts/containers/start-neo4j.sh`, which tries Podman first and Docker second unless `CONTAINER_RUNTIME` is set, or `NEO4J_URI`). No automatic container startup.
-- `tests/Graph.Analyzers.Tests` — no external deps; the fast lane.
+- Provider-agnostic behavior belongs in the compatibility suite under `src/`; provider test projects inherit it.
+- Provider-specific behavior belongs in the owning provider test project under `tests/`.
+- Provider-neutral core, query, serialization, and analyzer behavior belongs in the relevant fast test project.
 
 ## Workflow
 
 - Verify you are in the prepared worktree on the branch under test (`git status`).
-- Establish a baseline, add edge-case/regression tests, validate everything passes.
-- If Neo4j is unavailable after trying the repo startup script and any configured `NEO4J_*` endpoint, report that limitation prominently — an analyzers-only pass is NOT a validated change.
+- Establish a baseline with `./scripts/run-tests.sh --configuration Debug --lane fast --disable-diff-engine`, add edge-case/regression tests, then validate the full lane with `--lane all --no-build` when both provider services are available.
+- Configure existing provider endpoints, use the repository container scripts, or pass `--neo4j --age` to the runner. Report any omitted provider lane prominently; a fast-lane pass is not full provider validation.
 - Commit with the `test:` prefix. Report pass/fail counts and bugs with reproduction steps; do not fix implementation code yourself.
 
 ## Rules

@@ -17,11 +17,10 @@ Read [AGENTS.md](../../AGENTS.md) before starting — it defines the conventions
 2. **Read the full diff** against the base branch (`git diff origin/main...HEAD`).
 3. **Build and test** to verify the changes compile and pass:
    ```bash
-   dotnet build --configuration Debug
-   dotnet test tests/Cvoya.Graph.Analyzers.Tests --configuration Debug --no-build
-   dotnet test --configuration Debug   # full suite — needs Neo4j; start with scripts/containers/start-neo4j.sh if needed
+   ./scripts/run-tests.sh --configuration Debug --lane fast --disable-diff-engine
+   ./scripts/run-tests.sh --configuration Debug --lane all --no-build --disable-diff-engine
    ```
-   If no Neo4j is reachable, run `scripts/containers/start-neo4j.sh` before giving up. The script tries Podman first and Docker second unless `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` is set. Note in the review whether the full suite ran.
+   The full lane requires both provider services. Configure existing endpoints, use the repository container scripts, or pass `--neo4j --age` to the runner. State which provider lanes ran.
 4. **Produce the review** in the output format below.
 
 ## What to review

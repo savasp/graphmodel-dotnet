@@ -1,5 +1,0 @@
-<Project>
-  <ItemGroup>
-    <Analyzer Include="$(MSBuildThisPackagePath)analyzers/dotnet/cs/Cvoya.Graph.Serialization.CodeGen.dll" />
-  </ItemGroup>
-</Project>

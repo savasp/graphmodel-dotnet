@@ -51,8 +51,9 @@
         <PackageReference Include="Cvoya.Graph.Serialization" />
     </ItemGroup>
 
-    <!-- Include the CodeGen analyzer in the package when building packages -->
-    <ItemGroup Condition="'$(GeneratePackageOnBuild)' == 'true'">
+    <!-- Pack metadata is harmless during a normal build and must not depend on
+         whether packaging was triggered by Build or by the Pack target. -->
+    <ItemGroup>
         <None Include="../Graph.Serialization.CodeGen/bin/$(Configuration)/netstandard2.0/Cvoya.Graph.Serialization.CodeGen.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
     </ItemGroup>
 

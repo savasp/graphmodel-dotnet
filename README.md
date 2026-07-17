@@ -253,26 +253,21 @@ CVOYA Graph supports multiple build configurations for different scenarios:
 # Development (fastest, project references)
 dotnet build --configuration Debug
 
-# Local package testing (test package references before publishing)
-dotnet build --configuration LocalFeed
+# Local package-reference validation before publishing
+dotnet msbuild eng/PackageValidation.proj -target:Validate
 
-# Production builds (package references, requires VERSION file)
-dotnet build --configuration Release
+# Production package build (pack builds first by default)
+dotnet pack src/Graph/Graph.csproj --configuration Release
 ```
 
 For testing package references locally before publishing to NuGet:
 
 ```bash
-# Method 1: Direct LocalFeed build
-dotnet build --configuration LocalFeed
-dotnet build --configuration Release
+# Pack the complete LocalFeed set, verify it, then restore and build with package references
+dotnet msbuild eng/PackageValidation.proj -target:Validate
 
-# Method 2: Using helper script
-./scripts/setup-local-feed-msbuild.sh
-dotnet build --configuration Release
-
-# Cleanup when done
-dotnet msbuild -target:CleanLocalFeed
+# Remove only repository-scoped package-validation state
+dotnet msbuild eng/PackageValidation.proj -target:Clean
 ```
 
 See **[Build System Documentation](docs/graph-model-developers.md)** for complete details.

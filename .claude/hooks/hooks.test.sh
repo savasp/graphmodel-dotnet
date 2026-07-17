@@ -3,7 +3,8 @@
 #   bash .claude/hooks/hooks.test.sh
 set -u
 cd "$(dirname "$0")/../.." || exit 1
-export CLAUDE_PROJECT_DIR="$(pwd)"
+REPO_ROOT="$(pwd)"
+export CLAUDE_PROJECT_DIR="$REPO_ROOT"
 
 pass=0 fail=0
 check() { # description expected_exit json script
@@ -23,6 +24,8 @@ check "blocks .github workflow"               2 "{\"tool_input\":{\"file_path\":
 check "blocks Directory.Build.props"          2 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/Directory.Build.props\"}}" "$P"
 check "blocks .claude settings"               2 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/.claude/settings.json\"}}" "$P"
 check "blocks .codex config"                  2 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/.codex/config.toml\"}}" "$P"
+CLAUDE_PROJECT_DIR="$REPO_ROOT/scripts" check "blocks from a nested project dir" 2 "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/Directory.Build.props\"}}" "$P"
+check "blocks a dot-segment traversal"        2 "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/scripts/../Directory.Build.props\"}}" "$P"
 check "allows normal source file"             0 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/src/Graph/IGraph.cs\"}}" "$P"
 check "allows file merely containing VERSION" 0 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/docs/VERSIONING.md\"}}" "$P"
 check "allows nested Directory.Build.props"   0 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/src/Directory.Build.props\"}}" "$P"

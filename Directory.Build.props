@@ -2,7 +2,11 @@
     <PropertyGroup>
         <!-- Default to Debug configuration for local development -->
         <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
-        <IsSourcePackageProject Condition="$(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src/'))">true</IsSourcePackageProject>
+        <RepositorySourceRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'src'))</RepositorySourceRoot>
+        <RepositoryTestRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'tests'))</RepositoryTestRoot>
+        <RepositoryExamplesRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'examples'))</RepositoryExamplesRoot>
+        <NormalizedProjectDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)'))</NormalizedProjectDirectory>
+        <IsSourcePackageProject Condition="$(NormalizedProjectDirectory.StartsWith('$(RepositorySourceRoot)'))">true</IsSourcePackageProject>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -54,8 +58,10 @@
         <Optimize Condition="'$(Configuration)' == 'LocalFeed'">true</Optimize>
         <GeneratePackageOnBuild Condition="'$(Configuration)' == 'LocalFeed'">true</GeneratePackageOnBuild>
 
-        <!-- Only generate packages in Release/LocalFeed mode or when explicitly requested -->
-        <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release' OR '$(ForcePackageGeneration)' == 'true'">true</GeneratePackageOnBuild>
+        <!-- Release follows the normal `dotnet pack` contract: pack builds unless
+             the caller explicitly disables the build. Enabling pack-on-build here
+             suppresses that implicit build and can silently package stale output. -->
+        <GeneratePackageOnBuild Condition="'$(ForcePackageGeneration)' == 'true'">true</GeneratePackageOnBuild>
         <GeneratePackageOnBuild Condition="'$(GeneratePackageOnBuild)' == ''">false</GeneratePackageOnBuild>
     </PropertyGroup>
 
@@ -77,7 +83,7 @@
     </ItemGroup>
 
     <!-- Test project settings -->
-    <PropertyGroup Condition=" $(MSBuildProjectDirectory.Contains('/tests/')) ">
+    <PropertyGroup Condition="$(NormalizedProjectDirectory.StartsWith('$(RepositoryTestRoot)'))">
         <IsTestProject>true</IsTestProject>
         <GenerateDocumentationFile>false</GenerateDocumentationFile>
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -85,7 +91,7 @@
     </PropertyGroup>
 
     <!-- Example project settings -->
-    <PropertyGroup Condition=" $(MSBuildProjectDirectory.Contains('/examples/')) ">
+    <PropertyGroup Condition="$(NormalizedProjectDirectory.StartsWith('$(RepositoryExamplesRoot)'))">
         <GenerateDocumentationFile>false</GenerateDocumentationFile>
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
         <IsPackable>false</IsPackable>
@@ -133,93 +139,4 @@
         <Message Text="No version resolved (no GRAPH_RELEASE_VERSION and no VERSION file)" Importance="high" Condition="'$(FullVersion)' == ''" />
     </Target>
 
-    <!-- Local NuGet Feed Management Targets -->
-    <PropertyGroup>
-        <LocalFeedPath>$(MSBuildThisFileDirectory)local-nuget-feed</LocalFeedPath>
-        <LocalFeedSourceName>CvoyaGraph-LocalFeed</LocalFeedSourceName>
-        <LocalFeedSentinelFile>$(LocalFeedPath)/.feed-setup-complete</LocalFeedSentinelFile>
-    </PropertyGroup>
-
-    <Target Name="SetupLocalFeed" BeforeTargets="Build" Condition="'$(Configuration)' == 'LocalFeed'">
-        <Message Text="🚀 Setting up local NuGet feed for CVOYA graph..." Importance="high" />
-
-        <!-- Create local feed directory -->
-        <MakeDir Directories="$(LocalFeedPath)" />
-
-        <!-- Add NuGet source if not already added (check if sentinel file exists to avoid duplicate attempts) -->
-        <Exec Command="dotnet nuget list source | grep -q '$(LocalFeedSourceName)' || dotnet nuget add source '$(LocalFeedPath)' --name '$(LocalFeedSourceName)'" 
-              Condition="!Exists('$(LocalFeedSentinelFile)')" 
-              ContinueOnError="true" />
-
-        <!-- Create or update sentinel file -->
-        <Touch Files="$(LocalFeedSentinelFile)" AlwaysCreate="true" />
-
-        <Message Text="✅ Local NuGet feed ready at: $(LocalFeedPath)" Importance="high" />
-    </Target>
-
-    <Target Name="PublishToLocalFeed" AfterTargets="Pack" Condition="'$(Configuration)' == 'LocalFeed' AND '$(IsPackable)' != 'false'">
-        <ItemGroup>
-            <!-- Publish only this project's package; artifacts may contain dependency packages too. -->
-            <PackageFiles Include="$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg"
-                          Condition="Exists('$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg')" />
-        </ItemGroup>
-
-        <Copy SourceFiles="@(PackageFiles)" DestinationFolder="$(LocalFeedPath)" Condition="@(PackageFiles) != ''" />
-
-        <Message Text="📦 Published $(MSBuildProjectName) to local feed" Importance="high" Condition="@(PackageFiles) != ''" />
-    </Target>
-
-    <!-- Explicitly pack analyzer and codegen projects for LocalFeed configuration -->
-    <!-- Only run this target once at the solution level, not for each project -->
-    <Target Name="PackSpecialProjects" AfterTargets="Build" Condition="'$(Configuration)' == 'LocalFeed' AND '$(MSBuildProjectName)' == 'Graph'">
-        <Message Text="📦 Packing special projects (Analyzers and CodeGen)..." Importance="high" />
-        <MSBuild Projects="$(MSBuildThisFileDirectory)src/Graph.Analyzers/Graph.Analyzers.csproj" Targets="Pack" Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
-        <MSBuild Projects="$(MSBuildThisFileDirectory)src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj" Targets="Pack" Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
-        <Message Text="✅ Special projects packed successfully!" Importance="high" />
-    </Target>
-
-    <Target Name="CleanLocalFeed">
-        <Message Text="🧹 Cleaning up CVOYA graph local NuGet feed..." Importance="high" />
-
-        <!-- Remove NuGet source only if it exists -->
-        <Exec Command="dotnet nuget list source | grep -q '$(LocalFeedSourceName)' &amp;&amp; dotnet nuget remove source '$(LocalFeedSourceName)'" ContinueOnError="true" />
-
-        <!-- Clean directories only if they exist and are not in use -->
-        <RemoveDir Directories="$(LocalFeedPath)" Condition="Exists('$(LocalFeedPath)')" ContinueOnError="true" />
-        <RemoveDir Directories="$(PackageOutputPath)" Condition="Exists('$(PackageOutputPath)')" ContinueOnError="true" />
-
-        <!-- Clear NuGet cache -->
-        <Exec Command="dotnet nuget locals all --clear" ContinueOnError="true" />
-
-        <Message Text="✅ Cleanup complete! You can now build normally with project references." Importance="high" />
-    </Target>
-
-    <Target Name="TestLocalFeed" DependsOnTargets="CleanLocalFeed">
-        <Message Text="🧪 Testing local NuGet feed workflow..." Importance="high" />
-
-        <!-- Build with LocalFeed configuration to generate packages -->
-        <MSBuild Projects="$(MSBuildThisFileDirectory)cvoya-graph.sln" Properties="Configuration=LocalFeed" Targets="Build" />
-
-        <!-- Test Release configuration with package references -->
-        <Message Text="🔄 Testing Release build with package references..." Importance="high" />
-        <Exec Command="dotnet restore --force" />
-        <MSBuild Projects="$(MSBuildThisFileDirectory)cvoya-graph.sln" Properties="Configuration=Release" Targets="Build" />
-
-        <Message Text="✅ Local feed test completed successfully!" Importance="high" />
-    </Target>
-
-    <!-- Generate packages with package references for distribution -->
-    <Target Name="BuildWithPackageReferences" DependsOnTargets="CleanLocalFeed">
-        <Message Text="📦 Building with package references for distribution..." Importance="high" />
-
-        <!-- First, build with LocalFeed to generate packages -->
-        <MSBuild Projects="$(MSBuildThisFileDirectory)cvoya-graph.sln" Properties="Configuration=LocalFeed" Targets="Build" />
-
-        <!-- Then build with package references -->
-        <Message Text="🔄 Building with package references..." Importance="high" />
-        <Exec Command="dotnet restore --force" />
-        <MSBuild Projects="$(MSBuildThisFileDirectory)cvoya-graph.sln" Properties="Configuration=Release;UsePackageReferences=true" Targets="Build" />
-
-        <Message Text="✅ Build with package references completed successfully!" Importance="high" />
-    </Target>
 </Project>

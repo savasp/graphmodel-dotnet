@@ -99,15 +99,15 @@ for config in "${CONFIGURATIONS[@]}"; do
     
     # Clean previous builds
     print_status "Cleaning previous builds..."
-    dotnet clean --configuration "$config" --verbosity quiet || true
+    dotnet clean cvoya-graph.sln --configuration "$config" --verbosity quiet || true
     
     # Restore dependencies
     print_status "Restoring dependencies..."
-    dotnet restore --verbosity quiet
+    dotnet restore cvoya-graph.sln --verbosity quiet -p:Configuration="$config"
     
     # Build configuration
     print_status "Building $config configuration..."
-    if dotnet build --configuration "$config" --no-restore --verbosity minimal; then
+    if dotnet build cvoya-graph.sln --configuration "$config" --no-restore --verbosity minimal; then
         print_status "✅ $config build successful"
     else
         print_error "❌ $config build failed"
@@ -117,26 +117,13 @@ for config in "${CONFIGURATIONS[@]}"; do
     echo ""
 done
 
-# Test local feed workflow
-print_header "Testing LocalFeed workflow..."
-print_status "Setting up local feed..."
-if ./scripts/setup-local-feed-msbuild.sh; then
-    print_status "✅ LocalFeed setup successful"
-    
-    # Test Release with package references
-    print_status "Testing Release with package references..."
-    if dotnet build --configuration Release --no-restore --verbosity minimal; then
-        print_status "✅ Release with package references successful"
-    else
-        print_error "❌ Release with package references failed"
-    fi
-    
-    # Clean up
-    print_status "Cleaning up local feed..."
-    dotnet msbuild -target:CleanLocalFeed -verbosity:quiet
-    print_status "✅ Local feed cleanup successful"
+# Test the repository-scoped package-reference workflow. Any nested restore,
+# package inventory, or build failure is a required validation failure.
+print_header "Testing package-reference workflow..."
+if dotnet msbuild eng/PackageValidation.proj -target:Validate -verbosity:minimal; then
+    print_status "✅ Package-reference validation successful"
 else
-    print_error "❌ LocalFeed setup failed"
+    print_error "❌ Package-reference validation failed"
     exit 1
 fi
 
@@ -149,24 +136,18 @@ print_header "Testing MSBuild targets..."
 print_status "Testing ShowVersion target..."
 dotnet msbuild -target:ShowVersion -verbosity:quiet
 
-# Test BuildWithPackageReferences target
-print_status "Testing BuildWithPackageReferences target..."
-if dotnet msbuild -target:BuildWithPackageReferences -verbosity:quiet; then
-    print_status "✅ BuildWithPackageReferences successful"
-else
-    print_warning "⚠️  BuildWithPackageReferences failed (this is expected if no VERSION file)"
-fi
-
-echo ""
-
 # Check for common issues
 print_header "Checking for common issues..."
 
 # Check for missing README files
 for project in src/*/; do
-    if [ -f "$project"*.csproj ] && [ ! -f "$project"README.md ]; then
-        print_warning "⚠️  Missing README.md in $(basename "$project")"
-    fi
+    for project_file in "$project"*.csproj; do
+        [ -e "$project_file" ] || continue
+        if [ ! -f "${project}README.md" ]; then
+            print_warning "⚠️  Missing README.md in $(basename "$project")"
+        fi
+        break
+    done
 done
 
 # Check for proper project structure

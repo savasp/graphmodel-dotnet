@@ -31,6 +31,21 @@ path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')"
 root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$git_root" ] && root="$git_root"
+canonical_root="$(cd "$root" 2>/dev/null && pwd -P || true)"
+[ -n "$canonical_root" ] && root="$canonical_root"
+
+# Resolve dot segments and symlinked parent directories before matching. Without
+# this, /repo/scripts/../Directory.Build.props bypasses the root-anchored case
+# even though it names the protected root file. Protected files already have an
+# existing parent directory, so canonicalizing the parent also works for Write
+# calls that create a new file (for example, a new workflow).
+case "$path" in
+  /*) ;;
+  *) path="$root/$path" ;;
+esac
+canonical_parent="$(cd "$(dirname "$path")" 2>/dev/null && pwd -P || true)"
+[ -n "$canonical_parent" ] && path="$canonical_parent/$(basename "$path")"
+
 rel="${path#"$root"/}"
 
 case "$rel" in

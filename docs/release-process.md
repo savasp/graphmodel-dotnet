@@ -44,12 +44,11 @@ Voyage uses.
    ./scripts/release.sh 1.2.3 --pre rc      # rc      -> v1.2.3-rc.20260716
    ```
 
-   Before pushing anything, the script refuses to release a commit that isn't on
-   `origin/main`, warns (interactively) if your local checkout is behind
-   `origin/main` so you can't silently ship a stale commit, detects a local tag
-   that never made it to the remote, and refuses to re-tag an existing stable
-   version unless you pass `--force-retag`. See `./scripts/release.sh --help` for
-   the full option list.
+   Before pushing anything, the script verifies its tools and GitHub
+   authentication, checks that both fetch and push URLs for `origin` resolve to
+   `cvoya-com/graph`, requires a clean checkout exactly at the current
+   `origin/main` commit, and performs a dry-run push. Existing tags are immutable:
+   rerun their workflow after a transient failure, or choose a new version.
 
 3. **Pushing the tag triggers the release workflow**, which:
    - Reads the version off the tag and verifies it matches the scheme above
@@ -62,6 +61,10 @@ Voyage uses.
      `Cvoya.Graph.Age`, `Cvoya.Graph.InMemory`, `Cvoya.Graph`,
      `Cvoya.Graph.Cypher`, serialization, analyzer, code-generation, and
      compatibility-test packages.
+   - Verifies the exact package inventory and inspects every packaged
+     `Cvoya.Graph*.dll`: the NuGet manifest, filename, `AssemblyVersion`,
+     `FileVersion`, and `InformationalVersion` must all match the tag-derived
+     version before anything can publish.
    - Verifies a clean example consumer can restore and build against the exact
      package set assembled for publication.
    - Generates a build provenance attestation for every package, symbol
@@ -131,8 +134,8 @@ the account/org that will own them):
      `.github/workflows/` path)
    - **Environment:** leave empty (the workflow does not use a GitHub
      Environment)
-3. Repeat step 2 for each package owner scope if the five package IDs aren't
-   all covered by a single policy (a policy applies to all packages owned by
+3. Repeat step 2 for each package owner scope if the package IDs aren't all
+   covered by a single policy (a policy applies to all packages owned by
    the selected owner).
 4. The policy is valid for 7 days pending its first successful publish (this
    is a GitHub anti-resurrection safeguard for the repository identity), after
@@ -168,10 +171,13 @@ push.
   prerelease suffix and commit sha included, still ships via
   `InformationalVersion` (e.g. `1.2.3-rc.20260716+cba4d4f…`), which is what to
   inspect for provenance.
+- **Release builds and packing are separate.** `dotnet pack -c Release` follows
+  the standard SDK contract and builds before packing; only an explicit
+  `--no-build` reuses earlier output. The release workflow deliberately builds
+  once and then packs with `--no-build`, while the package verifier checks the
+  DLL metadata so stale or mismatched output cannot publish.
 - **No `CHANGELOG.md`.** A short CVOYA-branded release introduction is
   prepended to GitHub's auto-generated notes (derived from merged PR titles
-  since the previous tag). Adopting
-  [Keep a Changelog](https://keepachangelog.com/) can be a follow-up if
-  hand-curated release notes become worth the maintenance cost.
+  since the previous tag).
 - **No NuGet API key anywhere**, cleartext or secret-stored — Trusted
   Publishing is the only supported publish mechanism.

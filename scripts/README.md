@@ -37,6 +37,9 @@ create the GitHub Release), then verifies every package resolves on nuget.org.
 # ...and make it the current Latest on GitHub
 ./scripts/release.sh 1.2.3 --pre alpha --latest
 
+# Run the release script's isolated command-flow tests
+bash ./scripts/release.test.sh
+
 # Show the version the current tree would build as
 dotnet msbuild -target:ShowVersion
 ```
@@ -53,27 +56,27 @@ dotnet build --configuration Debug
 # Performance testing build (project references + optimizations)
 dotnet build --configuration Benchmark
 
-# Local package testing (project references + packages)
-dotnet build --configuration LocalFeed
+# Local package-reference validation
+dotnet msbuild eng/PackageValidation.proj -target:Validate
 
-# Production build (package references)
-dotnet build --configuration Release
+# Production package build (pack builds first by default)
+dotnet pack src/Graph/Graph.csproj --configuration Release
 ```
 
 ### Testing
 
 ```bash
-# Run all tests
-./scripts/run-tests.sh
+# Run the fast lane
+./scripts/run-tests.sh --fast
 
 # Run tests with coverage
-./scripts/run-tests.sh --coverage
+./scripts/run-tests.sh --fast --coverage
 
-# Run tests with containers
-./scripts/run-tests.sh --neo4j --seq
+# Start both provider services and run all tests
+./scripts/run-tests.sh --neo4j --age --seq
 
 # Run performance tests
-./scripts/run-tests.sh --performance
+./scripts/run-tests.sh --fast --performance
 ```
 
 ### CodeQL Analysis
@@ -123,76 +126,32 @@ For comprehensive build system documentation, see: **[docs/graph-model-developer
 | **Debug**     | ✅ Yes       | ❌ No         | ❌ No    | ❌ No            | Development           |
 | **Benchmark** | ✅ Yes       | ✅ Yes        | ❌ No    | ❌ No            | Performance testing   |
 | **LocalFeed** | ✅ Yes       | ✅ Yes        | ✅ Yes   | ❌ No            | Local package testing |
-| **Release**   | ❌ No        | ✅ Yes        | ✅ Yes   | ✅ Yes           | Production builds     |
+| **Release**   | ✅ Default   | ✅ Yes        | Via `pack` | ✅ Yes         | Production package builds |
 
 ## Local NuGet Feed Scripts
 
 For testing Release configuration with local packages before publishing:
 
-### `setup-local-feed-msbuild.sh` ⭐ **Recommended**
+### Repository package-validation orchestrator
 
-Uses MSBuild integration to automatically create a local NuGet feed with all CVOYA graph packages:
-
-```bash
-# Set up local feed using script
-./scripts/setup-local-feed-msbuild.sh
-
-# Or build directly with LocalFeed configuration
-dotnet build --configuration LocalFeed
-
-# Test Release configuration
-dotnet build --configuration Release
-```
-
-**What it does:**
-
-- Uses the **LocalFeed** configuration (defined in `Directory.Build.props`)
-- Builds with Release optimizations but using project references
-- Automatically generates packages and sets up local NuGet feed
-- MSBuild handles dependency resolution and build ordering
-- Enables testing Release configuration with local packages
-
-**Advantages:**
-
-- ✅ Integrated with MSBuild - no manual dependency management
-- ✅ Uses existing build infrastructure
-- ✅ Automatic package generation and feed setup
-- ✅ Proper dependency resolution
-- ✅ Clean separation of concerns
-
-**How it works:**
-
-1. **LocalFeed Configuration**: A new build configuration that combines:
-
-   - Release-level optimizations (`<Optimize>true</Optimize>`)
-   - Project references for fast builds (`UseProjectReferences=true`)
-   - Automatic package generation (`GeneratePackageOnBuild=true`)
-
-2. **MSBuild Targets**: Automatic local feed management:
-
-   - `SetupLocalFeed`: Creates local feed directory and NuGet source (runs before LocalFeed builds)
-   - `PublishToLocalFeed`: Copies packages to local feed after packaging
-   - `CleanLocalFeed`: Removes local feed and cleans up
-   - `TestLocalFeed`: Complete end-to-end testing workflow
-
-3. **Smart Package Versioning**: Uses automatic versioning with timestamp suffix
-
-4. **Sentinel File System**: Prevents duplicate NuGet source registration
-
-**Cleanup:**
+`eng/PackageValidation.proj` is the only owner of feed setup, packing, package-reference restore/build, and cleanup:
 
 ```bash
-dotnet msbuild -target:CleanLocalFeed
+# Run the complete package-reference gate
+dotnet msbuild eng/PackageValidation.proj -target:Validate
+
+# Prepare only the verified local feed
+dotnet msbuild eng/PackageValidation.proj -target:PrepareLocalFeed
+
+# Remove only repository-owned validation state
+dotnet msbuild eng/PackageValidation.proj -target:Clean
 ```
 
-**Testing Results:**
+It uses `eng/package-validation.NuGet.config`, maps `Cvoya.*` exclusively to the generated feed, verifies the exact nine-package inventory and all packaged assembly version metadata with `scripts/verify-package-set.sh`, and isolates packages, HTTP cache, scratch, and plugin cache under `artifacts/package-validation/`. It never registers a user-level source or clears global NuGet state.
 
-✅ All 5 packages created successfully  
-✅ Local feed setup works automatically  
-✅ Release configuration builds with package references  
-✅ MSBuild integration prevents conflicts  
-✅ LocalFeed configuration implemented and working  
-✅ Automatic package publishing to local feed
+The inventory check requires `bash` and `jq`; path handling in the MSBuild orchestrator is OS-native on Windows, Linux, and macOS.
+
+`scripts/setup-local-feed-msbuild.sh` and `scripts/cleanup-local-feed.sh` are compatibility wrappers that delegate to this project.
 
 ### `cleanup-local-feed.sh`
 
@@ -203,12 +162,7 @@ Removes the local NuGet feed and cleans up:
 ./scripts/cleanup-local-feed.sh
 ```
 
-**What it does:**
-
-- Removes the local NuGet source
-- Deletes `./local-nuget-feed/` and `./artifacts/` directories
-- Clears NuGet cache
-- Restores normal project reference behavior
+It removes only `artifacts/package-validation/`; user sources and caches are untouched.
 
 ## 📚 Documentation Build Scripts
 
@@ -297,7 +251,7 @@ Validates the entire build system and ensures all configurations work correctly.
 **What it does:**
 
 - Tests all build configurations (Debug, Benchmark, LocalFeed, Release)
-- Validates MSBuild targets and local feed workflow
+- Validates the repository-scoped package feed and package-reference build
 - Checks prerequisites and project structure
 - Ensures the build system is ready for development and CI/CD
 
@@ -352,9 +306,10 @@ audits (impostor commits, ref confusion) run exactly as they do in CI.
 ./scripts/run-zizmor.sh
 ```
 
-### `run-tests.sh` ⭐ **New**
+### `run-tests.sh`
 
-Comprehensive test runner with support for different test types and configurations.
+Discovers test projects under `tests/`, builds once, and runs an explicit fast,
+Neo4j, AGE, or full lane. Benchmark projects remain separate.
 
 **Usage:**
 
@@ -364,23 +319,29 @@ Comprehensive test runner with support for different test types and configuratio
 
 **Options:**
 
-- `-c, --configuration <config>`: Build configuration (default: Release)
+- `-c, --configuration <config>`: Build configuration (default: Debug)
 - `-v, --verbosity <level>`: Test verbosity (default: normal)
-- `--coverage`: Collect code coverage
+- `--lane <fast|neo4j|age|all>`: Test lane (default: all)
+- `--fast`: Alias for `--lane fast`
+- `--coverage`: Collect Cobertura coverage per test project
 - `--neo4j`: Start Neo4j container before tests
+- `--age`: Start Apache AGE container before tests
 - `--seq`: Start Seq container before tests
 - `--no-analyzers`: Skip analyzer tests
-- `--no-neo4j`: Skip Neo4j tests
+- `--no-neo4j`: Skip Neo4j tests in the full lane
+- `--no-age`: Skip AGE tests in the full lane
+- `--no-build`: Reuse an existing build
+- `--disable-diff-engine`: Keep Verify snapshot failures in terminal output
 - `--performance`: Run performance tests
 
 **Examples:**
 
 ```bash
-./scripts/run-tests.sh                                    # Run all tests
-./scripts/run-tests.sh --coverage                        # Run with coverage
-./scripts/run-tests.sh --neo4j --seq                     # Start containers and run tests
-./scripts/run-tests.sh --performance                     # Run performance tests
-./scripts/run-tests.sh -c Debug --no-neo4j               # Debug build, skip Neo4j tests
+./scripts/run-tests.sh --fast                             # All service-free/in-memory tests
+./scripts/run-tests.sh --lane neo4j --neo4j              # Start Neo4j and run its lane
+./scripts/run-tests.sh --lane age --age                   # Start AGE and run its lane
+./scripts/run-tests.sh --neo4j --age                      # Start both services and run all tests
+./scripts/run-tests.sh --fast --coverage                  # Fast lane with coverage
 ```
 
 ### `clean-all.sh` ⭐ **New**

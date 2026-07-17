@@ -61,8 +61,8 @@ jobs:
             # tag cannot publish an off-scheme version to nuget.org — where a
             # published version is immutable and cannot be taken back. Only the
             # tag path is checked: this is the only path that can publish.
-            if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]{8}(\.[0-9]+)?)?$ ]]; then
-              echo "::error::Tag 'v$VERSION' does not match MAJOR.MINOR.PATCH[-(alpha|beta|rc).YYYYMMDD[.N]]. Cut releases with ./scripts/release.sh."
+            if ! version_error="$(./scripts/validate-release-version.sh "$VERSION" 2>&1)"; then
+              echo "::error::Tag 'v$VERSION' is not releasable: $version_error Cut releases with ./scripts/release.sh."
               exit 1
             fi
           fi
@@ -100,7 +100,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -131,7 +131,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -179,7 +179,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -213,7 +213,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -247,7 +247,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -303,7 +303,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -358,7 +358,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -438,22 +438,7 @@ jobs:
           dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Analyzers/Graph.Analyzers.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj
 
-      - name: Verify package versions
-        shell: bash
-        run: |
-          EXPECTED="${NEEDS_RESOLVE_VERSION_OUTPUTS_VERSION}"
-          for pkg in ./artifacts/*.nupkg; do
-            name=$(basename "$pkg")
-            if [[ "$name" != *"$EXPECTED"* ]]; then
-              echo "::error::Package $name does not carry the expected version $EXPECTED"
-              exit 1
-            fi
-          done
-          ls -la ./artifacts
-        env:
-          NEEDS_RESOLVE_VERSION_OUTPUTS_VERSION: ${{ needs.resolve-version.outputs.version }}
-
-      - name: Verify release package set
+      - name: Verify release package inventory and assembly versions
         run: ./scripts/verify-package-set.sh ./artifacts "${NEEDS_RESOLVE_VERSION_OUTPUTS_VERSION}"
         env:
           NEEDS_RESOLVE_VERSION_OUTPUTS_VERSION: ${{ needs.resolve-version.outputs.version }}

@@ -225,7 +225,6 @@ if [ "$BUILD_MODE" = "none" ]; then
         --exclude='artifacts/' \
         --exclude='bin/' \
         --exclude='obj/' \
-        --exclude='local-nuget-feed/' \
         --exclude='TestResults/' \
         "$PWD"/ "$TEMP_SOURCE_ROOT"/
     SCAN_ROOT="$TEMP_SOURCE_ROOT"

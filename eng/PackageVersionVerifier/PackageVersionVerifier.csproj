@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>Cvoya.Graph.PackageVersionVerifier</RootNamespace>
+        <AssemblyName>Cvoya.Graph.PackageVersionVerifier</AssemblyName>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+</Project>

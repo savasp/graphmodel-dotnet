@@ -1,6 +1,6 @@
 # CVOYA graph — Project instructions
 
-Type-safe .NET library for graph data and graph databases, with LINQ querying, transactions, and optional Roslyn analyzers and serialization codegen. Neo4j is the in-tree provider; a PostgreSQL + Apache AGE provider is planned (#53, #90). Apache 2.0 licensed. Targets **.NET 10** with **C# 14** (`LangVersion` is set in [Directory.Build.props](Directory.Build.props)).
+Type-safe .NET library for graph data and graph databases, with LINQ querying, transactions, and optional Roslyn analyzers and serialization codegen. Neo4j and PostgreSQL + Apache AGE are the in-tree database providers. Apache 2.0 licensed. Targets **.NET 10** with **C# 14** (`LangVersion` is set in [Directory.Build.props](Directory.Build.props)).
 
 This file is the canonical instruction set for AI coding agents (Claude Code, Codex, Copilot, and others) and a good orientation for humans. Tool-specific configuration lives in `.claude/`, `.codex/`, and `.github/copilot-instructions.md`; see [docs/ai-agents.md](docs/ai-agents.md) for the map.
 
@@ -9,7 +9,9 @@ This file is the canonical instruction set for AI coding agents (Claude Code, Co
 ```
 src/Graph/                          provider-neutral core: IGraph, INode, IRelationship, LINQ surface, attributes
 src/Graph.Neo4j/                    Neo4j provider: LINQ-to-Cypher, transactions, entity managers
+src/Graph.Age/                      PostgreSQL + Apache AGE provider
 src/Graph.InMemory/                 in-memory reference provider: LINQ-to-objects over the shared query model; test double
+src/Graph.Cypher/                   shared typed Cypher AST, validation, and rendering
 src/Graph.Analyzers/                Roslyn analyzers (CG001…) for consumer domain models
 src/Graph.Serialization/            runtime serialization representation (EntityInfo, schemas)
 src/Graph.Serialization.CodeGen/    incremental source generator for entity serializers
@@ -23,9 +25,12 @@ scripts/                            release + container helper scripts
 ## Build and test
 
 ```bash
-dotnet build --configuration Debug     # day-to-day build (project references)
-dotnet test  --configuration Debug     # full suite — needs a local Neo4j (see below)
+dotnet build --configuration Debug
+./scripts/run-tests.sh --configuration Debug --lane fast --disable-diff-engine
+./scripts/run-tests.sh --configuration Debug --lane all --disable-diff-engine
 ```
+
+The runner discovers test projects under `tests/`, separates service-free and provider-backed lanes, and rejects projects that report zero tests. The full lane needs both Neo4j and AGE; use configured services, the repository container scripts, or the runner's `--neo4j --age` options.
 
 The test projects have different requirements — get this right:
 
@@ -33,12 +38,18 @@ The test projects have different requirements — get this right:
 |---------|------------|-------|
 | `src/Graph.CompatibilityTests` | **Provider contract suite (TCK), packed as `Cvoya.Graph.CompatibilityTests`.** Test interfaces with default xUnit methods, a harness SPI (`IGraphProviderTestHarness`), and a capability registry; providers bind those interfaces in their own test project. It executes ~no tests standalone. Add provider-agnostic tests here so every provider inherits them. See [docs/provider-implementers-guide.md](docs/provider-implementers-guide.md#certifying-a-provider). | nothing (but running it alone proves nothing) |
 | `tests/Graph.Neo4j.Tests` | The contract suite bound to Neo4j + provider-specific tests. This is where the suite actually runs. | a running Neo4j at `NEO4J_URI`, or reachable at the default `bolt://localhost:7687` with `neo4j/password`. Start one with `scripts/containers/start-neo4j.sh` (Podman preferred locally; Docker fallback; set `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` to force one). There is **no** automatic container startup — `CI=true` does nothing (that path is disabled; see #88). |
+| `tests/Graph.Age.Tests` | The contract suite bound to Apache AGE + provider-specific tests. | a running AGE instance at `AGE_CONNECTION_STRING`. Start one with `scripts/containers/start-age.sh` and export the connection string it prints (default host port `5455`). |
 | `tests/Graph.InMemory.Tests` | The contract suite bound to the in-memory provider. Full-text search tests skip via the capability declaration. | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.CompatibilityTests.Tests` | Meta-tests for the TCK itself (harness SPI lifecycle, capability skips, the compliance guard). | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.Analyzers.Tests` | Analyzer tests. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.Core.Tests` | Provider-neutral graph model, query-shape, and serialization integration tests. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.Cypher.Tests` | Shared Cypher AST, validation, and rendering tests. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.Neo4j.Translation.Tests` | LINQ-to-Cypher translation tests that do not execute against Neo4j. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.QuerySurface.CompilationTests` | Compile-time query-surface contract tests. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.Serialization.CodeGen.Tests` | Incremental serialization generator tests. | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.Performance.Tests` | Benchmarks. | not part of the normal gate |
 
-Package testing before publishing: `dotnet build --configuration LocalFeed`, then `--configuration Release`. Release builds require the `VERSION` file; the release process (tag-triggered, `VERSION` as the source of truth) is described in [docs/release-process.md](docs/release-process.md).
+Package testing before publishing: `dotnet msbuild eng/PackageValidation.proj -target:Validate`. The orchestrator packs the complete LocalFeed set, verifies its inventory and assembly version metadata with `scripts/verify-package-set.sh`, and restores/builds package references using repository-scoped NuGet state. Untagged builds use `VERSION` as their development default; published releases are tag-authoritative and override it. See [docs/release-process.md](docs/release-process.md).
 
 ## Conventions
 
@@ -47,7 +58,7 @@ Package testing before publishing: `dotnet build --configuration LocalFeed`, the
 - Apache 2.0 copyright header on new source files: `// Copyright CVOYA. Licensed under the Apache License, Version 2.0.`
 - Conventional commit messages: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.
 - Async: public async APIs take a `CancellationToken` and have an `Async` suffix.
-- Analyzer diagnostics use `CG0XX` prefix (CVOYA Graph codes CG001–CG009). Suppress via `.editorconfig` or `#pragma warning disable CG0XX`.
+- Analyzer diagnostics use the `CG###` series. Check `src/Graph.Analyzers/AnalyzerReleases.*.md` before allocating an unused ID; suppress a diagnostic via `.editorconfig` or `#pragma warning disable CG###`.
 - Keep changes minimal and focused; prefer editing existing files; file follow-up issues instead of expanding scope.
 
 ## Multi-agent workflow

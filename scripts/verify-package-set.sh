@@ -26,20 +26,25 @@ fi
 expected_package_ids=""
 expected_package_count=0
 verification_failed=false
+source_projects=()
 
-for project in src/*/*.csproj; do
+while IFS= read -r -d '' project; do
+    source_projects+=("$project")
+done < <(find src -type f -name '*.csproj' -print0)
+
+for project in "${source_projects[@]}"; do
     metadata=$(dotnet msbuild "$project" \
         -getProperty:PackageId \
         -getProperty:IsPackable \
         -getProperty:PackageVersion \
         -p:Configuration=LocalFeed)
 
-    if [ "$(jq -r '.Properties.IsPackable' <<< "$metadata")" != "true" ]; then
+    if [ "$(jq -r '.Properties.IsPackable' <<< "$metadata" | tr -d '\r')" != "true" ]; then
         continue
     fi
 
-    package_id=$(jq -r '.Properties.PackageId' <<< "$metadata")
-    package_version=$(jq -r '.Properties.PackageVersion' <<< "$metadata")
+    package_id=$(jq -r '.Properties.PackageId' <<< "$metadata" | tr -d '\r')
+    package_version=$(jq -r '.Properties.PackageVersion' <<< "$metadata" | tr -d '\r')
     expected_package_ids="${expected_package_ids}${package_id}"$'\n'
     expected_package_count=$((expected_package_count + 1))
 
@@ -55,12 +60,30 @@ for project in src/*/*.csproj; do
     fi
 done
 
-for project in src/*/*.csproj; do
+actual_package_count=0
+while IFS= read -r package_path; do
+    package_name=$(basename "$package_path")
+    package_id=${package_name%".$EXPECTED_VERSION.nupkg"}
+    actual_package_count=$((actual_package_count + 1))
+
+    if [ "$package_id" = "$package_name" ] || ! grep -Fqx "$package_id" <<< "$expected_package_ids"; then
+        echo "Unexpected package: $package_path" >&2
+        verification_failed=true
+    fi
+done < <(find "$PACKAGE_DIRECTORY" -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' -print | sort)
+
+if [ "$actual_package_count" -ne "$expected_package_count" ]; then
+    echo "Package count mismatch: expected $expected_package_count, found $actual_package_count" >&2
+    verification_failed=true
+fi
+
+for project in "${source_projects[@]}"; do
     package_references=$(dotnet msbuild "$project" \
         -getItem:PackageReference \
         -p:Configuration=Release \
         -p:UsePackageReferences=true \
-        | jq -r '.Items.PackageReference[]?.Identity | select(startswith("Cvoya."))')
+        | jq -r '.Items.PackageReference[]?.Identity | select(startswith("Cvoya."))' \
+        | tr -d '\r')
 
     while IFS= read -r package_reference; do
         if [ -z "$package_reference" ]; then
@@ -78,4 +101,11 @@ if [ "$verification_failed" = true ]; then
     exit 1
 fi
 
-echo "Verified $expected_package_count package(s) in $PACKAGE_DIRECTORY at version $EXPECTED_VERSION."
+dotnet run \
+    --project eng/PackageVersionVerifier/PackageVersionVerifier.csproj \
+    --configuration Release \
+    -- \
+    "$PACKAGE_DIRECTORY" \
+    "$EXPECTED_VERSION"
+
+echo "Verified the exact $expected_package_count-package inventory in $PACKAGE_DIRECTORY at version $EXPECTED_VERSION."
