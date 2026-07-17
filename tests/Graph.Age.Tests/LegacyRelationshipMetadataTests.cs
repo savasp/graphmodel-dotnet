@@ -67,6 +67,45 @@ public sealed class LegacyRelationshipMetadataTests(AgeHarness harness) : AgeTes
         await AssertMetadataBackfilledAsync(expected, cancellationToken);
     }
 
+    [Fact]
+    public async Task MetadataFreeLegacyRelationship_MismatchedCanonicalLabelReportsStoredLabel()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var source = new Person { FirstName = "Legacy source" };
+        var target = new Person { FirstName = "Legacy target" };
+        await Graph.CreateNodeAsync(source, null, cancellationToken);
+        await Graph.CreateNodeAsync(target, null, cancellationToken);
+
+        var relationship = new Knows(source, target) { Since = DateTime.UtcNow.AddDays(-1) };
+        await Graph.CreateRelationshipAsync(relationship, null, cancellationToken);
+
+        await using (var transaction = await Graph.GetTransactionAsync(cancellationToken))
+        {
+            var runner = ((AgeGraphTransaction)transaction).Runner;
+            await using var result = await runner.RunAsync(
+                """
+                MATCH ()-[r:CvoyaRelationship]->()
+                WHERE r.Id = $id
+                REMOVE r.__metadata__
+                SET r.inheritance_labels = ['WRONG_LEGACY_LABEL']
+                RETURN true AS updated
+                """,
+                new { id = relationship.Id },
+                cancellationToken);
+            _ = await result.SingleAsync(cancellationToken);
+            await transaction.CommitAsync();
+        }
+
+        relationship.Since = DateTime.UtcNow;
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            Graph.UpdateRelationshipAsync(relationship, null, cancellationToken));
+
+        Assert.Contains(
+            "legacy CLR label is 'WRONG_LEGACY_LABEL'",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
     private async Task RemoveMetadataAndAssertLegacyShapeAsync(
         IReadOnlyCollection<ExpectedIdentity> expected,
         CancellationToken cancellationToken)

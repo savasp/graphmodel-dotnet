@@ -113,6 +113,39 @@ public class GraphResultProcessorTests
     }
 
     [Fact]
+    public async Task RelationshipWireFixture_LegacyMapMetadataRecoversExactClrType()
+    {
+        var start = Node("start-wire", "start-public", "Start", 1, 1m);
+        var end = Node("end-wire", "end-public", "End", 2, 2m);
+        var relationship = GraphValue.Relationship(
+            "edge-wire",
+            "SHARED_TYPE",
+            start.ElementId!,
+            end.ElementId!,
+            new Dictionary<string, GraphValue>
+            {
+                [nameof(IEntity.Id)] = GraphValue.Scalar("relationship-public"),
+                [nameof(IRelationship.Direction)] = GraphValue.Scalar(RelationshipDirection.Outgoing.ToString()),
+                ["__metadata__"] = GraphValue.Map(new Dictionary<string, GraphValue>
+                {
+                    ["type"] = GraphValue.Scalar(typeof(MetadataDerivedRelationship).AssemblyQualifiedName),
+                }),
+            });
+        var record = new GraphRecord(new Dictionary<string, GraphValue>
+        {
+            ["PathSegment"] = PathSegment(start, relationship, end),
+        });
+
+        var info = Assert.Single(await new GraphResultProcessor(factory).ProcessAsync(
+            [record],
+            typeof(MetadataBaseRelationship),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(typeof(MetadataDerivedRelationship), info.ActualType);
+        Assert.DoesNotContain("__metadata__", info.SimpleProperties.Keys);
+    }
+
+    [Fact]
     public async Task TypedSimpleCollections_PreserveValueTypesOrderAndNulls()
     {
         var firstId = Guid.Parse("7a2ef43f-dadf-4c88-a2f6-af730f87a963");

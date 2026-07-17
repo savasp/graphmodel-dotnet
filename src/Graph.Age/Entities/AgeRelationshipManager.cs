@@ -276,6 +276,8 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             return (true, false, storedDirection);
         }
 
+        var storedType = lookupRecord["storedType"].As<string>();
+        var storedCanonicalType = lookupRecord["storedCanonicalType"].As<string>();
         string? storedMetadata;
         try
         {
@@ -284,31 +286,45 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         catch (Exception ex) when (ex is InvalidCastException or FormatException)
         {
             throw RelationshipIdentityChanged(
-                lookupRecord["storedType"].As<string>(),
+                storedType,
                 storedMetadata: "<invalid>",
+                storedCanonicalType,
                 entity.Label,
                 incomingMetadata);
         }
 
-        var storedType = lookupRecord["storedType"].As<string>();
         if (!string.Equals(storedType, entity.Label, StringComparison.Ordinal))
         {
-            throw RelationshipIdentityChanged(storedType, storedMetadata, entity.Label, incomingMetadata);
+            throw RelationshipIdentityChanged(
+                storedType,
+                storedMetadata,
+                storedCanonicalType,
+                entity.Label,
+                incomingMetadata);
         }
 
         var allowLegacyClrLabel = !entity.ActualType.IsConstructedGenericType;
-        var storedCanonicalType = lookupRecord["storedCanonicalType"].As<string>();
         if (storedMetadata is null)
         {
             if (!allowLegacyClrLabel ||
                 !string.Equals(storedCanonicalType, incomingCanonicalType, StringComparison.Ordinal))
             {
-                throw RelationshipIdentityChanged(storedType, storedMetadata, entity.Label, incomingMetadata);
+                throw RelationshipIdentityChanged(
+                    storedType,
+                    storedMetadata,
+                    storedCanonicalType,
+                    entity.Label,
+                    incomingMetadata);
             }
         }
         else if (!string.Equals(storedMetadata, incomingMetadata, StringComparison.Ordinal))
         {
-            throw RelationshipIdentityChanged(storedType, storedMetadata, entity.Label, incomingMetadata);
+            throw RelationshipIdentityChanged(
+                storedType,
+                storedMetadata,
+                storedCanonicalType,
+                entity.Label,
+                incomingMetadata);
         }
 
         var parameters = new Dictionary<string, object?>
@@ -346,10 +362,12 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
     private static GraphException RelationshipIdentityChanged(
         string? storedType,
         string? storedMetadata,
+        string? storedCanonicalType,
         string incomingType,
         string incomingMetadata) => new(
             $"{RelationshipIdentityChangeMessage} " +
-            $"Stored logical type is '{storedType ?? "<null>"}' and CLR metadata is '{storedMetadata ?? "<missing>"}'; " +
+            $"Stored logical type is '{storedType ?? "<null>"}', CLR metadata is '{storedMetadata ?? "<missing>"}', " +
+            $"and legacy CLR label is '{storedCanonicalType ?? "<missing>"}'; " +
             $"incoming logical type is '{incomingType}' and CLR metadata is '{incomingMetadata}'.");
 
     private static RelationshipDirection ToRelationshipDirection(object? value)

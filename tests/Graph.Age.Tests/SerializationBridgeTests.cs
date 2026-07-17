@@ -18,4 +18,18 @@ public sealed class SerializationBridgeTests
         Assert.Contains(", Culture=neutral, PublicKeyToken=", identity, StringComparison.Ordinal);
         Assert.Equal(type, Type.GetType(identity));
     }
+
+    [Fact]
+    public void MapMetadata_UsesVersionIndependentResolvableIdentity()
+    {
+        var type = typeof(Dictionary<string, List<int>>);
+
+        var metadata = SerializationBridge.CreateMetadata(type);
+        var values = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object>>(
+            metadata[SerializationBridge.MetadataPropertyName]);
+        var identity = Assert.IsType<string>(values["type"]);
+
+        Assert.DoesNotContain(", Version=", identity, StringComparison.Ordinal);
+        Assert.Equal(type, Type.GetType(identity));
+    }
 }
