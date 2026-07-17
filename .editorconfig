@@ -88,5 +88,11 @@ dotnet_diagnostic.CA1707.severity = none
 [src/Graph.CompatibilityTests/**.cs]
 dotnet_diagnostic.CA1707.severity = none
 
+# This test deliberately swaps process culture (restored in a finally) to prove the default-value
+# formatter stays culture-invariant. CurrentCulture is thread-local, so the swap does not leak across
+# xUnit's parallel test threads; RS1035's ban on it is precisely the behavior under test.
+[tests/Graph.Serialization.CodeGen.Tests/DefaultValueFormatterTests.cs]
+dotnet_diagnostic.RS1035.severity = none
+
 [*.{csproj,props,targets,xml,yml,yaml,json,md}]
 indent_size = 2

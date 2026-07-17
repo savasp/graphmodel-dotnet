@@ -36,7 +36,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         DiagnosticDescriptors.MisappliedNodeOrRelationshipAttribute,
         DiagnosticDescriptors.ConflictingNodeAndRelationshipAttributes,
         DiagnosticDescriptors.EntityTypeMustBeReferenceType,
-        DiagnosticDescriptors.IneffectiveComplexPropertyAttribute);
+        DiagnosticDescriptors.IneffectiveComplexPropertyAttribute,
+        DiagnosticDescriptors.OpenGenericEntityUnsupported);
 
     /// <summary>
     /// Initializes the analyzer and registers the symbol action for named types.
@@ -87,6 +88,22 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         if (!implementsINode && !implementsIRelationship)
             return;
 
+        // CG016: Reject open generic entity roots. A concrete (non-abstract) entity with unbound type
+        // parameters - or one nested in an open generic - makes the source generator emit a
+        // non-generic serializer that references those unbound parameters, i.e. invalid C#. Report
+        // once at the declaration and skip the remaining entity rules: the type is unsupported as
+        // declared, and its other diagnostics belong on the non-generic concrete subtype the fix
+        // introduces. Abstract generic bases are intentionally exempt - they remain supported when
+        // inherited only by a closed, non-generic concrete entity.
+        if (!namedTypeSymbol.IsAbstract && IsOpenGenericEntity(namedTypeSymbol))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                DiagnosticDescriptors.OpenGenericEntityUnsupported,
+                namedTypeSymbol.Locations.FirstOrDefault(),
+                namedTypeSymbol.Name));
+            return;
+        }
+
         // CG011: Check if type directly implements INode/IRelationship without inheriting from base class
         AnalyzeBaseClassInheritance(context, namedTypeSymbol, implementsINode, implementsIRelationship);
 
@@ -131,6 +148,25 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         // CG010: Check circular references
         AnalyzeCircularReferences(context, namedTypeSymbol, helper);
+    }
+
+    /// <summary>
+    /// True when <paramref name="type"/> - or any of its containing types - still has an unbound
+    /// type parameter: an open generic entity declaration (<c>GenericNode&lt;T&gt;</c>) or a type
+    /// nested in one. A closed construction such as <c>GenericNode&lt;string&gt;</c> has no free
+    /// type parameters and returns false, so a non-generic entity derived from it is not flagged.
+    /// </summary>
+    private static bool IsOpenGenericEntity(INamedTypeSymbol type)
+    {
+        for (var current = type; current is not null; current = current.ContainingType)
+        {
+            if (current.TypeArguments.Any(argument => argument.TypeKind == TypeKind.TypeParameter))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void AnalyzeBaseClassInheritance(SymbolAnalysisContext context, INamedTypeSymbol namedType, bool implementsINode, bool implementsIRelationship)
