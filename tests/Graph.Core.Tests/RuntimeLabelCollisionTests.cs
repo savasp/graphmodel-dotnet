@@ -778,6 +778,104 @@ public class RuntimeLabelCollisionTests : IDisposable
     }
 
     [Fact]
+    public void Labels_GetMostDerivedType_ColdCacheSharedName_ResolvesWithinTargetKind()
+    {
+        Labels.ClearCachesForTesting();
+
+        Assert.Equal(
+            typeof(LabelsSharedNameNode),
+            Labels.GetMostDerivedType(typeof(Node), "Labels_RLC_SharedName"));
+        Assert.Equal(
+            typeof(LabelsSharedNameRelationship),
+            Labels.GetMostDerivedType(typeof(Relationship), "Labels_RLC_SharedName"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Labels_SharedName_WarmOrderDoesNotChangeKindAwareOrLegacyResolution(bool relationshipFirst)
+    {
+        Labels.ClearCachesForTesting();
+
+        if (relationshipFirst)
+        {
+            Labels.GetLabelFromType(typeof(LabelsSharedNameRelationship));
+            Labels.GetLabelFromType(typeof(LabelsSharedNameNode));
+        }
+        else
+        {
+            Labels.GetLabelFromType(typeof(LabelsSharedNameNode));
+            Labels.GetLabelFromType(typeof(LabelsSharedNameRelationship));
+        }
+
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.Equal(typeof(LabelsSharedNameNode), Labels.GetTypeFromLabel("Labels_RLC_SharedName"));
+            Assert.Equal(
+                typeof(LabelsSharedNameNode),
+                Labels.GetMostDerivedType(typeof(Node), "Labels_RLC_SharedName"));
+            Assert.Equal(
+                typeof(LabelsSharedNameRelationship),
+                Labels.GetMostDerivedType(typeof(Relationship), "Labels_RLC_SharedName"));
+        }
+    }
+
+    [Fact]
+    public void Labels_SharedName_ConcurrentWarmingDoesNotCrossEntityKinds()
+    {
+        Labels.ClearCachesForTesting();
+
+        Parallel.For(0, 128, iteration =>
+        {
+            if (iteration % 2 == 0)
+            {
+                Labels.GetLabelFromType(typeof(LabelsSharedNameNode));
+                Labels.GetLabelFromType(typeof(LabelsSharedNameRelationship));
+            }
+            else
+            {
+                Labels.GetLabelFromType(typeof(LabelsSharedNameRelationship));
+                Labels.GetLabelFromType(typeof(LabelsSharedNameNode));
+            }
+
+            Assert.Equal(typeof(LabelsSharedNameNode), Labels.GetTypeFromLabel("Labels_RLC_SharedName"));
+            Assert.Equal(
+                typeof(LabelsSharedNameNode),
+                Labels.GetMostDerivedType(typeof(Node), "Labels_RLC_SharedName"));
+            Assert.Equal(
+                typeof(LabelsSharedNameRelationship),
+                Labels.GetMostDerivedType(typeof(Relationship), "Labels_RLC_SharedName"));
+        });
+    }
+
+    [Fact]
+    public void Labels_SharedName_CacheResetPreservesBothEntityKinds()
+    {
+        for (var iteration = 0; iteration < 2; iteration++)
+        {
+            Labels.ClearCachesForTesting();
+
+            if (iteration == 0)
+            {
+                Labels.GetLabelFromType(typeof(LabelsSharedNameNode));
+                Labels.GetLabelFromType(typeof(LabelsSharedNameRelationship));
+            }
+            else
+            {
+                Labels.GetLabelFromType(typeof(LabelsSharedNameRelationship));
+                Labels.GetLabelFromType(typeof(LabelsSharedNameNode));
+            }
+
+            Assert.Equal(
+                typeof(LabelsSharedNameNode),
+                Labels.GetMostDerivedType(typeof(Node), "Labels_RLC_SharedName"));
+            Assert.Equal(
+                typeof(LabelsSharedNameRelationship),
+                Labels.GetMostDerivedType(typeof(Relationship), "Labels_RLC_SharedName"));
+        }
+    }
+
+    [Fact]
     public void Labels_GetTypeFromLabel_ColdCacheMatchesLabelCaseInsensitively()
     {
         // Labels are unique case-insensitively, and the cache is OrdinalIgnoreCase; the cold-cache scan
@@ -1084,6 +1182,34 @@ public class RuntimeLabelCollisionTests : IDisposable
                 var exception = Assert.Throws<GraphException>(() => Labels.GetLabelFromType(types[1]));
 
                 Assert.Contains("Labels_RLC_ExplicitA", exception.Message, StringComparison.Ordinal);
+                Assert.Contains(types[0].FullName!, exception.Message, StringComparison.Ordinal);
+                Assert.Contains(types[1].FullName!, exception.Message, StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
+    public void Labels_GetLabelFromType_DistinctNodeTypesSameLabelDifferentCasing_Throws()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            [Node("Labels_RLC_CaseCollision")]
+            public sealed record LabelsCaseCollisionNodeA : Node;
+
+            [Node("labels_rlc_casecollision")]
+            public sealed record LabelsCaseCollisionNodeB : Node;
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["LabelsCaseCollisionNodeA", "LabelsCaseCollisionNodeB"],
+            types =>
+            {
+                Labels.GetLabelFromType(types[0]);
+
+                var exception = Assert.Throws<GraphException>(() => Labels.GetLabelFromType(types[1]));
+
+                Assert.Contains("Labels_RLC_CaseCollision", exception.Message, StringComparison.OrdinalIgnoreCase);
                 Assert.Contains(types[0].FullName!, exception.Message, StringComparison.Ordinal);
                 Assert.Contains(types[1].FullName!, exception.Message, StringComparison.Ordinal);
             });

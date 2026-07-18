@@ -12,9 +12,10 @@ using System.Reflection;
 /// </summary>
 public static class Labels
 {
-    // Case-insensitive: a type maps to exactly one label and no two loaded types may share one
-    // (case-insensitive), matching the resolver's case-insensitive label comparison. See SchemaRegistry.
-    private static readonly ConcurrentDictionary<string, Type> LabelToTypeCache = new(StringComparer.OrdinalIgnoreCase);
+    // Node labels and relationship types are separate namespaces in the graph model. Keep their reverse
+    // caches separate so warming one kind can never replace the other kind's entry for the same text.
+    private static readonly ConcurrentDictionary<string, Type> NodeLabelToTypeCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, Type> RelationshipLabelToTypeCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<Type, string> TypeToLabelCache = new();
     private static readonly ConcurrentDictionary<PropertyInfo, string> PropertyToLabelCache = new();
     private static readonly ConcurrentDictionary<(Type, string), PropertyInfo> LabelToPropertyCache = new();
@@ -57,17 +58,39 @@ public static class Labels
         // generic definition, see NormalizeForGenericIdentity - is always a silent cache hit. A node label
         // colliding with a relationship type of the same name is explicitly NOT a collision (they are
         // different namespaces in the graph model), so the check only fires within the same kind.
-        if (LabelToTypeCache.TryGetValue(label, out var existingType) &&
-            !AreSameTypeIdentity(existingType, type) &&
-            AreSameLabelKind(existingType, type))
+        CacheReverseLookup(type, label);
+        TypeToLabelCache[type] = label;
+        return label;
+    }
+
+    private static void CacheReverseLookup(Type type, string label)
+    {
+        var cache = GetReverseLookupCache(type);
+        if (cache is null)
+        {
+            return;
+        }
+
+        // The value overload atomically returns either this type or the winner of a concurrent add.
+        // That makes same-kind collisions deterministic without running user code under a cache lock.
+        var existingType = cache.GetOrAdd(label, type);
+        if (!AreSameTypeIdentity(existingType, type))
         {
             throw new GraphException(
                 $"Label '{label}' is used by both '{existingType.FullName}' and '{type.FullName}'.");
         }
+    }
 
-        TypeToLabelCache[type] = label;
-        LabelToTypeCache[label] = type;
-        return label;
+    private static ConcurrentDictionary<string, Type>? GetReverseLookupCache(Type type)
+    {
+        if (typeof(INode).IsAssignableFrom(type))
+        {
+            return NodeLabelToTypeCache;
+        }
+
+        return typeof(IRelationship).IsAssignableFrom(type)
+            ? RelationshipLabelToTypeCache
+            : null;
     }
 
     /// <summary>
@@ -191,44 +214,72 @@ public static class Labels
     /// Finds the .NET type for a given label.
     /// </summary>
     /// <param name="label">The label</param>
-    /// <returns>The .NET associated with that label.</returns>
+    /// <returns>The .NET type associated with that label.</returns>
     /// <exception cref="GraphException">If no .NET type was found for the given label.</exception>
     /// <remarks>
-    /// A type maps to exactly one label, and <see cref="SchemaRegistry"/> forbids two loaded types from
-    /// sharing a label (case-insensitive), so this reverse lookup is deterministic; matching is
-    /// case-insensitive. This is a Model-layer utility for recovering a type from a stored label - the
-    /// portability path when a node's stored metadata type is not loadable (a different app, or the type was
-    /// renamed/moved). A provider may use it or implement its own equivalent resolution; the Neo4j provider
-    /// does the latter.
+    /// Node labels and relationship types occupy separate namespaces and may share the same text. Because
+    /// this legacy overload has no entity-kind parameter, it deterministically prefers a node when both a
+    /// node and relationship match, regardless of cache warm order. Matching is case-insensitive, while
+    /// multiple distinct matches within either entity kind are rejected. This is a Model-layer utility for
+    /// recovering a type from a stored label - the portability path when a node's stored metadata type is
+    /// not loadable (a different app, or the type was renamed/moved). A provider may use it or implement its
+    /// own equivalent resolution; the Neo4j provider does the latter.
     /// </remarks>
     public static Type GetTypeFromLabel(string label)
     {
         ArgumentNullException.ThrowIfNull(label);
 
-        LabelToTypeCache.TryGetValue(label, out var type);
+        // Always probe the node namespace first rather than returning a warmed relationship entry. That
+        // preserves the documented legacy rule independently of prior calls and concurrent cache warming.
+        return ResolveTypeFromLabel(label, GraphEntityKind.Node, targetType: null)
+            ?? ResolveTypeFromLabel(label, GraphEntityKind.Relationship, targetType: null)
+            ?? throw new GraphException($"No type found for label '{label}'.");
+    }
 
-        if (type is not null)
+    private static Type? ResolveTypeFromLabel(string label, GraphEntityKind kind, Type? targetType)
+    {
+        var cache = GetReverseLookupCache(kind);
+        if (cache.TryGetValue(label, out var cachedType) &&
+            (targetType is null || targetType.IsAssignableFrom(cachedType)))
         {
-            return type;
+            return cachedType;
         }
 
+        // Filter to the requested namespace and assignability boundary before selecting or caching. A
+        // candidate from the opposite graph namespace must never influence this lookup.
         var candidates = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(GetLoadableTypes)
             .Where(IsGraphEntityType)
-            // Case-insensitive to match the cache (LabelToTypeCache) and the process-wide uniqueness rule,
-            // so a cold-cache lookup resolves the same type a warm one would regardless of label casing.
+            .Where(candidate => IsGraphEntityKind(candidate, kind))
+            .Where(candidate => targetType is null || targetType.IsAssignableFrom(candidate))
+            // Case-insensitive to match the reverse caches and the process-wide uniqueness rule, so a
+            // cold-cache lookup resolves the same type a warm one would regardless of label casing.
             .Where(candidate => string.Equals(ResolveLabelFromType(candidate), label, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         if (candidates.Count == 0)
         {
-            throw new GraphException($"No type found for label '{label}'.");
+            return null;
         }
 
-        type = SelectTypeFromReverseLookupCandidates(label, candidates);
-        LabelToTypeCache[label] = type;
+        var type = SelectTypeFromReverseLookupCandidates(label, candidates);
+        CacheReverseLookup(type, label);
         TypeToLabelCache[type] = label;
         return type;
+    }
+
+    private static ConcurrentDictionary<string, Type> GetReverseLookupCache(GraphEntityKind kind)
+        => kind == GraphEntityKind.Node ? NodeLabelToTypeCache : RelationshipLabelToTypeCache;
+
+    private static bool IsGraphEntityKind(Type type, GraphEntityKind kind)
+        => kind == GraphEntityKind.Node
+            ? typeof(INode).IsAssignableFrom(type)
+            : typeof(IRelationship).IsAssignableFrom(type);
+
+    private enum GraphEntityKind
+    {
+        Node,
+        Relationship,
     }
 
     /// <summary>
@@ -285,10 +336,7 @@ public static class Labels
                 string.Join(", ", collidingCandidates.Select(FormatTypeName)) + ".");
         }
 
-        // A node and relationship may legitimately share the same graph label/type string. With no kind
-        // parameter on this API, prefer the node candidate to preserve the historical node-first contract.
-        return distinctCandidates.FirstOrDefault(static candidate => typeof(INode).IsAssignableFrom(candidate))
-            ?? distinctCandidates[0];
+        return distinctCandidates[0];
     }
 
     private static PropertyInfo SelectPropertyFromReverseLookupCandidates(
@@ -358,7 +406,8 @@ public static class Labels
 
     internal static void ClearCachesForTesting()
     {
-        LabelToTypeCache.Clear();
+        NodeLabelToTypeCache.Clear();
+        RelationshipLabelToTypeCache.Clear();
         TypeToLabelCache.Clear();
         PropertyToLabelCache.Clear();
         LabelToPropertyCache.Clear();
@@ -391,29 +440,41 @@ public static class Labels
             return cachedType;
         }
 
-        // First try to get the type directly from the label (this uses caching internally)
-        Type? typeFromLabel = null;
-        try
+        var kind = GetGraphEntityKind(targetType);
+        Type? resolvedType;
+        if (kind is not null)
         {
-            typeFromLabel = GetTypeFromLabel(label);
+            resolvedType = ResolveTypeFromLabel(label, kind.Value, targetType);
         }
-        catch (GraphException)
+        else
         {
-            // Label not found, return null
-            MostDerivedTypeCache[cacheKey] = null;
-            return null;
+            // Preserve the legacy behavior for non-entity base types such as object while graph entity
+            // materialization takes the kind-aware path above.
+            try
+            {
+                var typeFromLabel = GetTypeFromLabel(label);
+                resolvedType = targetType.IsAssignableFrom(typeFromLabel) ? typeFromLabel : null;
+            }
+            catch (GraphException)
+            {
+                resolvedType = null;
+            }
         }
 
-        // Check if this type is assignable to our target type
-        if (typeFromLabel != null && targetType.IsAssignableFrom(typeFromLabel))
+        MostDerivedTypeCache[cacheKey] = resolvedType;
+        return resolvedType;
+    }
+
+    private static GraphEntityKind? GetGraphEntityKind(Type type)
+    {
+        if (typeof(INode).IsAssignableFrom(type))
         {
-            MostDerivedTypeCache[cacheKey] = typeFromLabel;
-            return typeFromLabel;
+            return GraphEntityKind.Node;
         }
 
-        // Not assignable, cache null result
-        MostDerivedTypeCache[cacheKey] = null;
-        return null;
+        return typeof(IRelationship).IsAssignableFrom(type)
+            ? GraphEntityKind.Relationship
+            : null;
     }
 
     /// <summary>
