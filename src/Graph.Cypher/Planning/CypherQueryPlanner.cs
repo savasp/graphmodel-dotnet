@@ -2510,7 +2510,9 @@ public sealed class CypherQueryPlanner
 
     private static bool HasComplexProperties(Type? type)
     {
-        if (type is null || type == typeof(DynamicNode))
+        // Interfaces are conservatively assumed complex: they carry no label of their own, so the
+        // per-label, kind-aware resolution below cannot bound them.
+        if (type is null || type.IsInterface || type == typeof(DynamicNode))
             return true;
 
         return ComplexPropertyCache.GetOrAdd(type, static queried =>
@@ -2518,7 +2520,11 @@ public sealed class CypherQueryPlanner
             {
                 try
                 {
-                    return GraphDataModel.GetComplexProperties(Labels.GetTypeFromLabel(label)).Any();
+                    // Kind-aware resolution: a node label and a relationship type may share the same
+                    // text, and the ambiguous GetTypeFromLabel would resolve the node even when the
+                    // queried type is a relationship.
+                    var resolved = Labels.GetMostDerivedType(queried, label);
+                    return resolved is null || GraphDataModel.GetComplexProperties(resolved).Any();
                 }
                 catch (GraphException)
                 {
