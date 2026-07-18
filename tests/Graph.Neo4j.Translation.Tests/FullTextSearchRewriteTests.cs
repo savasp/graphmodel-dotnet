@@ -122,7 +122,7 @@ public class FullTextSearchRewriteTests
         return Assert.Single(stringParameters);
     }
 
-    private static IReadOnlyDictionary<string, string> TranslateStringParameters<T>(IQueryable<T> query)
+    private static Dictionary<string, string> TranslateStringParameters<T>(IQueryable<T> query)
         where T : class, INode
     {
         var visitor = new CypherQueryVisitor(typeof(T), null);
