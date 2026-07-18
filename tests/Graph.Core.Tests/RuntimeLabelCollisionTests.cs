@@ -956,6 +956,37 @@ public class RuntimeLabelCollisionTests : IDisposable
     }
 
     [Fact]
+    public void ToDynamicNode_PropertyLabelCollision_Throws()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            public sealed record DynamicPropertyCollisionNode : Node
+            {
+                [Property(Label = "dynamic_dup_prop")]
+                public string First { get; init; } = string.Empty;
+
+                [Property(Label = "dynamic_dup_prop")]
+                public string Second { get; init; } = string.Empty;
+            }
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["DynamicPropertyCollisionNode"],
+            types =>
+            {
+                var node = Assert.IsAssignableFrom<INode>(Activator.CreateInstance(types[0]));
+
+                var exception = Assert.Throws<GraphException>(() => node.ToDynamic());
+
+                Assert.Contains("dynamic_dup_prop", exception.Message, StringComparison.Ordinal);
+                Assert.Contains("First", exception.Message, StringComparison.Ordinal);
+                Assert.Contains("Second", exception.Message, StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
     public void Labels_GetLabelFromProperty_SamePropertyResolvedTwice_NoThrow()
     {
         var property = typeof(LabelsRepeatedResolutionNode).GetProperty(nameof(LabelsRepeatedResolutionNode.Value))!;
