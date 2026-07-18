@@ -987,6 +987,68 @@ public class RuntimeLabelCollisionTests : IDisposable
     }
 
     [Fact]
+    public void ToDynamicNode_InheritedPropertyLabelCollision_Throws()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            public record DynamicPropertyCollisionBaseNode : Node
+            {
+                [Property(Label = "dynamic_inherited_dup_prop")]
+                public string BaseValue { get; init; } = string.Empty;
+            }
+
+            public sealed record DynamicPropertyCollisionDerivedNode : DynamicPropertyCollisionBaseNode
+            {
+                [Property(Label = "dynamic_inherited_dup_prop")]
+                public string DerivedValue { get; init; } = string.Empty;
+            }
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["DynamicPropertyCollisionDerivedNode"],
+            types =>
+            {
+                var node = Assert.IsAssignableFrom<INode>(Activator.CreateInstance(types[0]));
+
+                var exception = Assert.Throws<GraphException>(() => node.ToDynamic());
+
+                Assert.Contains("dynamic_inherited_dup_prop", exception.Message, StringComparison.Ordinal);
+                Assert.Contains("BaseValue", exception.Message, StringComparison.Ordinal);
+                Assert.Contains("DerivedValue", exception.Message, StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
+    public void ToDynamicNode_PropertyLabelCollidingWithBaseMetadata_Throws()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            public sealed record DynamicBaseMetadataCollisionNode : Node
+            {
+                [Property(Label = "Id")]
+                public string ExternalId { get; init; } = string.Empty;
+            }
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["DynamicBaseMetadataCollisionNode"],
+            types =>
+            {
+                var node = Assert.IsAssignableFrom<INode>(Activator.CreateInstance(types[0]));
+
+                var exception = Assert.Throws<GraphException>(() => node.ToDynamic());
+
+                Assert.Contains("Id", exception.Message, StringComparison.Ordinal);
+                Assert.Contains("ExternalId", exception.Message, StringComparison.Ordinal);
+                Assert.Contains("Cvoya.Graph.Node.Id", exception.Message, StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
     public void Labels_GetLabelFromProperty_SamePropertyResolvedTwice_NoThrow()
     {
         var property = typeof(LabelsRepeatedResolutionNode).GetProperty(nameof(LabelsRepeatedResolutionNode.Value))!;
