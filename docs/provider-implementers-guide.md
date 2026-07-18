@@ -92,7 +92,7 @@ When dynamic or serialized complex-property types need database-safe labels, the
 
 Simple properties are properties whose types pass `GraphDataModel.IsSimple` or `IsCollectionOfSimple`: primitives, enums, string, `Point`, temporal types, `decimal`, `Guid`, byte arrays, `Uri`, and collections of simple values. Providers should serialize these directly to backend-native property values where possible.
 
-During typed materialization, a null collection element is valid only when the consumer property's element schema is nullable. A null targeting a non-nullable value or reference element fails with `GraphException`; the diagnostic identifies the physical property, target element type, and zero-based element index. Providers must preserve null elements and their positions when the declared element schema permits them.
+During typed materialization, a null collection element is valid only when the consumer property's element schema is nullable. A null targeting a non-nullable value or reference element fails with `GraphException`; the diagnostic identifies the physical property, target element type, and zero-based element index. Providers must preserve null elements and their positions when the declared element schema permits them. Reference-element schemas that carry no nullable reference metadata (nullable-oblivious consumer code) are treated as non-nullable.
 
 `[Property]` controls storage names, key/index/full-text inclusion, and required/ignored semantics through `SchemaRegistry`. Relationship entities may only have simple properties; the Neo4j provider rejects complex properties on relationships.
 

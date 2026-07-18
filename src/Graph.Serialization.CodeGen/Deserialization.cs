@@ -5,6 +5,7 @@ namespace Cvoya.Graph.Serialization.CodeGen;
 
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 
 internal static class Deserialization
@@ -310,8 +311,9 @@ internal static class Deserialization
 
             if (!elementType.IsNullable)
             {
+                var escapedLabel = EscapeForGeneratedInterpolatedString(propertyLabel);
                 sb.AppendLine($"{indentStr}            .Select((simpleValue, index) => simpleValue.Object is null");
-                sb.AppendLine($"{indentStr}                ? throw new GraphException($\"Collection property '{propertyLabel}' contains a null element at index {{index}}, but its target element type '{{typeof({elementType.TypeOfName})}}' is non-nullable.\")");
+                sb.AppendLine($"{indentStr}                ? throw new GraphException($\"Collection property '{escapedLabel}' contains a null element at index {{index}}, but its target element type '{{typeof({elementType.TypeOfName})}}' is non-nullable.\")");
                 sb.AppendLine($"{indentStr}                : {GetSimpleValueConversionExpression(elementType, "simpleValue.Object")})");
             }
             else
@@ -424,6 +426,17 @@ internal static class Deserialization
             ? $"throw new InvalidOperationException(\"Required collection property '{propertyLabel}' is missing or null\")"
             : $"default({collectionType.DisplayName})";
     }
+
+    /// <summary>
+    /// Escapes a consumer-provided string (e.g. a <c>[Property(Label = ...)]</c> value, which may
+    /// legally contain quotes, backslashes, or braces) for embedding inside a generated
+    /// interpolated string literal: string-literal escapes first, then doubled braces so the text
+    /// cannot terminate the literal or open an interpolation hole.
+    /// </summary>
+    private static string EscapeForGeneratedInterpolatedString(string value) =>
+        SymbolDisplay.FormatLiteral(value, quote: false)
+            .Replace("{", "{{")
+            .Replace("}", "}}");
 
     private static string GetTypeDefault(TypeReferenceModel type, out bool shouldThrow)
     {

@@ -232,6 +232,13 @@ internal static class GraphValueConverter
             return;
         }
 
+        // A CLR collection of a non-nullable value type cannot contain null, so scanning it
+        // (boxing every element — e.g. each byte of a byte[] blob property) proves nothing.
+        if (elementType.IsValueType && Nullable.GetUnderlyingType(elementType) is null)
+        {
+            return;
+        }
+
         var index = 0;
         foreach (var item in source)
         {

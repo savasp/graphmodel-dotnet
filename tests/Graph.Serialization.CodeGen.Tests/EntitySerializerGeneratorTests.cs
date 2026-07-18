@@ -185,7 +185,7 @@ public class EntitySerializerGeneratorTests
     }
 
     [Fact]
-    public void NodeWithNonNullableSimpleCollections_RejectsNullElementsWithoutChangingOrder()
+    public void NodeWithNonNullableSimpleCollections_RejectsNullElementsWithIndexedDiagnostics()
     {
         const string source = """
             using System.Collections.Generic;
@@ -252,6 +252,110 @@ public class EntitySerializerGeneratorTests
                 exception.Message);
             Assert.IsNotType<NullReferenceException>(exception.InnerException);
         }
+    }
+
+    [Fact]
+    public void NodeWithBracedPropertyLabel_EscapesLabelInNullElementDiagnostic()
+    {
+        // Braces are legal in stored labels but would open interpolation holes in the generated
+        // null-element diagnostic; quote/backslash labels are covered by the systemic sweep (#422).
+        const string source = """
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            namespace BracedLabels;
+
+            [Node("Tracked")]
+            public record TrackedNode : Node
+            {
+                [Property(Label = "stored{names}")]
+                public List<string> Names { get; set; } = new();
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var nodeType = assembly.GetType("BracedLabels.TrackedNode", throwOnError: true)!;
+        var serializerType = assembly.GetType(
+            "BracedLabels.Generated.TrackedNodeSerializer",
+            throwOnError: true)!;
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+
+        var entity = new EntityInfo(
+            nodeType,
+            "Tracked",
+            ["Tracked"],
+            new Dictionary<string, Property>
+            {
+                ["stored{names}"] = new Property(
+                    nodeType.GetProperty("Names")!,
+                    "stored{names}",
+                    Value: new SimpleCollection(
+                        new[]
+                        {
+                            new SimpleValue("first", typeof(string)),
+                            new SimpleValue(null!, typeof(string)),
+                        },
+                        typeof(string))),
+            },
+            new Dictionary<string, Property>());
+
+        var exception = Assert.Throws<GraphException>(() => serializer.Deserialize(entity));
+
+        Assert.Equal(
+            "Collection property 'stored{names}' contains a null element at index 1, " +
+            "but its target element type 'System.String' is non-nullable.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void NodeWithNullableObliviousSimpleCollection_TreatsElementsAsNonNullable()
+    {
+        const string source = """
+            #nullable disable
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            namespace ObliviousCollections;
+
+            [Node("Tracked")]
+            public record TrackedNode : Node
+            {
+                public List<string> Names { get; set; } = new();
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var nodeType = assembly.GetType("ObliviousCollections.TrackedNode", throwOnError: true)!;
+        var serializerType = assembly.GetType(
+            "ObliviousCollections.Generated.TrackedNodeSerializer",
+            throwOnError: true)!;
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+
+        Assert.False(serializer.GetSchema().SimpleProperties["Names"].IsElementNullable);
+
+        var entity = new EntityInfo(
+            nodeType,
+            "Tracked",
+            ["Tracked"],
+            new Dictionary<string, Property>
+            {
+                ["Names"] = new Property(
+                    nodeType.GetProperty("Names")!,
+                    "Names",
+                    Value: new SimpleCollection(
+                        new[]
+                        {
+                            new SimpleValue("first", typeof(string)),
+                            new SimpleValue(null!, typeof(string)),
+                        },
+                        typeof(string))),
+            },
+            new Dictionary<string, Property>());
+
+        var exception = Assert.Throws<GraphException>(() => serializer.Deserialize(entity));
+
+        Assert.Equal(
+            "Collection property 'Names' contains a null element at index 1, " +
+            "but its target element type 'System.String' is non-nullable.",
+            exception.Message);
     }
 
     /// <summary>

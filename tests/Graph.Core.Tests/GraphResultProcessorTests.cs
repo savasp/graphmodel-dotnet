@@ -256,6 +256,20 @@ public class GraphResultProcessorTests
     }
 
     [Fact]
+    public void PropertySchema_NullableObliviousReferenceElements_DefaultToNonNullable()
+    {
+        var propertyInfo = typeof(ObliviousCollectionNode).GetProperty(nameof(ObliviousCollectionNode.Names))!;
+
+        var schema = new PropertySchema(
+            propertyInfo,
+            propertyInfo.Name,
+            PropertyType.SimpleCollection,
+            typeof(string));
+
+        Assert.False(schema.IsElementNullable);
+    }
+
+    [Fact]
     public async Task TypedSimpleCollection_WithNonEnumerableWireValue_ThrowsDiagnosticException()
     {
         var node = GraphValue.Node(
@@ -477,6 +491,13 @@ public class GraphResultProcessorTests
 
         public List<object?> NullableObjects { get; init; } = [];
     }
+
+#nullable disable
+    private sealed record ObliviousCollectionNode : Node
+    {
+        public List<string> Names { get; init; } = [];
+    }
+#nullable restore
 
     private enum CollectionKind
     {
