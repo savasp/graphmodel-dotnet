@@ -19,5 +19,13 @@ public enum StoreIsolation
     /// Provision a brand-new, empty store. Needed where a data wipe alone does not reset
     /// auxiliary state (for example, full-text index state).
     /// </summary>
-    FreshStore
+    FreshStore,
+
+    /// <summary>
+    /// Provision an additional, empty store that coexists with every store already handed to the
+    /// running test: the result must be a distinct store instance, and previously returned stores
+    /// must stay untouched - not reset, replaced, or disposed. Cross-store misuse contracts use
+    /// this to hold two live stores of the same provider at once.
+    /// </summary>
+    IndependentStore
 }

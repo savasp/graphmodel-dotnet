@@ -47,6 +47,11 @@ public class TestInfrastructureFixture : IAsyncLifetime
     private string? cachedDatabaseName;
     private Neo4jGraphStore? cachedStore;
 
+    // Additional stores handed out for StoreIsolation.IndependentStore. They must coexist with the
+    // cached store rather than replace it, so they are tracked separately and released at fixture
+    // disposal.
+    private readonly List<(string DatabaseName, Neo4jGraphStore Store)> independentStores = [];
+
     static TestInfrastructureFixture()
     {
         testInfrastructure = HasConfiguredNeo4j()
@@ -93,6 +98,17 @@ public class TestInfrastructureFixture : IAsyncLifetime
             cachedDatabaseName = null;
         }
 
+        foreach (var (databaseName, store) in independentStores)
+        {
+            await store.DisposeAsync();
+            if (databasePool != null)
+            {
+                await databasePool.ReleaseDatabaseAsync(databaseName);
+            }
+        }
+
+        independentStores.Clear();
+
         GC.SuppressFinalize(this);
     }
 
@@ -131,6 +147,34 @@ public class TestInfrastructureFixture : IAsyncLifetime
         }
 
         return cachedStore!.Graph;
+    }
+
+    /// <summary>
+    /// Acquires an additional graph over its own database and its own store instance, leaving every
+    /// previously handed-out graph untouched. Backs
+    /// <see cref="CompatibilityTests.StoreIsolation.IndependentStore"/>, which cross-store misuse
+    /// tests use to hold two live Neo4j stores at once.
+    /// </summary>
+    public async Task<IGraph> GetIndependentGraph()
+    {
+        await EnsureDatabasePoolAsync();
+
+        if (databasePool == null)
+        {
+            throw new InvalidOperationException("Database pool not initialized");
+        }
+
+        var databaseName = await databasePool.RequestDatabaseAsync();
+        var store = new Neo4jGraphStore(
+            testInfrastructure!.ConnectionString,
+            testInfrastructure.Username,
+            testInfrastructure.Password,
+            databaseName,
+            null,
+            loggerFactory);
+
+        independentStores.Add((databaseName, store));
+        return store.Graph;
     }
 
     private async Task EnsureDatabasePoolAsync()

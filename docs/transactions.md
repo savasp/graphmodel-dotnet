@@ -283,6 +283,27 @@ await using var transaction1 = await graph.GetTransactionAsync();
 await using var transaction2 = await graph.GetTransactionAsync();
 ```
 
+### Transactions Belong to the Graph That Created Them
+
+A transaction is owned by the graph it came from, and passing it to a different graph throws a
+`GraphException` — even when both graphs use the same provider and point at the same database:
+
+```csharp
+await using var storeA = new Neo4jGraphStore(uri, user, password, "shared-db");
+await using var storeB = new Neo4jGraphStore(uri, user, password, "shared-db");
+
+await using var transaction = await storeA.Graph.GetTransactionAsync();
+
+// Throws: the transaction belongs to storeA's graph, not storeB's.
+await storeB.Graph.CreateNodeAsync(person, transaction);
+```
+
+Ownership is decided by graph identity, not by connection settings, so two stores configured
+identically still do not share transactions. The rejection happens before any work is attempted:
+neither store is modified, and the transaction stays active and usable with the graph that created
+it. Applications holding several graph instances — one per tenant, per database, or per test —
+therefore get an error at the call site instead of silently reading or writing the wrong store.
+
 ## Best Practices
 
 ### 1. Keep Transactions Short

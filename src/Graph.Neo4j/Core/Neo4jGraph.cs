@@ -135,15 +135,25 @@ internal class Neo4jGraph : IGraph
     /// <summary>
     /// Converts a public <see cref="IGraphTransaction"/> to the internal <see cref="GraphTransaction"/>
     /// used by queryable construction, or <see langword="null"/> if none was given (in which case
-    /// execution creates a per-execution transaction).
+    /// execution creates a per-execution transaction). Rejects transactions from another provider
+    /// and transactions owned by a different Neo4j graph (reference identity, not settings).
     /// </summary>
-    private static GraphTransaction? ToNeo4jTransaction(IGraphTransaction? transaction) => transaction switch
+    private GraphTransaction? ToNeo4jTransaction(IGraphTransaction? transaction) => transaction switch
     {
         null => null,
-        GraphTransaction neo4jTx => neo4jTx,
+        GraphTransaction neo4jTx when neo4jTx.BelongsTo(_graphContext) => neo4jTx,
+        GraphTransaction => throw new GraphException(
+            "The given transaction was created by a different Neo4j graph store. A transaction can only be used with the graph that created it."),
         _ => throw new GraphException(
-            "The given transaction is not a valid Neo4j transaction. You need to use Neo4jStore.Graph.GetTransactionAsync() to create a transaction.")
+            "The given transaction is not a valid Neo4j transaction. Use Neo4jGraphStore.Graph.GetTransactionAsync() to create one.")
     };
+
+    /// <summary>
+    /// Validates a caller-supplied transaction at a CRUD entry point: foreign-provider and
+    /// wrong-graph transactions are rejected here, before schema initialization or any store
+    /// work, and without touching the caller-owned transaction's lifecycle.
+    /// </summary>
+    private void EnsureOwnedTransaction(IGraphTransaction? transaction) => _ = ToNeo4jTransaction(transaction);
 
     /// <inheritdoc />
     public async Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
@@ -156,6 +166,7 @@ internal class Neo4jGraph : IGraph
             throw new ArgumentException("Node ID cannot be null or empty.", nameof(node));
 
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureOwnedTransaction(transaction);
 
         try
         {
@@ -203,6 +214,7 @@ internal class Neo4jGraph : IGraph
             throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship));
 
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureOwnedTransaction(transaction);
 
         try
         {
@@ -258,6 +270,7 @@ internal class Neo4jGraph : IGraph
         SubgraphArguments.Validate(source, relationship, target);
 
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureOwnedTransaction(transaction);
 
         var createMissingEndpoints = options?.CreateMissingEndpoints ?? false;
 
@@ -311,6 +324,7 @@ internal class Neo4jGraph : IGraph
         GraphDataModel.EnforceGraphConstraintsForNode(node);
 
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureOwnedTransaction(transaction);
 
         try
         {
@@ -366,6 +380,7 @@ internal class Neo4jGraph : IGraph
         GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
 
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureOwnedTransaction(transaction);
 
         try
         {
@@ -415,6 +430,7 @@ internal class Neo4jGraph : IGraph
             throw new ArgumentException("Node ID cannot be null or empty.", nameof(id));
 
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureOwnedTransaction(transaction);
 
         try
         {
@@ -464,6 +480,7 @@ internal class Neo4jGraph : IGraph
             throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(id));
 
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureOwnedTransaction(transaction);
 
         try
         {

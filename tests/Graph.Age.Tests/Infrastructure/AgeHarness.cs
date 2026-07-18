@@ -61,6 +61,10 @@ public sealed class AgeHarness : IGraphProviderTestHarness
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        // Every isolation level gets its own AGE graph and its own store instance, so previously
+        // returned graphs are never reset or replaced and StoreIsolation.IndependentStore needs no
+        // separate path.
         var graphName = NewGraphName();
         var store = new AgeGraphStore(
             dataSource ?? throw new GraphProviderUnavailableException("The AGE test data source was not initialized."),

@@ -7,8 +7,9 @@ using Cvoya.Graph.CompatibilityTests;
 
 /// <summary>
 /// The compatibility-suite harness for the in-memory provider. Store creation is in-process and
-/// cheap, so both isolation levels are satisfied with a brand-new empty store; there is no
-/// infrastructure that could be unavailable.
+/// cheap, so every isolation level is satisfied with a brand-new empty store - which also makes
+/// each returned graph independent of the ones before it; there is no infrastructure that could be
+/// unavailable.
 /// </summary>
 public sealed class InMemoryHarness : IGraphProviderTestHarness
 {

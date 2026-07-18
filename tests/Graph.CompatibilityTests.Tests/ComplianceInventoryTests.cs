@@ -60,7 +60,9 @@ public sealed class ComplianceInventoryTests
     // +1 for #405: a simple collection nested inside a dynamic node's dictionary/complex property
     // value round-trips through create/get.
     // +1 for #385: freshly converted dynamic nodes and relationships round-trip with derived metadata.
-    private const int ExpectedTotalTestMethods = 440;
+    // +2 for #366: same-provider cross-store transaction misuse is rejected by reads/queries and by
+    // every CRUD operation, leaving both stores unchanged and the transaction usable on its owner.
+    private const int ExpectedTotalTestMethods = 442;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

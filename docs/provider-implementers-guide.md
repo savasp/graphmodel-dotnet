@@ -316,6 +316,9 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
         // StoreIsolation.CleanSharedStore: reuse the per-class store, wipe its data.
         // StoreIsolation.FreshStore: provision a brand-new store (needed where a data wipe alone
         // doesn't reset auxiliary state, e.g. full-text index state).
+        // StoreIsolation.IndependentStore: provision an ADDITIONAL store that coexists with every
+        // store already handed to the running test - do not reset, replace, or dispose the earlier
+        // one. Cross-store transaction-ownership tests hold two live stores at once.
         // Throw GraphProviderUnavailableException if infrastructure (e.g. Docker) can't start -
         // it renders as a skip locally, and a failure under GRAPHMODEL_COMPLIANCE_STRICT=1.
     }

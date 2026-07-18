@@ -27,7 +27,11 @@ public interface IGraphProviderTestHarness : IAsyncLifetime
     CapabilitySet Capabilities { get; }
 
     /// <summary>
-    /// Gets an <see cref="IGraph"/> over an empty store, called once per test.
+    /// Gets an <see cref="IGraph"/> over an empty store. Called once per test with
+    /// <see cref="StoreIsolation.CleanSharedStore"/> or <see cref="StoreIsolation.FreshStore"/>;
+    /// cross-store contract tests additionally call it with
+    /// <see cref="StoreIsolation.IndependentStore"/> to obtain a second store that must coexist
+    /// with the one already returned.
     /// </summary>
     /// <param name="isolation">
     /// The isolation the returned store must provide - see <see cref="StoreIsolation"/>.

@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </remarks>
 internal class GraphTransaction : IGraphTransaction
 {
+    private readonly GraphContext _context;
     private readonly IAsyncSession _session;
     private IAsyncTransaction? _transaction;
     private bool _committed;
@@ -30,6 +31,7 @@ internal class GraphTransaction : IGraphTransaction
     /// <exception cref="ArgumentNullException">Thrown if either parameter is null</exception>
     public GraphTransaction(GraphContext context, bool isReadOnly = false)
     {
+        _context = context;
         _session = context.Driver.AsyncSession(c => c
             .WithDatabase(context.DatabaseName)
             .WithDefaultAccessMode(isReadOnly ? AccessMode.Read : AccessMode.Write));
@@ -42,6 +44,13 @@ internal class GraphTransaction : IGraphTransaction
     /// </summary>
     /// <value>True if the transaction is active, false otherwise.</value>
     public bool IsActive => _transaction != null && !_committed && !_rolledBack;
+
+    /// <summary>
+    /// Gets whether this transaction was created by the given graph context. Ownership is
+    /// reference identity: a transaction from a different store or graph instance is foreign even
+    /// when connection settings match.
+    /// </summary>
+    internal bool BelongsTo(GraphContext context) => ReferenceEquals(_context, context);
 
     /// <summary>
     /// Gets the Neo4j driver session associated with this transaction.
