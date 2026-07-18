@@ -353,6 +353,10 @@ public sealed class GraphResultProcessor
         Dictionary<string, Property> simpleProperties;
 
         simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(node.Properties);
+        if (depth > 0)
+        {
+            RemoveDynamicComplexValueStructuralProperties(simpleProperties);
+        }
 
         var entityInfo = new EntityInfo(
             ActualType: nodeType,
@@ -1032,6 +1036,13 @@ public sealed class GraphResultProcessor
             );
         }
         return result;
+    }
+
+    private static void RemoveDynamicComplexValueStructuralProperties(
+        Dictionary<string, Property> simpleProperties)
+    {
+        simpleProperties.Remove(nameof(Graph.IEntity.Id));
+        simpleProperties.Remove(nameof(Graph.INode.Labels));
     }
 
     private static Type InferDynamicCollectionElementType(IReadOnlyList<object?> items)

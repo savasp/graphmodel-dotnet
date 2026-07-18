@@ -117,6 +117,8 @@ Nodes and relationships need stable CVOYA graph IDs and remain visible to ordina
 Providers may add an internal relationship marker for cascade cleanup, but must not infer
 complex-property edges from a reserved relationship-name prefix.
 
+When **dynamic** entities are materialized, a complex-property value is reconstructed into the property bag using one canonical shape, shared by dynamic nodes and dynamic relationships so the same stored value round-trips identically regardless of owner: a single complex value becomes a `Dictionary<string, object?>` keyed by the stored (physical) property labels, and a complex-property collection becomes a `List<Dictionary<string, object?>>`. A simple collection nested inside such a dictionary follows the canonical `List<T>` rule above, and a nested complex value recurses into a further dictionary, so the whole subtree survives the round trip. A dynamic entity has no CLR type to materialize into, so the value is never rehydrated as a typed instance. Providers that decompose complex values into storage nodes must remove those nodes' synthetic `Id` and `Labels` members when rebuilding the dictionary; only caller-supplied value members belong in the materialized shape.
+
 Declared properties auto-load recursively. Writes and reads must reject cycles and paths deeper than
 `GraphDataModel.DefaultDepthAllowed` (currently 5). A read type that omits the property leaves it
 unpopulated; callers can still traverse the semantic relationship and co-load the owner and value via

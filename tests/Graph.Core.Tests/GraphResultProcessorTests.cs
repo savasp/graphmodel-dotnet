@@ -40,8 +40,8 @@ public class GraphResultProcessorTests
     public async Task ComplexPropertyWireFixture_ReassemblesOrderedDynamicCollection()
     {
         var parent = Node("parent-wire", "parent", "Parent", 1, 1m);
-        var firstChild = Node("child-wire-1", "child-1", "First", 2, 2m);
-        var secondChild = Node("child-wire-2", "child-2", "Second", 3, 3m);
+        var firstChild = DynamicComplexValueNode("child-wire-1", "child-1", "name", "First");
+        var secondChild = DynamicComplexValueNode("child-wire-2", "child-2", "name", "Second");
         var firstEdge = Relationship("edge-1", "Children", parent, firstChild, sequence: 1);
         var secondEdge = Relationship("edge-2", "Children", parent, secondChild, sequence: 0);
         var record = NodeRecord(parent,
@@ -56,6 +56,31 @@ public class GraphResultProcessorTests
         var children = Assert.IsType<List<Dictionary<string, object?>>>(node.Properties["Children"]);
 
         Assert.Equal(["Second", "First"], children.Select(child => child["name"]));
+        Assert.All(children, child => Assert.Equal(["name"], child.Keys));
+    }
+
+    [Fact]
+    public async Task NestedDynamicComplexValues_ExcludeStructuralPropertiesAtEveryLevel()
+    {
+        var parent = Node("parent-wire", "parent", "Parent", 1, 1m);
+        var address = DynamicComplexValueNode("address-wire", "address-id", "street", "1 Main");
+        var location = DynamicComplexValueNode("location-wire", "location-id", "country", "UK");
+        var addressEdge = Relationship("address-edge", "address", parent, address, sequence: 0);
+        var locationEdge = Relationship("location-edge", "location", address, location, sequence: 0);
+        var record = NodeRecord(parent,
+        [
+            ComplexProperty(parent, addressEdge, address, 0),
+            ComplexProperty(address, locationEdge, location, 0),
+        ]);
+
+        var info = Assert.Single(await new GraphResultProcessor(factory).ProcessAsync(
+            [record], typeof(DynamicNode), TestContext.Current.CancellationToken));
+        var node = Assert.IsType<DynamicNode>(factory.Deserialize(info));
+
+        var addressValue = Assert.IsType<Dictionary<string, object?>>(node.Properties["address"]);
+        Assert.Equal(["location", "street"], addressValue.Keys.Order(StringComparer.Ordinal));
+        var locationValue = Assert.IsType<Dictionary<string, object?>>(addressValue["location"]);
+        Assert.Equal(["country"], locationValue.Keys);
     }
 
     [Fact]
@@ -310,6 +335,20 @@ public class GraphResultProcessorTests
                 ["name"] = GraphValue.Scalar(name),
                 ["large"] = GraphValue.Scalar(large),
                 ["precise"] = GraphValue.Scalar(precise),
+            });
+
+    private static GraphValue DynamicComplexValueNode(
+        string wireId,
+        string publicId,
+        string propertyName,
+        string propertyValue) => GraphValue.Node(
+            wireId,
+            ["Dictionary"],
+            new Dictionary<string, GraphValue>
+            {
+                [nameof(IEntity.Id)] = GraphValue.Scalar(publicId),
+                [nameof(INode.Labels)] = GraphValue.List([GraphValue.Scalar("Dictionary")]),
+                [propertyName] = GraphValue.Scalar(propertyValue),
             });
 
     private static GraphValue Relationship(
