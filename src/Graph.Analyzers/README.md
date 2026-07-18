@@ -55,6 +55,7 @@ public class User : INode
 | **CG013** | Both [Node] and [Relationship] applied to the same type                 | Error    |
 | **CG014** | Graph entity types (INode/IRelationship) must be reference types        | Error    |
 | **CG015** | [ComplexProperty] has no effect on the configured property              | Warning  |
+| **CG016** | Open generic graph entities are not supported                           | Error    |
 
 ## 🔧 Configuration
 
@@ -118,6 +119,23 @@ public INode RelatedNode { get; set; }
 // ✅ Good - use relationships instead
 public IGraph Graph => /* get from context */;
 ```
+
+### CG016: Open Generic Graph Entities Are Not Supported
+
+```csharp
+// ❌ Bad - T is unbound where the non-generic serializer would be generated
+public record GenericNode<T> : Node;
+
+// ✅ Good - keep the reusable base abstract and expose a closed concrete entity
+public abstract record GenericNode<T> : Node;
+
+[Node("StringNode")]
+public record StringNode : GenericNode<string>;
+```
+
+The serialization generator supports non-generic concrete entities built from closed generic
+constructions. It does not generate serializers for concrete open generic entity declarations or
+entities nested in an open generic containing type.
 
 ## 📚 Documentation
 

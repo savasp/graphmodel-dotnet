@@ -200,9 +200,20 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
 
     private static bool ShouldGenerateSerializerFor(INamedTypeSymbol type)
     {
-        // Skip interfaces, abstract classes, and generic type definitions
+        // Skip interfaces and abstract classes: neither is ever a concrete serialization root.
         if (type.TypeKind == TypeKind.Interface ||
             type.IsAbstract)
+        {
+            return false;
+        }
+
+        // Skip open generic entity roots. The generated serializer is a non-generic class that would
+        // reference the entity as `GenericNode<T>` (or a type nested in an open generic) from a scope
+        // where the type parameter is unbound, producing invalid C#. These are rejected with an
+        // actionable analyzer diagnostic (CG016) instead. A non-generic type built from a closed
+        // construction such as `StringNode : GenericNode<string>` has no free type parameters and
+        // still generates (#373).
+        if (IsOpenGeneric(type))
         {
             return false;
         }
@@ -231,6 +242,25 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         // Exclude the built-in dynamic types
         return fullName == "Cvoya.Graph.DynamicNode" ||
                fullName == "Cvoya.Graph.DynamicRelationship";
+    }
+
+    /// <summary>
+    /// True when <paramref name="type"/> - or any of its containing types - still has an unbound
+    /// type parameter: an open generic declaration (<c>GenericNode&lt;T&gt;</c>) or a type nested in
+    /// one. A closed construction such as <c>GenericNode&lt;string&gt;</c> has no free type
+    /// parameters and returns false, so a non-generic entity derived from it still generates.
+    /// </summary>
+    private static bool IsOpenGeneric(INamedTypeSymbol type)
+    {
+        for (var current = type; current is not null; current = current.ContainingType)
+        {
+            if (current.TypeArguments.Any(argument => argument.TypeKind == TypeKind.TypeParameter))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsTargetType(SyntaxNode node, CancellationToken ct)
@@ -267,7 +297,7 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         var typeDecl = (TypeDeclarationSyntax)context.Node;
         var symbol = context.SemanticModel.GetDeclaredSymbol(typeDecl, ct);
 
-        if (symbol is null || symbol.TypeKind == TypeKind.Interface || symbol.IsAbstract)
+        if (symbol is null || symbol.TypeKind == TypeKind.Interface || symbol.IsAbstract || IsOpenGeneric(symbol))
             return null;
 
         return CodeGenModelBuilder.Build(symbol);

@@ -247,10 +247,12 @@ public class CG014_EntityTypeMustBeReferenceTypeTests
             }
             """;
 
+        // CG014 (value type) still fires; the open generic root is reported by CG016, which
+        // supersedes the secondary CG011 "inherit from base" advice for an unsupported entity shape.
         var expected = new[]
         {
             VerifyCS.Diagnostic("CG014").WithLocation(0).WithArguments("Struct", "GenericPersonStruct", "INode"),
-            VerifyCG011.Diagnostic("CG011").WithLocation(0).WithArguments("GenericPersonStruct", "Node", "INode"),
+            VerifyCS.Diagnostic("CG016").WithLocation(0).WithArguments("GenericPersonStruct"),
         };
 
         await VerifyAnalyzerAsync(test, expected);

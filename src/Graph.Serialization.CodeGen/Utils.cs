@@ -3,6 +3,9 @@
 
 namespace Cvoya.Graph.Serialization.CodeGen;
 
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.CodeAnalysis;
 
 
@@ -10,11 +13,16 @@ internal static class Utils
 {
     internal static IEnumerable<IPropertySymbol> GetAllProperties(INamedTypeSymbol type)
     {
+        var seenProperties = new HashSet<string>(StringComparer.Ordinal);
+
         for (var t = type; t != null; t = t.BaseType)
         {
             var props = t.GetMembers()
                 .OfType<IPropertySymbol>()
-                .Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public && p.GetMethod != null);
+                .Where(p => !p.IsStatic &&
+                    p.DeclaredAccessibility == Accessibility.Public &&
+                    p.GetMethod != null &&
+                    seenProperties.Add(p.Name));
 
             foreach (var prop in props)
             {
@@ -64,8 +72,47 @@ internal static class Utils
         // Add the type itself
         parts.Add(type.Name);
 
+        // Constructed generic types need a type-identity component. The readable name alone maps
+        // GenericThing<int> and GenericThing<string> (and nested types inside generic containers)
+        // to the same generated class. Keep existing names stable for non-generic types and append
+        // a deterministic suffix only where the generic construction participates in identity.
+        if (RequiresGenericIdentitySuffix(type))
+        {
+            parts.Add(GetStableTypeIdentitySuffix(type));
+        }
+
         // Create a unique class name
         return string.Join("_", parts) + "Serializer";
+    }
+
+    internal static string GetStableTypeIdentitySuffix(INamedTypeSymbol type)
+    {
+        var identity = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(identity));
+        var suffix = new StringBuilder(capacity: 32);
+
+        // 128 bits is compact enough for generated identifiers while making accidental collisions
+        // between serializer type identities vanishingly unlikely.
+        for (var index = 0; index < 16; index++)
+        {
+            suffix.Append(hash[index].ToString("X2", CultureInfo.InvariantCulture));
+        }
+
+        return suffix.ToString();
+    }
+
+    internal static bool RequiresGenericIdentitySuffix(INamedTypeSymbol type)
+    {
+        for (var current = type; current is not null; current = current.ContainingType)
+        {
+            if (current.IsGenericType)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     internal static string GetTypeOfName(ITypeSymbol type)

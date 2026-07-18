@@ -161,4 +161,14 @@ internal static class DiagnosticDescriptors
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         description: Resources.CG015_Description);
+
+    // CG016: Open generic graph entities are not supported
+    public static readonly DiagnosticDescriptor OpenGenericEntityUnsupported = new(
+        id: "CG016",
+        title: Resources.CG016_Title,
+        messageFormat: Resources.CG016_MessageFormat,
+        category: "Cvoya.Graph",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: Resources.CG016_Description);
 }

@@ -75,7 +75,18 @@ internal static class Serialization
         var isNullable = propertyType.IsNullable;
 
         sb.AppendLine($"        {{");
-        sb.AppendLine($"            var propInfo = typeof({property.ContainingTypeDisplayName}).GetProperty(\"{property.Name}\")!;");
+        if (property.RequiresDeclaredOnlyLookup)
+        {
+            sb.AppendLine($"            var propInfo = typeof({property.ContainingTypeDisplayName}).GetProperty(");
+            sb.AppendLine($"                \"{property.Name}\",");
+            sb.AppendLine("                System.Reflection.BindingFlags.Public |");
+            sb.AppendLine("                System.Reflection.BindingFlags.Instance |");
+            sb.AppendLine("                System.Reflection.BindingFlags.DeclaredOnly)!;");
+        }
+        else
+        {
+            sb.AppendLine($"            var propInfo = typeof({property.ContainingTypeDisplayName}).GetProperty(\"{property.Name}\")!;");
+        }
         sb.AppendLine($"            var value = entity.{property.Name};");
         sb.AppendLine($"            Serialized? serializedValue;");
         sb.AppendLine();

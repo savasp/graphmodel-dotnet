@@ -132,7 +132,23 @@ internal sealed class CodeGenModelBuilder
             property.SetMethod is not null,
             property.SetMethod?.IsInitOnly == true,
             property.SetMethod?.DeclaredAccessibility == Accessibility.Public,
-            property.IsRequired);
+            property.IsRequired,
+            HidesOrOverridesBaseProperty(property));
+    }
+
+    private static bool HidesOrOverridesBaseProperty(IPropertySymbol property)
+    {
+        for (var baseType = property.ContainingType.BaseType; baseType is not null; baseType = baseType.BaseType)
+        {
+            if (baseType.GetMembers(property.Name)
+                .OfType<IPropertySymbol>()
+                .Any(candidate => !candidate.IsStatic && candidate.DeclaredAccessibility == Accessibility.Public))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private TypeReferenceModel BuildTypeReference(ITypeSymbol type)
@@ -186,7 +202,7 @@ internal sealed class CodeGenModelBuilder
                 FindPropertyLabelForParameter(parameter, properties),
                 parameter.HasExplicitDefaultValue,
                 parameter.HasExplicitDefaultValue
-                    ? FormatDefaultValue(parameter.ExplicitDefaultValue, parameter.Type)
+                    ? DefaultValueFormatter.Format(parameter.ExplicitDefaultValue, parameter.Type)
                     : string.Empty))));
     }
 
@@ -282,13 +298,27 @@ internal sealed class CodeGenModelBuilder
 
     private static IEnumerable<INamedTypeSymbol> DiscoverComplexPropertyTypes(INamedTypeSymbol type)
     {
-        return type.GetMembers()
-            .OfType<IPropertySymbol>()
-            .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
-                property.GetMethod != null &&
-                property.SetMethod != null)
-            .Select(property => GetComplexPropertyType(property.Type))
-            .OfType<INamedTypeSymbol>();
+        // Discover dependency serializers from the same effective property set the entity serializer
+        // is generated over - inherited public instance properties and applicable interface
+        // properties - rather than only the members declared directly on the concrete type. A
+        // concrete node/relationship can inherit a complex property from an abstract base (which is
+        // never itself a generator root), and that property still participates in the generated
+        // serializer; without walking the base/interface set here its complex value type would be
+        // absent from the dependency catalog and the generated code would reference an unregistered
+        // serializer (#371). Reusing the deserialization property walk preserves override/hiding
+        // precedence (most-derived declaration wins); dependency identities are deduplicated so
+        // discovery stays deterministic and emits no duplicate serializers.
+        var seenComplexTypes = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var property in GetAllPropertiesIncludingInterfacesForDeserialization(type)
+            .Where(property => !Utils.SerializationShouldSkipProperty(property, type)))
+        {
+            if (GetComplexPropertyType(property.Type) is INamedTypeSymbol complexType &&
+                seenComplexTypes.Add(GetTypeIdentity(complexType)))
+            {
+                yield return complexType;
+            }
+        }
     }
 
     private static INamedTypeSymbol? GetComplexPropertyType(ITypeSymbol propertyType)
@@ -444,18 +474,6 @@ internal sealed class CodeGenModelBuilder
             ?.Label ?? propertyName;
     }
 
-    private static string FormatDefaultValue(object? defaultValue, ITypeSymbol type)
-    {
-        return defaultValue switch
-        {
-            null when type.IsReferenceType => "null",
-            null => $"default({type.ToDisplayString()})",
-            string str => $"\"{str}\"",
-            bool b => b.ToString().ToLowerInvariant(),
-            _ => defaultValue.ToString() ?? "null"
-        };
-    }
-
     private static string GetUniqueHintName(INamedTypeSymbol type)
     {
         var fullName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
@@ -467,6 +485,11 @@ internal sealed class CodeGenModelBuilder
             .Replace(" ", "")
             .Replace("?", "_Nullable")
             .Replace("+", "_");
+
+        if (Utils.RequiresGenericIdentitySuffix(type))
+        {
+            fullName += $"_{Utils.GetStableTypeIdentitySuffix(type)}";
+        }
 
         return $"{fullName}Serializer.g.cs";
     }

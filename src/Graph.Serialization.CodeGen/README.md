@@ -12,6 +12,11 @@ This package is used to automatically generate code for domain-specific types th
 
 ## Notes
 
+Concrete graph entity roots must not have unbound type parameters or be nested in an open generic
+type. Model reusable generic behavior as an abstract base and expose a non-generic concrete entity
+from a closed construction, such as `StringNode : GenericNode<string>`. The optional
+`Cvoya.Graph.Analyzers` package reports unsupported declarations as CG016.
+
 When building a project that uses this code generator, use this option to persist the generated code.
 
 ```sh

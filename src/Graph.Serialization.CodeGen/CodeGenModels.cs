@@ -227,7 +227,8 @@ internal sealed class SerializablePropertyModel : IEquatable<SerializablePropert
         bool hasSetter,
         bool setterIsInitOnly,
         bool setterDeclaredPublic,
-        bool isRequired)
+        bool isRequired,
+        bool requiresDeclaredOnlyLookup)
     {
         Name = name;
         Label = label;
@@ -238,6 +239,7 @@ internal sealed class SerializablePropertyModel : IEquatable<SerializablePropert
         SetterIsInitOnly = setterIsInitOnly;
         SetterDeclaredPublic = setterDeclaredPublic;
         IsRequired = isRequired;
+        RequiresDeclaredOnlyLookup = requiresDeclaredOnlyLookup;
     }
 
     public string Name { get; }
@@ -258,6 +260,8 @@ internal sealed class SerializablePropertyModel : IEquatable<SerializablePropert
 
     public bool IsRequired { get; }
 
+    public bool RequiresDeclaredOnlyLookup { get; }
+
     public bool Equals(SerializablePropertyModel? other)
     {
         return other is not null &&
@@ -269,7 +273,8 @@ internal sealed class SerializablePropertyModel : IEquatable<SerializablePropert
             HasSetter == other.HasSetter &&
             SetterIsInitOnly == other.SetterIsInitOnly &&
             SetterDeclaredPublic == other.SetterDeclaredPublic &&
-            IsRequired == other.IsRequired;
+            IsRequired == other.IsRequired &&
+            RequiresDeclaredOnlyLookup == other.RequiresDeclaredOnlyLookup;
     }
 
     public override bool Equals(object? obj)
@@ -291,6 +296,7 @@ internal sealed class SerializablePropertyModel : IEquatable<SerializablePropert
             hash = (hash * 31) + SetterIsInitOnly.GetHashCode();
             hash = (hash * 31) + SetterDeclaredPublic.GetHashCode();
             hash = (hash * 31) + IsRequired.GetHashCode();
+            hash = (hash * 31) + RequiresDeclaredOnlyLookup.GetHashCode();
             return hash;
         }
     }

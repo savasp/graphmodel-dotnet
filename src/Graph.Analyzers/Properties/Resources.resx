@@ -177,4 +177,15 @@
   <data name="CG015_Description" xml:space="preserve">
     <value>ComplexPropertyAttribute only configures graph-backed complex properties. It has no effect on simple values or simple collections, and a null, empty, or whitespace RelationshipType override silently falls back to the property name.</value>
   </data>
+
+  <!-- CG016: Open generic graph entities are not supported -->
+  <data name="CG016_Title" xml:space="preserve">
+    <value>Open generic graph entities are not supported</value>
+  </data>
+  <data name="CG016_MessageFormat" xml:space="preserve">
+    <value>Graph entity '{0}' is an open generic entity: it has unbound type parameters or is nested in an open generic type, which serialization code generation does not support. Declare a non-generic concrete entity outside any open generic type (for example, one derived from a closed construction such as 'StringNode : GenericNode&lt;string&gt;')</value>
+  </data>
+  <data name="CG016_Description" xml:space="preserve">
+    <value>The serialization source generator emits a non-generic serializer that would reference an open generic entity's unbound type parameters, producing invalid C#. Declare a non-generic concrete entity built from a closed construction (for example, 'StringNode : GenericNode&lt;string&gt;'); abstract generic bases inherited only by such concrete entities remain supported.</value>
+  </data>
 </root>

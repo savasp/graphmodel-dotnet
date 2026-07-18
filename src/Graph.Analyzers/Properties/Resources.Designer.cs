@@ -276,4 +276,19 @@ internal class Resources
     ///   Looks up a localized string similar to ComplexPropertyAttribute has no effect.
     /// </summary>
     internal static string CG015_Title => ResourceManager.GetString("CG015_Title", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to The serialization source generator emits a non-generic serializer that would reference an open generic entity's unbound type parameters, producing invalid C#....
+    /// </summary>
+    internal static string CG016_Description => ResourceManager.GetString("CG016_Description", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Graph entity '{0}' is an open generic entity: it has unbound type parameters or is nested in an open generic type, which serialization code generation does not support....
+    /// </summary>
+    internal static string CG016_MessageFormat => ResourceManager.GetString("CG016_MessageFormat", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Open generic graph entities are not supported.
+    /// </summary>
+    internal static string CG016_Title => ResourceManager.GetString("CG016_Title", resourceCulture)!;
 }
