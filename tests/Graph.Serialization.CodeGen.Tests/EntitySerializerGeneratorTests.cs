@@ -133,6 +133,7 @@ public class EntitySerializerGeneratorTests
             {
                 public List<int?> Scores { get; set; } = new();
                 public List<Guid?> RelatedIds { get; set; } = new();
+                public List<string?> Aliases { get; set; } = new();
             }
             """;
 
@@ -154,6 +155,7 @@ public class EntitySerializerGeneratorTests
             {
                 public List<int?> Scores { get; set; } = new();
                 public List<Guid?> RelatedIds { get; set; } = new();
+                public List<string?> Aliases { get; set; } = new();
             }
             """;
         var firstId = Guid.Parse("7a2ef43f-dadf-4c88-a2f6-af730f87a963");
@@ -165,6 +167,7 @@ public class EntitySerializerGeneratorTests
         var node = Activator.CreateInstance(nodeType)!;
         nodeType.GetProperty("Scores")!.SetValue(node, new List<int?> { 1, null, 3 });
         nodeType.GetProperty("RelatedIds")!.SetValue(node, new List<Guid?> { firstId, null });
+        nodeType.GetProperty("Aliases")!.SetValue(node, new List<string?> { "first", null, "third" });
         var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
 
         var entity = serializer.Serialize(node);
@@ -176,6 +179,79 @@ public class EntitySerializerGeneratorTests
         Assert.Equal(
             new Guid?[] { firstId, null },
             Assert.IsType<List<Guid?>>(nodeType.GetProperty("RelatedIds")!.GetValue(roundTripped)));
+        Assert.Equal(
+            new string?[] { "first", null, "third" },
+            Assert.IsType<List<string?>>(nodeType.GetProperty("Aliases")!.GetValue(roundTripped)));
+    }
+
+    [Fact]
+    public void NodeWithNonNullableSimpleCollections_RejectsNullElementsWithoutChangingOrder()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            namespace NonNullableCollections;
+
+            [Node("Tracked")]
+            public record TrackedNode : Node
+            {
+                public List<int> Scores { get; set; } = new();
+
+                [Property(Label = "stored_names")]
+                public List<string> Names { get; set; } = new();
+
+                public List<string?> NullableNames { get; set; } = new();
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var nodeType = assembly.GetType("NonNullableCollections.TrackedNode", throwOnError: true)!;
+        var serializerType = assembly.GetType(
+            "NonNullableCollections.Generated.TrackedNodeSerializer",
+            throwOnError: true)!;
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+        var schema = serializer.GetSchema();
+
+        Assert.False(schema.SimpleProperties["Scores"].IsElementNullable);
+        Assert.False(schema.SimpleProperties["stored_names"].IsElementNullable);
+        Assert.True(schema.SimpleProperties["NullableNames"].IsElementNullable);
+
+        foreach (var (clrPropertyName, storedPropertyName, elementType, values) in new[]
+        {
+            (
+                "Scores",
+                "Scores",
+                typeof(int),
+                new[] { new SimpleValue(1, typeof(int)), new SimpleValue(null!, typeof(int)), new SimpleValue(3, typeof(int)) }),
+            (
+                "Names",
+                "stored_names",
+                typeof(string),
+                new[] { new SimpleValue("first", typeof(string)), new SimpleValue(null!, typeof(string)), new SimpleValue("third", typeof(string)) }),
+        })
+        {
+            var propertyInfo = nodeType.GetProperty(clrPropertyName)!;
+            var entity = new EntityInfo(
+                nodeType,
+                "Tracked",
+                ["Tracked"],
+                new Dictionary<string, Property>
+                {
+                    [storedPropertyName] = new Property(
+                        propertyInfo,
+                        storedPropertyName,
+                        Value: new SimpleCollection(values, elementType)),
+                },
+                new Dictionary<string, Property>());
+
+            var exception = Assert.Throws<GraphException>(() => serializer.Deserialize(entity));
+
+            Assert.Equal(
+                $"Collection property '{storedPropertyName}' contains a null element at index 1, " +
+                $"but its target element type '{elementType}' is non-nullable.",
+                exception.Message);
+            Assert.IsNotType<NullReferenceException>(exception.InnerException);
+        }
     }
 
     /// <summary>

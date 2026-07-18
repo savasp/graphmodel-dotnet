@@ -135,7 +135,7 @@ internal static class Schema
                 sb.AppendLine("                PropertyType: PropertyType.SimpleCollection,");
                 sb.AppendLine($"                ElementType: typeof({elementType.TypeOfName}),");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
-                sb.AppendLine("            );");
+                sb.AppendLine($"            ) {{ IsElementNullable = {elementType.IsNullable.ToString().ToLowerInvariant()} }};");
             }
             else
             {
@@ -164,7 +164,7 @@ internal static class Schema
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
                 sb.AppendLine($"                NestedSchema: {nestedSchemaCall},");
                 sb.AppendLine("                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)");
-                sb.AppendLine("            );");
+                sb.AppendLine($"            ) {{ IsElementNullable = {elementType.IsNullable.ToString().ToLowerInvariant()} }};");
             }
         }
         else

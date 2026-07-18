@@ -308,12 +308,16 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is SimpleCollection {simpleCollectionName}");
             sb.AppendLine($"{indentStr}        ? {simpleCollectionName}.Values");
 
-            if (elementType.IsReferenceType && !elementType.IsNullable)
+            if (!elementType.IsNullable)
             {
-                sb.AppendLine($"{indentStr}            .Where(simpleValue => simpleValue.Object is not null)");
+                sb.AppendLine($"{indentStr}            .Select((simpleValue, index) => simpleValue.Object is null");
+                sb.AppendLine($"{indentStr}                ? throw new GraphException($\"Collection property '{propertyLabel}' contains a null element at index {{index}}, but its target element type '{{typeof({elementType.TypeOfName})}}' is non-nullable.\")");
+                sb.AppendLine($"{indentStr}                : {GetSimpleValueConversionExpression(elementType, "simpleValue.Object")})");
             }
-
-            sb.AppendLine($"{indentStr}            .Select(simpleValue => {GetSimpleValueConversionExpression(elementType, "simpleValue.Object")})");
+            else
+            {
+                sb.AppendLine($"{indentStr}            .Select(simpleValue => {GetSimpleValueConversionExpression(elementType, "simpleValue.Object")})");
+            }
         }
         else
         {

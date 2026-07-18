@@ -278,8 +278,9 @@ internal sealed class PersonSerializer : IEntitySerializer
             ? new System.Collections.Generic.List<string>()
             : labelsPropRep.Value is SimpleCollection labelsPropRepSimpleCollection
                 ? labelsPropRepSimpleCollection.Values
-                    .Where(simpleValue => simpleValue.Object is not null)
-                    .Select(simpleValue => (string)simpleValue.Object)
+                    .Select((simpleValue, index) => simpleValue.Object is null
+                        ? throw new GraphException($"Collection property 'Labels' contains a null element at index {index}, but its target element type '{typeof(string)}' is non-nullable.")
+                        : (string)simpleValue.Object)
                     .ToList()
                 : throw new InvalidOperationException("Required collection property 'Labels' is missing or null");
         return result;
@@ -448,7 +449,7 @@ internal sealed class PersonSerializer : IEntitySerializer
                 PropertyType: PropertyType.SimpleCollection,
                 ElementType: typeof(string),
                 IsNullable: false
-            );
+            ) { IsElementNullable = false };
         }
 
         // Schema for property: Id

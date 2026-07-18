@@ -1415,7 +1415,11 @@ public sealed class GraphResultProcessor
                 object convertedValue;
                 try
                 {
-                    convertedValue = GraphValueConverter.ConvertTo(value, propertySchema.PropertyInfo.PropertyType)
+                    convertedValue = GraphValueConverter.ConvertTo(
+                        value,
+                        propertySchema.PropertyInfo.PropertyType,
+                        key,
+                        propertySchema.IsElementNullable)
                         ?? throw new GraphException(
                             $"Failed to convert value for property '{key}' to '{propertySchema.PropertyInfo.PropertyType}'.");
                 }
