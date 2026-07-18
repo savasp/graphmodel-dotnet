@@ -444,15 +444,47 @@ public class CG004_InvalidPropertyTypeForNodeTests
     {
         var test = """
             using Cvoya.Graph;
-            
+            using System.Collections.Generic;
+
             public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public Point Location { get; set; } = new();
+                public Point? MaybeLocation { get; set; }
+                public List<Point> Waypoints { get; set; } = new();
             }
             """;
 
         await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NodeWithSystemDrawingPointType_ProducesDiagnostics()
+    {
+        // Only Cvoya.Graph.Point is a supported spatial simple type. System.Drawing.Point has no
+        // runtime, codegen, or provider support, so the analyzer must reject it instead of promising
+        // a storage type the rest of the stack cannot serialize (#387).
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public System.Drawing.Point {|#0:Location|} { get; set; }
+                public System.Drawing.Point? {|#1:MaybeLocation|} { get; set; }
+                public List<System.Drawing.Point> {|#2:Locations|} { get; set; } = new();
+            }
+            """;
+
+        var expected = new[]
+        {
+            VerifyCS.Diagnostic("CG004").WithLocation(0).WithArguments("Location", "TestNode", "Point"),
+            VerifyCS.Diagnostic("CG004").WithLocation(1).WithArguments("MaybeLocation", "TestNode", "Nullable<Point>"),
+            VerifyCS.Diagnostic("CG004").WithLocation(2).WithArguments("Locations", "TestNode", "List<Point>"),
+        };
+
+        await VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]

@@ -14,7 +14,9 @@ using Xunit;
 /// asserted against <see cref="AnalyzerHelper"/>. The two classification implementations are
 /// independent (the analyzer targets netstandard2.0 and works on <see cref="ITypeSymbol"/>, so it
 /// cannot call the runtime <c>GraphDataModel</c> directly) - this test class exists so they cannot
-/// silently drift apart.
+/// silently drift apart. The source generator's independent classification has the same mirror in
+/// <c>Cvoya.Graph.Serialization.CodeGen.Tests.GraphDataModelTypeClassificationTests</c>; keep the
+/// named simple types (Point, DateTime, Guid, Uri, ...) aligned across all three tables (#387).
 /// </summary>
 public class AnalyzerHelperTypeClassificationTests
 {
@@ -110,6 +112,11 @@ public class AnalyzerHelperTypeClassificationTests
             "DateTime" => Named("System.DateTime"),
             "Uri" => Named("System.Uri"),
             "Point" => Point(),
+            "Point?" => Nullable(Point()),
+            "List<Point>" => Named("System.Collections.Generic.List`1", Point()),
+            "System.Drawing.Point" => Named("System.Drawing.Point"),
+            "System.Drawing.Point?" => Nullable(Named("System.Drawing.Point")),
+            "List<System.Drawing.Point>" => Named("System.Collections.Generic.List`1", Named("System.Drawing.Point")),
             "byte[]" => Array(Special(SpecialType.System_Byte)),
             "int[]" => Array(Int32()),
             "int[,]" => compilation.CreateArrayTypeSymbol(Int32(), rank: 2),
@@ -161,6 +168,9 @@ public class AnalyzerHelperTypeClassificationTests
         { "TestEnum", true },
         { "string", true },
         { "Point", true },
+        { "Point?", true },
+        { "System.Drawing.Point", false },
+        { "System.Drawing.Point?", false },
         { "DateTime", true },
         { "Guid", true },
         { "byte[]", true },
@@ -184,6 +194,8 @@ public class AnalyzerHelperTypeClassificationTests
         { "string[]", true },
         { "List<int>", true },
         { "List<string>", true },
+        { "List<Point>", true },
+        { "List<System.Drawing.Point>", false },
         { "ArrayList", false },
         { "List<object>", false },
         { "List<List<int>>", false },
@@ -207,6 +219,7 @@ public class AnalyzerHelperTypeClassificationTests
         { "IReadOnlyList<FlatValueObject>", true },
         { "List<RecursiveValueObject>", true },
         { "List<SimpleStruct>", true },
+        { "List<System.Drawing.Point>", true },
         { "List<List<FlatValueObject>>", false },
         { "Dictionary<string,FlatValueObject>", false },
         { "IDictionary<string,FlatValueObject>", false },
@@ -219,6 +232,7 @@ public class AnalyzerHelperTypeClassificationTests
         { "int", false },
         { "int?", false },
         { "Point", false },
+        { "System.Drawing.Point", true },
         { "Uri", false },
         { "byte[]", false },
         { "List<int>", false },
