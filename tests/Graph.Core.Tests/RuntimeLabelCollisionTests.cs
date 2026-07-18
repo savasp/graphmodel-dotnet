@@ -817,7 +817,27 @@ public class RuntimeLabelCollisionTests : IDisposable
             Assert.Equal(
                 typeof(LabelsSharedNameRelationship),
                 Labels.GetMostDerivedType(typeof(Relationship), "Labels_RLC_SharedName"));
+
+            // Non-entity targets take the legacy path, which shares GetTypeFromLabel's node-first rule.
+            Assert.Equal(
+                typeof(LabelsSharedNameNode),
+                Labels.GetMostDerivedType(typeof(object), "Labels_RLC_SharedName"));
         }
+    }
+
+    [Fact]
+    public void Labels_GetMostDerivedType_KindOnlyLabels_DoNotResolveAcrossEntityKinds()
+    {
+        Labels.ClearCachesForTesting();
+
+        Assert.Null(Labels.GetMostDerivedType(typeof(Relationship), nameof(LabelsKindOnlyNode)));
+        Assert.Null(Labels.GetMostDerivedType(typeof(Node), nameof(LabelsKindOnlyRelationship)));
+
+        // The node-first public lookup still reaches a relationship-only label via its second probe.
+        Assert.Equal(
+            typeof(LabelsKindOnlyRelationship),
+            Labels.GetTypeFromLabel(nameof(LabelsKindOnlyRelationship)));
+        Assert.Equal(typeof(LabelsKindOnlyNode), Labels.GetTypeFromLabel(nameof(LabelsKindOnlyNode)));
     }
 
     [Fact]
@@ -895,6 +915,51 @@ public class RuntimeLabelCollisionTests : IDisposable
                 Labels.ClearCachesForTesting();
 
                 Assert.Equal(types[0], Labels.GetTypeFromLabel("labels_rlc_caseinsensitivenode"));
+
+                // The reverse lookup's query casing must not leak into the forward cache: labels
+                // emitted for the type keep the canonical attribute casing.
+                Assert.Equal("Labels_RLC_CaseInsensitiveNode", Labels.GetLabelFromType(types[0]));
+            });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Labels_GetMostDerivedType_SameKindCollisionOutsideBoundary_ThrowsInBothWarmOrders(
+        bool warmOutsiderFirst)
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            [Node("Labels_RLC_BoundaryCollision")]
+            public sealed record BoundaryCollisionOutsiderNode : Node;
+
+            public abstract record BoundaryCollisionBase : Node;
+
+            [Node("Labels_RLC_BoundaryCollision")]
+            public sealed record BoundaryCollisionInsiderNode : BoundaryCollisionBase;
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["BoundaryCollisionOutsiderNode", "BoundaryCollisionBase", "BoundaryCollisionInsiderNode"],
+            types =>
+            {
+                Labels.ClearCachesForTesting();
+
+                if (warmOutsiderFirst)
+                {
+                    Labels.GetLabelFromType(types[0]);
+                }
+
+                // Only the insider is assignable to the base, but the same-kind collision must surface
+                // regardless of the assignability boundary and of what was warmed before the call.
+                var exception = Assert.Throws<GraphException>(
+                    () => Labels.GetMostDerivedType(types[1], "Labels_RLC_BoundaryCollision"));
+
+                Assert.Contains("Labels_RLC_BoundaryCollision", exception.Message, StringComparison.Ordinal);
+                Assert.Contains(types[0].FullName!, exception.Message, StringComparison.Ordinal);
+                Assert.Contains(types[2].FullName!, exception.Message, StringComparison.Ordinal);
             });
     }
 
@@ -1011,6 +1076,10 @@ public class RuntimeLabelCollisionTests : IDisposable
 
     [Relationship("Labels_RLC_SharedName")]
     private sealed record LabelsSharedNameRelationship(string Start, string End) : Relationship(Start, End);
+
+    private sealed record LabelsKindOnlyNode : Node;
+
+    private sealed record LabelsKindOnlyRelationship(string Start, string End) : Relationship(Start, End);
 
     private sealed record LabelsGenericCollisionNode<T> : Node;
 
