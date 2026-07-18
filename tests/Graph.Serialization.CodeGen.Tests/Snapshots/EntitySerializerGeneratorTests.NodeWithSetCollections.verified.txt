@@ -62,7 +62,9 @@ internal sealed class TaggedSerializer : IEntitySerializer
             ? new System.Collections.Generic.HashSet<int>()
             : numbersPropRep.Value is SimpleCollection numbersPropRepSimpleCollection
                 ? numbersPropRepSimpleCollection.Values
-                    .Select(simpleValue => (int)simpleValue.Object)
+                    .Select((simpleValue, index) => simpleValue.Object is null
+                        ? throw new GraphException($"Collection property 'Numbers' contains a null element at index {index}, but its target element type '{typeof(int)}' is non-nullable.")
+                        : (int)simpleValue.Object)
                     .ToHashSet()
                 : throw new InvalidOperationException("Required collection property 'Numbers' is missing or null");
         // Look for property 'Names' in both simple and complex properties
@@ -73,8 +75,9 @@ internal sealed class TaggedSerializer : IEntitySerializer
             ? new System.Collections.Generic.HashSet<string>()
             : namesPropRep.Value is SimpleCollection namesPropRepSimpleCollection
                 ? namesPropRepSimpleCollection.Values
-                    .Where(simpleValue => simpleValue.Object is not null)
-                    .Select(simpleValue => (string)simpleValue.Object)
+                    .Select((simpleValue, index) => simpleValue.Object is null
+                        ? throw new GraphException($"Collection property 'Names' contains a null element at index {index}, but its target element type '{typeof(string)}' is non-nullable.")
+                        : (string)simpleValue.Object)
                     .ToHashSet()
                 : throw new InvalidOperationException("Required collection property 'Names' is missing or null");
         // Look for property 'Labels' in both simple and complex properties
@@ -85,8 +88,9 @@ internal sealed class TaggedSerializer : IEntitySerializer
             ? new System.Collections.Generic.List<string>()
             : labelsPropRep.Value is SimpleCollection labelsPropRepSimpleCollection
                 ? labelsPropRepSimpleCollection.Values
-                    .Where(simpleValue => simpleValue.Object is not null)
-                    .Select(simpleValue => (string)simpleValue.Object)
+                    .Select((simpleValue, index) => simpleValue.Object is null
+                        ? throw new GraphException($"Collection property 'Labels' contains a null element at index {index}, but its target element type '{typeof(string)}' is non-nullable.")
+                        : (string)simpleValue.Object)
                     .ToList()
                 : throw new InvalidOperationException("Required collection property 'Labels' is missing or null");
         return result;
@@ -259,7 +263,7 @@ internal sealed class TaggedSerializer : IEntitySerializer
                 PropertyType: PropertyType.SimpleCollection,
                 ElementType: typeof(string),
                 IsNullable: false
-            );
+            ) { IsElementNullable = false };
         }
 
         // Schema for property: Id
@@ -283,7 +287,7 @@ internal sealed class TaggedSerializer : IEntitySerializer
                 PropertyType: PropertyType.SimpleCollection,
                 ElementType: typeof(int),
                 IsNullable: false
-            );
+            ) { IsElementNullable = false };
         }
 
         // Schema for property: Names
@@ -295,7 +299,7 @@ internal sealed class TaggedSerializer : IEntitySerializer
                 PropertyType: PropertyType.SimpleCollection,
                 ElementType: typeof(string),
                 IsNullable: false
-            );
+            ) { IsElementNullable = false };
         }
 
 

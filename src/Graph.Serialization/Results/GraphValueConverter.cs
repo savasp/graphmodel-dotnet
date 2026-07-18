@@ -14,6 +14,25 @@ internal static class GraphValueConverter
 
     public static object? ConvertTo(object? value, Type targetType)
     {
+        return ConvertTo(value, targetType, propertyName: null, isElementNullable: null);
+    }
+
+    public static object? ConvertTo(
+        object? value,
+        Type targetType,
+        string propertyName,
+        bool isElementNullable)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        return ConvertTo(value, targetType, propertyName, (bool?)isElementNullable);
+    }
+
+    private static object? ConvertTo(
+        object? value,
+        Type targetType,
+        string? propertyName,
+        bool? isElementNullable)
+    {
         ArgumentNullException.ThrowIfNull(targetType);
         if (value is null)
         {
@@ -25,6 +44,7 @@ internal static class GraphValueConverter
         var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
         if (underlyingType.IsInstanceOfType(value))
         {
+            ValidateNullElements(value, underlyingType, propertyName, isElementNullable);
             return value;
         }
 
@@ -93,7 +113,12 @@ internal static class GraphValueConverter
         if (underlyingType == typeof(Uri))
             return new Uri(value.ToString()!);
 
-        if (TryConvertCollection(value, underlyingType, out var collection))
+        if (TryConvertCollection(
+            value,
+            underlyingType,
+            propertyName,
+            isElementNullable,
+            out var collection))
         {
             return collection;
         }
@@ -121,7 +146,12 @@ internal static class GraphValueConverter
         return typeName is null ? null : Type.GetType(typeName);
     }
 
-    private static bool TryConvertCollection(object value, Type targetType, out object? result)
+    private static bool TryConvertCollection(
+        object value,
+        Type targetType,
+        string? propertyName,
+        bool? isElementNullable,
+        out object? result)
     {
         result = null;
         if (value is not IEnumerable source || value is string)
@@ -139,7 +169,17 @@ internal static class GraphValueConverter
             return false;
         }
 
-        var values = source.Cast<object?>().Select(item => ConvertTo(item, elementType)).ToArray();
+        var values = source.Cast<object?>()
+            .Select((item, index) =>
+            {
+                if (item is null && isElementNullable == false)
+                {
+                    throw CreateNullElementException(propertyName!, elementType, index);
+                }
+
+                return ConvertTo(item, elementType);
+            })
+            .ToArray();
         if (targetType.IsArray)
         {
             var array = Array.CreateInstance(elementType, values.Length);
@@ -166,5 +206,58 @@ internal static class GraphValueConverter
 
         result = list;
         return true;
+    }
+
+    private static void ValidateNullElements(
+        object value,
+        Type targetType,
+        string? propertyName,
+        bool? isElementNullable)
+    {
+        if (isElementNullable != false ||
+            propertyName is null ||
+            value is not IEnumerable source ||
+            value is string)
+        {
+            return;
+        }
+
+        var elementType = targetType.IsArray
+            ? targetType.GetElementType()
+            : targetType.IsGenericType
+                ? targetType.GetGenericArguments().FirstOrDefault()
+                : null;
+        if (elementType is null)
+        {
+            return;
+        }
+
+        // A CLR collection of a non-nullable value type cannot contain null, so scanning it
+        // (boxing every element — e.g. each byte of a byte[] blob property) proves nothing.
+        if (elementType.IsValueType && Nullable.GetUnderlyingType(elementType) is null)
+        {
+            return;
+        }
+
+        var index = 0;
+        foreach (var item in source)
+        {
+            if (item is null)
+            {
+                throw CreateNullElementException(propertyName, elementType, index);
+            }
+
+            index++;
+        }
+    }
+
+    private static GraphException CreateNullElementException(
+        string propertyName,
+        Type elementType,
+        int index)
+    {
+        return new GraphException(
+            $"Collection property '{propertyName}' contains a null element at index {index}, " +
+            $"but its target element type '{elementType}' is non-nullable.");
     }
 }

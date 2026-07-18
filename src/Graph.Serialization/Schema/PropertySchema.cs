@@ -24,7 +24,43 @@ public record PropertySchema(
     bool IsNullable = false,
     EntitySchema? NestedSchema = null,
     string? RelationshipType = null
-);
+)
+{
+    /// <summary>
+    /// Gets whether collection elements may be null according to the declared property schema.
+    /// </summary>
+    /// <remarks>
+    /// Generated schemas set this value from compiler nullability metadata. Hand-authored schemas
+    /// default to reflection metadata so nullable reference annotations are not inferred from the
+    /// runtime element type alone.
+    /// </remarks>
+    public bool IsElementNullable { get; init; } = GetElementNullability(PropertyInfo, ElementType);
+
+    private static bool GetElementNullability(PropertyInfo propertyInfo, Type? elementType)
+    {
+        if (elementType is null)
+        {
+            return false;
+        }
+
+        if (Nullable.GetUnderlyingType(elementType) is not null)
+        {
+            return true;
+        }
+
+        if (elementType.IsValueType)
+        {
+            return false;
+        }
+
+        var propertyNullability = new NullabilityInfoContext().Create(propertyInfo);
+        var elementNullability = propertyInfo.PropertyType.IsArray
+            ? propertyNullability.ElementType
+            : propertyNullability.GenericTypeArguments.FirstOrDefault();
+
+        return elementNullability?.ReadState == NullabilityState.Nullable;
+    }
+}
 
 /// <summary>
 /// Defines the types of properties in the schema.

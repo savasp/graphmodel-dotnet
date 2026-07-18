@@ -76,6 +76,17 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
                     .Select(simpleValue => simpleValue.Object is null ? (System.Guid?)null : simpleValue.Object is System.Guid guidValue ? guidValue : System.Guid.Parse(simpleValue.Object.ToString()!))
                     .ToList()
                 : throw new InvalidOperationException("Required collection property 'RelatedIds' is missing or null");
+        // Look for property 'Aliases' in both simple and complex properties
+        var aliasesPropRep = entity.SimpleProperties.TryGetValue("Aliases", out var aliasesSimpleProp) ? aliasesSimpleProp
+                    : entity.ComplexProperties.TryGetValue("Aliases", out var aliasesComplexProp) ? aliasesComplexProp : null;
+        // Extract collection value
+        result.Aliases = aliasesPropRep is null
+            ? new System.Collections.Generic.List<string?>()
+            : aliasesPropRep.Value is SimpleCollection aliasesPropRepSimpleCollection
+                ? aliasesPropRepSimpleCollection.Values
+                    .Select(simpleValue => (string?)simpleValue.Object)
+                    .ToList()
+                : throw new InvalidOperationException("Required collection property 'Aliases' is missing or null");
         // Look for property 'Labels' in both simple and complex properties
         var labelsPropRep = entity.SimpleProperties.TryGetValue("Labels", out var labelsSimpleProp) ? labelsSimpleProp
                     : entity.ComplexProperties.TryGetValue("Labels", out var labelsComplexProp) ? labelsComplexProp : null;
@@ -84,8 +95,9 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
             ? new System.Collections.Generic.List<string>()
             : labelsPropRep.Value is SimpleCollection labelsPropRepSimpleCollection
                 ? labelsPropRepSimpleCollection.Values
-                    .Where(simpleValue => simpleValue.Object is not null)
-                    .Select(simpleValue => (string)simpleValue.Object)
+                    .Select((simpleValue, index) => simpleValue.Object is null
+                        ? throw new GraphException($"Collection property 'Labels' contains a null element at index {index}, but its target element type '{typeof(string)}' is non-nullable.")
+                        : (string)simpleValue.Object)
                     .ToList()
                 : throw new InvalidOperationException("Required collection property 'Labels' is missing or null");
         return result;
@@ -143,6 +155,30 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
                 Value: serializedValue
             );
             simpleProperties["RelatedIds"] = propertyRep;
+        }
+
+        // Serialize property: Aliases
+        {
+            var propInfo = typeof(NullableCollections.TrackedNode).GetProperty("Aliases")!;
+            var value = entity.Aliases;
+            Serialized? serializedValue;
+
+            serializedValue = value is null
+                ? null
+                : new SimpleCollection(
+                    Values: value
+                        .Select(item => new SimpleValue(item!, typeof(string)))
+                        .ToList(),
+                    ElementType: typeof(string)
+                );
+
+            var propertyRep = new Property(
+                PropertyInfo: propInfo,
+                Label: "Aliases",
+                IsNullable: false,
+                Value: serializedValue
+            );
+            simpleProperties["Aliases"] = propertyRep;
         }
 
         // Serialize property: Id
@@ -258,7 +294,7 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
                 PropertyType: PropertyType.SimpleCollection,
                 ElementType: typeof(string),
                 IsNullable: false
-            );
+            ) { IsElementNullable = false };
         }
 
         // Schema for property: Id
@@ -282,7 +318,7 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
                 PropertyType: PropertyType.SimpleCollection,
                 ElementType: typeof(int?),
                 IsNullable: false
-            );
+            ) { IsElementNullable = true };
         }
 
         // Schema for property: RelatedIds
@@ -294,7 +330,19 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
                 PropertyType: PropertyType.SimpleCollection,
                 ElementType: typeof(System.Guid?),
                 IsNullable: false
-            );
+            ) { IsElementNullable = true };
+        }
+
+        // Schema for property: Aliases
+        {
+            var propInfo = typeof(NullableCollections.TrackedNode).GetProperty("Aliases")!;
+            simpleProperties["Aliases"] = new PropertySchema(
+                PropertyInfo: propInfo,
+                PropertyName: "Aliases",
+                PropertyType: PropertyType.SimpleCollection,
+                ElementType: typeof(string),
+                IsNullable: false
+            ) { IsElementNullable = true };
         }
 
 

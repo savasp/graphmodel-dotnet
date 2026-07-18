@@ -10,6 +10,9 @@ public class GraphResultProcessorTests
 {
     private static readonly int[] ExpectedIntegerList = [1, 2, 3];
     private static readonly int[] ExpectedIntegerArray = [4, 5];
+    private static readonly string[] ExpectedNames = ["Ada", "Grace"];
+    private static readonly string?[] ExpectedNullableNames = ["first", null, "third"];
+    private static readonly object?[] ExpectedNullableObjects = ["first", null, 3L];
     private readonly EntityFactory factory = new();
 
     static GraphResultProcessorTests()
@@ -190,6 +193,12 @@ public class GraphResultProcessorTests
                     [GraphValue.Scalar(nameof(CollectionKind.First)), GraphValue.Scalar(nameof(CollectionKind.Second))]),
                 [nameof(ValueCollectionNode.NullableIntegers)] = GraphValue.List(
                     [GraphValue.Scalar(6L), GraphValue.Scalar(null), GraphValue.Scalar(7L)]),
+                [nameof(ValueCollectionNode.Names)] = GraphValue.List(
+                    [GraphValue.Scalar("Ada"), GraphValue.Scalar("Grace")]),
+                [nameof(ValueCollectionNode.NullableNames)] = GraphValue.List(
+                    [GraphValue.Scalar("first"), GraphValue.Scalar(null), GraphValue.Scalar("third")]),
+                [nameof(ValueCollectionNode.NullableObjects)] = GraphValue.List(
+                    [GraphValue.Scalar("first"), GraphValue.Scalar(null), GraphValue.Scalar(3L)]),
             });
 
         var info = Assert.Single(await new GraphResultProcessor(factory).ProcessAsync(
@@ -202,6 +211,62 @@ public class GraphResultProcessorTests
         AssertSimpleCollection(info, nameof(ValueCollectionNode.Guids), new[] { firstId, secondId });
         AssertSimpleCollection(info, nameof(ValueCollectionNode.Kinds), new[] { CollectionKind.First, CollectionKind.Second });
         AssertSimpleCollection(info, nameof(ValueCollectionNode.NullableIntegers), new int?[] { 6, null, 7 });
+        AssertSimpleCollection(info, nameof(ValueCollectionNode.Names), ExpectedNames);
+        AssertSimpleCollection(info, nameof(ValueCollectionNode.NullableNames), ExpectedNullableNames);
+        AssertSimpleCollection(info, nameof(ValueCollectionNode.NullableObjects), ExpectedNullableObjects);
+
+        var schema = Assert.IsType<EntitySchema>(factory.GetSchema(typeof(ValueCollectionNode)));
+        Assert.False(schema.SimpleProperties[nameof(ValueCollectionNode.IntegerList)].IsElementNullable);
+        Assert.True(schema.SimpleProperties[nameof(ValueCollectionNode.NullableIntegers)].IsElementNullable);
+        Assert.False(schema.SimpleProperties[nameof(ValueCollectionNode.Names)].IsElementNullable);
+        Assert.True(schema.SimpleProperties[nameof(ValueCollectionNode.NullableNames)].IsElementNullable);
+        Assert.False(schema.SimpleProperties[nameof(ValueCollectionNode.Objects)].IsElementNullable);
+        Assert.True(schema.SimpleProperties[nameof(ValueCollectionNode.NullableObjects)].IsElementNullable);
+    }
+
+    [Theory]
+    [InlineData(nameof(ValueCollectionNode.IntegerList), typeof(int))]
+    [InlineData(nameof(ValueCollectionNode.Names), typeof(string))]
+    [InlineData(nameof(ValueCollectionNode.Objects), typeof(object))]
+    public async Task TypedSimpleCollection_NullForNonNullableElement_ThrowsDiagnosticException(
+        string propertyName,
+        Type elementType)
+    {
+        var values = elementType == typeof(int)
+            ? new[] { GraphValue.Scalar(1L), GraphValue.Scalar(null), GraphValue.Scalar(3L) }
+            : new[] { GraphValue.Scalar("first"), GraphValue.Scalar(null), GraphValue.Scalar("third") };
+        var node = GraphValue.Node(
+            "invalid-null-element-wire",
+            [nameof(ValueCollectionNode)],
+            new Dictionary<string, GraphValue>
+            {
+                [propertyName] = GraphValue.List(values),
+            });
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() => new GraphResultProcessor(factory).ProcessAsync(
+            [NodeRecord(node)],
+            typeof(ValueCollectionNode),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(
+            $"Collection property '{propertyName}' contains a null element at index 1, " +
+            $"but its target element type '{elementType}' is non-nullable.",
+            exception.Message);
+        Assert.IsNotType<NullReferenceException>(exception.InnerException);
+    }
+
+    [Fact]
+    public void PropertySchema_NullableObliviousReferenceElements_DefaultToNonNullable()
+    {
+        var propertyInfo = typeof(ObliviousCollectionNode).GetProperty(nameof(ObliviousCollectionNode.Names))!;
+
+        var schema = new PropertySchema(
+            propertyInfo,
+            propertyInfo.Name,
+            PropertyType.SimpleCollection,
+            typeof(string));
+
+        Assert.False(schema.IsElementNullable);
     }
 
     [Fact]
@@ -417,7 +482,22 @@ public class GraphResultProcessorTests
         public CollectionKind[] Kinds { get; init; } = [];
 
         public int?[] NullableIntegers { get; init; } = [];
+
+        public List<string> Names { get; init; } = [];
+
+        public List<string?> NullableNames { get; init; } = [];
+
+        public List<object> Objects { get; init; } = [];
+
+        public List<object?> NullableObjects { get; init; } = [];
     }
+
+#nullable disable
+    private sealed record ObliviousCollectionNode : Node
+    {
+        public List<string> Names { get; init; } = [];
+    }
+#nullable restore
 
     private enum CollectionKind
     {
@@ -442,7 +522,11 @@ public class GraphResultProcessorTests
                     nameof(ValueCollectionNode.IntegerArray) or
                     nameof(ValueCollectionNode.Guids) or
                     nameof(ValueCollectionNode.Kinds) or
-                    nameof(ValueCollectionNode.NullableIntegers))
+                    nameof(ValueCollectionNode.NullableIntegers) or
+                    nameof(ValueCollectionNode.Names) or
+                    nameof(ValueCollectionNode.NullableNames) or
+                    nameof(ValueCollectionNode.Objects) or
+                    nameof(ValueCollectionNode.NullableObjects))
                 .ToDictionary(
                     property => property.Name,
                     property => new PropertySchema(
