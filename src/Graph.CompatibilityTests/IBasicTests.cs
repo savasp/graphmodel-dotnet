@@ -669,6 +669,43 @@ public interface IBasicTests : IGraphTest
     }
 
     [Fact]
+    public async Task FreshTypedEntitiesConvertedToDynamic_RoundTrip()
+    {
+        INode startNode = new SpacedLabelVenue { Name = "Start" };
+        INode endNode = new SpacedLabelVenue { Name = "End" };
+        var dynamicStart = startNode.ToDynamic();
+        var dynamicEnd = endNode.ToDynamic();
+
+        await Graph.CreateNodeAsync(dynamicStart, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(dynamicEnd, null, TestContext.Current.CancellationToken);
+
+        IRelationship relationship = new KnowsWell(dynamicStart.Id, dynamicEnd.Id)
+        {
+            HowWell = "Very well",
+        };
+        var dynamicRelationship = relationship.ToDynamic();
+        await Graph.CreateRelationshipAsync(dynamicRelationship, null, TestContext.Current.CancellationToken);
+
+        var fetchedNode = await Graph.GetDynamicNodeAsync(
+            dynamicStart.Id,
+            null,
+            TestContext.Current.CancellationToken);
+        var fetchedRelationship = await Graph.GetDynamicRelationshipAsync(
+            dynamicRelationship.Id,
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Contains(Labels.GetLabelFromType(startNode.GetType()), fetchedNode.Labels);
+        Assert.Equal("Start", fetchedNode.Properties[nameof(SpacedLabelVenue.Name)]);
+        Assert.Equal(Labels.GetLabelFromType(relationship.GetType()), fetchedRelationship.Type);
+        Assert.Equal(relationship.StartNodeId, fetchedRelationship.StartNodeId);
+        Assert.Equal(relationship.EndNodeId, fetchedRelationship.EndNodeId);
+        Assert.Equal(
+            ((KnowsWell)relationship).HowWell,
+            fetchedRelationship.Properties[nameof(KnowsWell.HowWell)]);
+    }
+
+    [Fact]
     public async Task DynamicNodeComplexProperty_WithNestedSimpleCollection_RoundTrips()
     {
         // #405: a simple collection nested inside a dynamic node's dictionary/complex property value

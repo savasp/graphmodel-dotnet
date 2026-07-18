@@ -59,7 +59,8 @@ public sealed class ComplianceInventoryTests
     // query through predicate/projection/ordering/complex-property navigation.
     // +1 for #405: a simple collection nested inside a dynamic node's dictionary/complex property
     // value round-trips through create/get.
-    private const int ExpectedTotalTestMethods = 439;
+    // +1 for #385: freshly converted dynamic nodes and relationships round-trip with derived metadata.
+    private const int ExpectedTotalTestMethods = 440;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

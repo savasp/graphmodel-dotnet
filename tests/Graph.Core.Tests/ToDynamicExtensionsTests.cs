@@ -36,6 +36,51 @@ public class ToDynamicExtensionsTests
         public string DisplayName { get; init; } = string.Empty;
     }
 
+    [Node("ISSUE_385_ATTRIBUTED_NODE")]
+    private sealed record AttributedNode : Node;
+
+    [Relationship("ISSUE_385_ATTRIBUTED_RELATIONSHIP")]
+    private sealed record AttributedRelationship(string Start, string End) : Relationship(Start, End);
+
+    private sealed record IndexedNode : Node
+    {
+        public string Name { get; init; } = string.Empty;
+
+        public string this[int index] => throw new InvalidOperationException($"Indexer {index} should not be read.");
+    }
+
+    private sealed record NonPublicGetterNode : Node
+    {
+        public string Name { get; init; } = string.Empty;
+
+        public string WriteOnly { private get; set; } = "hidden";
+    }
+
+    private sealed record ThrowingGetterNode : Node
+    {
+        public string Unreadable
+        {
+            get
+            {
+                _ = Id;
+                throw new InvalidOperationException("Modeled property could not be read.");
+            }
+        }
+    }
+
+    private sealed record CrossEntityMetadataNamesNode : Node
+    {
+        public string Type { get; init; } = string.Empty;
+        public string Direction { get; init; } = string.Empty;
+        public string StartNodeId { get; init; } = string.Empty;
+        public string EndNodeId { get; init; } = string.Empty;
+    }
+
+    private sealed record CrossEntityMetadataNamesRelationship(string Start, string End) : Relationship(Start, End)
+    {
+        public string Labels { get; init; } = string.Empty;
+    }
+
     [Fact]
     public void ToDynamicNode_ConvertsStronglyTypedNodeToDynamicNode()
     {
@@ -53,7 +98,7 @@ public class ToDynamicExtensionsTests
         // Assert
         Assert.NotNull(dynamicNode);
         Assert.Equal(testNode.Id, dynamicNode.Id);
-        Assert.Equal(testNode.Labels, dynamicNode.Labels);
+        Assert.Equal(Labels.GetCompatibleLabels(testNode.GetType()), dynamicNode.Labels);
         Assert.Equal("John Doe", dynamicNode.Properties["Name"]);
         Assert.Equal(30, dynamicNode.Properties["Age"]);
         Assert.Equal("john@example.com", dynamicNode.Properties["Email"]);
@@ -87,7 +132,7 @@ public class ToDynamicExtensionsTests
         // Assert
         Assert.NotNull(dynamicRelationship);
         Assert.Equal(testRelationship.Id, dynamicRelationship.Id);
-        Assert.Equal(testRelationship.Type, dynamicRelationship.Type);
+        Assert.Equal(Labels.GetLabelFromType(testRelationship.GetType()), dynamicRelationship.Type);
         Assert.Equal(testRelationship.Direction, dynamicRelationship.Direction);
         Assert.Equal(testRelationship.StartNodeId, dynamicRelationship.StartNodeId);
         Assert.Equal(testRelationship.EndNodeId, dynamicRelationship.EndNodeId);
@@ -112,8 +157,62 @@ public class ToDynamicExtensionsTests
         // Assert
         Assert.NotNull(dynamicNodeFromInterface);
         Assert.NotNull(dynamicRelFromInterface);
+        Assert.Equal(Labels.GetCompatibleLabels(testNode.GetType()), dynamicNodeFromInterface.Labels);
+        Assert.Equal(Labels.GetLabelFromType(testRelationship.GetType()), dynamicRelFromInterface.Type);
         Assert.Equal("Alice", dynamicNodeFromInterface.Properties["Name"]);
         Assert.Equal("Test", dynamicRelFromInterface.Properties["Description"]);
+    }
+
+    [Fact]
+    public void ToDynamic_DerivesAttributedMetadataFromRuntimeTypes()
+    {
+        INode node = new AttributedNode();
+        IRelationship relationship = new AttributedRelationship("node1", "node2");
+
+        var dynamicNode = node.ToDynamic();
+        var dynamicRelationship = relationship.ToDynamic();
+
+        Assert.Equal(["ISSUE_385_ATTRIBUTED_NODE"], dynamicNode.Labels);
+        Assert.Equal("ISSUE_385_ATTRIBUTED_RELATIONSHIP", dynamicRelationship.Type);
+    }
+
+    [Fact]
+    public void ToDynamic_PreservesPopulatedMetadataExactly()
+    {
+        IReadOnlyList<string> labels = ["CUSTOM_PRIMARY", "CUSTOM_SECONDARY"];
+        var node = new DynamicTestNode { Labels = labels, Name = "Ada" };
+        var relationship = new DynamicTestRelationship(node.Id, "node2")
+        {
+            Type = "CUSTOM_RELATIONSHIP_TYPE",
+            Description = "Preserved",
+        };
+
+        var dynamicNode = node.ToDynamicNode();
+        var dynamicRelationship = relationship.ToDynamicRelationship();
+
+        Assert.Equal(labels, dynamicNode.Labels);
+        Assert.Equal("CUSTOM_RELATIONSHIP_TYPE", dynamicRelationship.Type);
+    }
+
+    [Fact]
+    public void ToDynamicNode_IgnoresIndexersAndPropertiesWithoutPublicGetters()
+    {
+        var indexed = new IndexedNode { Name = "Ada" }.ToDynamicNode();
+        var nonPublicGetter = new NonPublicGetterNode { Name = "Grace", WriteOnly = "ignored" }.ToDynamicNode();
+
+        Assert.Equal("Ada", indexed.Properties[nameof(IndexedNode.Name)]);
+        Assert.DoesNotContain("Item", indexed.Properties.Keys);
+        Assert.Equal("Grace", nonPublicGetter.Properties[nameof(NonPublicGetterNode.Name)]);
+        Assert.DoesNotContain(nameof(NonPublicGetterNode.WriteOnly), nonPublicGetter.Properties.Keys);
+    }
+
+    [Fact]
+    public void ToDynamicNode_PropagatesOriginalGetterException()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => new ThrowingGetterNode().ToDynamicNode());
+
+        Assert.Equal("Modeled property could not be read.", exception.Message);
+        Assert.Contains("get_Unreadable", exception.StackTrace, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -168,5 +267,30 @@ public class ToDynamicExtensionsTests
         Assert.True(dynamicNode.Properties.ContainsKey("Name"));
         Assert.True(dynamicNode.Properties.ContainsKey("Age"));
         Assert.True(dynamicNode.Properties.ContainsKey("Email"));
+    }
+
+    [Fact]
+    public void ToDynamic_PreservesModeledPropertiesNamedForTheOtherEntityKind()
+    {
+        var node = new CrossEntityMetadataNamesNode
+        {
+            Type = "modeled type",
+            Direction = "modeled direction",
+            StartNodeId = "modeled start",
+            EndNodeId = "modeled end",
+        };
+        var relationship = new CrossEntityMetadataNamesRelationship("node1", "node2")
+        {
+            Labels = "modeled labels",
+        };
+
+        var dynamicNode = node.ToDynamicNode();
+        var dynamicRelationship = relationship.ToDynamicRelationship();
+
+        Assert.Equal(node.Type, dynamicNode.Properties[nameof(node.Type)]);
+        Assert.Equal(node.Direction, dynamicNode.Properties[nameof(node.Direction)]);
+        Assert.Equal(node.StartNodeId, dynamicNode.Properties[nameof(node.StartNodeId)]);
+        Assert.Equal(node.EndNodeId, dynamicNode.Properties[nameof(node.EndNodeId)]);
+        Assert.Equal(relationship.Labels, dynamicRelationship.Properties[nameof(relationship.Labels)]);
     }
 }
