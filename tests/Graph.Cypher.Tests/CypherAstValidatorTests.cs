@@ -234,6 +234,29 @@ public class CypherAstValidatorTests
     }
 
     [Fact]
+    public void Run_ThrowsPreciseException_WhenEntityProjectionRowIdentityAliasIsUnbound()
+    {
+        var statement = new CypherStatement(
+        [
+            MatchNode("n"),
+            new EntityProjectionClause(
+                EntityProjectionShape.Node,
+                "n",
+                relationshipAlias: null,
+                targetAlias: null,
+                loadSourceProperties: true,
+                loadTargetProperties: false,
+                includePathCoordinates: false,
+                ordering: [],
+                rowIdentityAliases: ["missing"]),
+        ], new Dictionary<string, object?>());
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("'missing'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Run_DoesNotLeakPatternSubqueryAliasesIntoOuterScope()
     {
         var subquery = new PatternSubqueryExpression(

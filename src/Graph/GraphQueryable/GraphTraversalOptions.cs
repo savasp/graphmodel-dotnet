@@ -35,12 +35,13 @@ public sealed class GraphTraversalOptions
     /// <summary>
     /// Sets the maximum traversal depth, leaving the minimum at its default (1).
     /// </summary>
-    /// <param name="maxDepth">The maximum depth to traverse. Must be non-negative.</param>
+    /// <param name="maxDepth">The maximum depth to traverse. Must be at least 1: a traversal is one or more relationship hops.</param>
     /// <returns>This instance, for chaining.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="maxDepth"/> is less than 1.</exception>
     public GraphTraversalOptions Depth(int maxDepth)
     {
-        if (maxDepth < 0)
-            throw new ArgumentOutOfRangeException(nameof(maxDepth), "Depth must be non-negative.");
+        if (maxDepth < 1)
+            throw new ArgumentOutOfRangeException(nameof(maxDepth), "Maximum depth must be at least 1.");
 
         MinDepth = null;
         MaxDepth = maxDepth;
@@ -50,13 +51,14 @@ public sealed class GraphTraversalOptions
     /// <summary>
     /// Sets the minimum and maximum traversal depth.
     /// </summary>
-    /// <param name="minDepth">The minimum depth to traverse. Must be non-negative.</param>
+    /// <param name="minDepth">The minimum depth to traverse. Must be at least 1: a traversal is one or more relationship hops.</param>
     /// <param name="maxDepth">The maximum depth to traverse. Must be greater than or equal to <paramref name="minDepth"/>.</param>
     /// <returns>This instance, for chaining.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="minDepth"/> is less than 1, or when <paramref name="maxDepth"/> is less than <paramref name="minDepth"/>.</exception>
     public GraphTraversalOptions Depth(int minDepth, int maxDepth)
     {
-        if (minDepth < 0)
-            throw new ArgumentOutOfRangeException(nameof(minDepth), "Minimum depth must be non-negative.");
+        if (minDepth < 1)
+            throw new ArgumentOutOfRangeException(nameof(minDepth), "Minimum depth must be at least 1.");
 
         if (maxDepth < minDepth)
             throw new ArgumentOutOfRangeException(nameof(maxDepth), "Maximum depth must be greater than or equal to minimum depth.");

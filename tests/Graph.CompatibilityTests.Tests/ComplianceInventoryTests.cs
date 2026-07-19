@@ -67,7 +67,10 @@ public sealed class ComplianceInventoryTests
     // sub-token branch neutralization, and a left-associated three-branch union.
     // +3 for #436/#437: absent value/reference constructor arguments reject implicit defaults,
     // and reference scalar collection projections preserve null rows and positional order.
-    private const int ExpectedTotalTestMethods = 449;
+    // +4 for #380/#444: a self-loop is traversed once per direction shape and yields one path
+    // segment and one path, while parallel self-loops and opposite-direction relationships preserve
+    // one result per physical relationship across node, segment-end, and path-end projections.
+    private const int ExpectedTotalTestMethods = 453;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

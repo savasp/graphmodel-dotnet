@@ -59,6 +59,38 @@ public class CypherRendererTests
     }
 
     [Fact]
+    public void Render_NodeHydrationCarriesInputRowIdentityThroughAggregation()
+    {
+        var statement = new CypherStatement(
+            [
+                new MatchClause(
+                    [new PathPattern([
+                        new NodePattern("src", []),
+                        new RelationshipPattern("r", CypherDirection.Outgoing, depth: null, types: ["KNOWS"]),
+                        new NodePattern("tgt", []),
+                    ])],
+                    optional: false),
+                new EntityProjectionClause(
+                    EntityProjectionShape.Node,
+                    "tgt",
+                    relationshipAlias: null,
+                    targetAlias: null,
+                    loadSourceProperties: true,
+                    loadTargetProperties: false,
+                    includePathCoordinates: false,
+                    ordering: [],
+                    rowIdentityAliases: ["src", "r"]),
+            ],
+            new Dictionary<string, object?>());
+
+        var result = renderer.Render(statement);
+
+        Assert.Contains("WITH tgt, src, r,\n    CASE", result.Text, StringComparison.Ordinal);
+        Assert.Contains("WITH tgt, src, r, reduce", result.Text, StringComparison.Ordinal);
+        Assert.Equal(["Node"], result.ProjectionColumns);
+    }
+
+    [Fact]
     public void Render_ListComprehensionWithFilterOnly_UsesCanonicalSyntax()
     {
         var expression = new ListComprehensionExpression(

@@ -816,11 +816,11 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
 
     private static DepthRange CreateDepthRange(MethodCallExpression node, int min, int max)
     {
-        if (min < 0 || max < min)
+        if (min < 1 || max < min)
         {
             throw Unsupported(
                 node,
-                $"traversal depth range [{min}..{max}] is invalid: the minimum must be non-negative and the " +
+                $"traversal depth range [{min}..{max}] is invalid: the minimum must be at least 1 and the " +
                 "maximum must be at least the minimum.");
         }
 

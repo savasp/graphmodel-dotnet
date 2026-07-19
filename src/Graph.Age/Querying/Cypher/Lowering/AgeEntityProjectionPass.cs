@@ -177,6 +177,11 @@ internal sealed class AgeEntityProjectionPass : ICypherPass
                 yield return projection.TargetAlias!;
             }
 
+            foreach (var rowIdentityAlias in projection.RowIdentityAliases)
+            {
+                yield return rowIdentityAlias;
+            }
+
             if (projection.IncludePathCoordinates)
             {
                 yield return "pathIndex";
@@ -188,16 +193,17 @@ internal sealed class AgeEntityProjectionPass : ICypherPass
             List<ICypherClause> clauses,
             EntityProjectionClause projection)
         {
+            IReadOnlyList<string> aliases = [projection.SourceAlias, .. projection.RowIdentityAliases];
             AppendPropertyMatch(clauses, projection.SourceAlias, "src", "rels", "prop");
             clauses.Add(new WithClause(
-                CarryItems(projection.SourceAlias, projection.Ordering)
+                CarryItems(aliases, projection.Ordering)
                     .Append(new ReturnItem(
                         PropertyPath("src_path", projection.SourceAlias, "rels"),
                         "src_property_path"))
                     .ToArray(),
                 distinct: false));
             clauses.Add(new WithClause(
-                CarryItems(projection.SourceAlias, projection.Ordering)
+                CarryItems(aliases, projection.Ordering)
                     .Append(new ReturnItem(CollectedPropertyPaths("src_property_path"), "src_properties"))
                     .ToArray(),
                 distinct: false));
@@ -352,11 +358,6 @@ internal sealed class AgeEntityProjectionPass : ICypherPass
                 CypherBinaryOperator.Add,
                 new VariableRef("flat"),
                 new VariableRef("path")));
-
-        private static IEnumerable<ReturnItem> CarryItems(
-            string alias,
-            IReadOnlyList<OrderByItem> ordering) =>
-            CarryItems([alias], ordering);
 
         private static IEnumerable<ReturnItem> CarryItems(
             IReadOnlyList<string> aliases,

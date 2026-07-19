@@ -194,6 +194,17 @@ var sociallyActive = await graph.Nodes<Person>()
     .ToListAsync();
 ```
 
+A traversal is one or more relationship hops, so every depth bound must be at least 1 and the
+maximum must be at least the minimum. `Depth(0)`, `Depth(0, n)`, and the equivalent `Traverse` and
+`TraversePaths` overloads throw `ArgumentOutOfRangeException` while the query is being constructed,
+before any provider sees it. Reflexive reachability — treating the source itself as a zero-hop
+result — is deliberately not part of this contract; `IGraphPath` always contains at least one
+segment.
+
+A self-relationship is a single edge, so a bidirectional traversal reaches it once, matching what
+`CountRelationships(..., GraphTraversalDirection.Both)` reports. Parallel relationships between the
+same pair of nodes stay distinct and are never collapsed by endpoint identity.
+
 `WhereRelationship` supports outgoing, incoming, and bidirectional traversal, including
 self-relationships. `WhereHasRelationship` has a one-type-argument convenience overload when the
 common `INode` result shape is sufficient; the two-type-argument overload above retains the concrete

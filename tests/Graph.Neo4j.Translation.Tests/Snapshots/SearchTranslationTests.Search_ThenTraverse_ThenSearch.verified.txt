@@ -5,14 +5,14 @@ CALL db.index.fulltext.queryNodes('node_fulltext_index', $p1) YIELD node AS sear
 WHERE ('Person' IN labels(n) OR 'Manager' IN labels(n)) AND tgt = searchedNode AND ('Person' IN labels(searchedNode) OR 'Manager' IN labels(searchedNode))
 OPTIONAL MATCH src_path = (tgt)-[rels*1..5]->(prop)
 WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)
-WITH tgt,
+WITH tgt, n, r,
     CASE WHEN src_path IS NULL THEN [] ELSE [i IN range(0, size(rels) - 1) | {
         ParentNode: CASE WHEN i = 0 THEN tgt ELSE nodes(src_path)[i] END,
         Relationship: rels[i],
         SequenceNumber: rels[i].SequenceNumber,
         Property: nodes(src_path)[i + 1]
     }] END AS src_property_path
-WITH tgt, reduce(flat = [], path IN collect(src_property_path) | flat + path) AS src_properties
+WITH tgt, n, r, reduce(flat = [], path IN collect(src_property_path) | flat + path) AS src_properties
 RETURN {
     Node: tgt,
     ComplexProperties: src_properties

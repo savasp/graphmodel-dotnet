@@ -1183,16 +1183,34 @@ public class GraphQueryModelBuilderTests
         Assert.Contains("compose chained Select", exception.Message);
     }
 
-    [Fact]
-    public void Traverse_InvalidDepthRange_ThrowsTranslationException()
+    [Theory]
+    [InlineData(0, 0, "[0..0]")]
+    [InlineData(0, 1, "[0..1]")]
+    [InlineData(3, 2, "[3..2]")]
+    public void Traverse_ForgedInvalidDepthRange_ThrowsTranslationException(int min, int max, string expected)
     {
-        var query = Root<Person>()
-            .Traverse<Knows, Company>(0);
+        // The public overloads now reject these eagerly (see ZeroDepthTraversalTests), so the only way
+        // an invalid range reaches the builder is a hand-forged expression tree. The builder must still
+        // refuse it rather than let it through to a provider.
+        var query = Root<Person>().Traverse<Knows, Company>(1, 2);
+        var forged = new DepthRewriter(min, max).Visit(query.Expression);
 
         var exception = Assert.Throws<GraphQueryTranslationException>(() =>
-            GraphQueryModelBuilder.Build(query.Expression));
+            GraphQueryModelBuilder.Build(forged));
 
-        Assert.Contains("depth range [1..0] is invalid", exception.Message);
+        Assert.Contains($"depth range {expected} is invalid", exception.Message);
+    }
+
+    /// <summary>
+    /// Rewrites the nullable-int depth constants that <c>Traverse(min, max)</c> embeds in the
+    /// traversal-options call, producing a range the public API would never construct.
+    /// </summary>
+    private sealed class DepthRewriter(int min, int max) : ExpressionVisitor
+    {
+        protected override Expression VisitConstant(ConstantExpression node) =>
+            node.Type == typeof(int?) && node.Value is int value
+                ? Expression.Constant(value == 1 ? min : max, typeof(int?))
+                : node;
     }
 
     [Fact]
@@ -1409,70 +1427,4 @@ public class GraphQueryModelBuilderTests
         public Address Headquarters { get; init; } = new();
     }
 
-    private sealed class TestGraphQueryable<T> : IOrderedGraphQueryable<T>
-    {
-        public TestGraphQueryable()
-        {
-            Provider = new TestGraphQueryProvider();
-            Expression = Expression.Constant(this);
-        }
-
-        public TestGraphQueryable(TestGraphQueryProvider provider, Expression expression)
-        {
-            Provider = provider;
-            Expression = expression;
-        }
-
-        public Type ElementType => typeof(T);
-
-        public Expression Expression { get; }
-
-        public IGraphQueryProvider Provider { get; }
-
-        IQueryProvider IQueryable.Provider => Provider;
-
-        public IGraph Graph => null!;
-
-        public IEnumerator<T> GetEnumerator() => Enumerable.Empty<T>().GetEnumerator();
-
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-        public async IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
-        {
-            await Task.CompletedTask;
-            yield break;
-        }
-    }
-
-    private sealed class TestGraphQueryProvider : IGraphQueryProvider
-    {
-        public IGraph Graph => null!;
-
-        public IQueryable CreateQuery(Expression expression)
-        {
-            var elementType = ExtensionUtils.GetQueryableElementType(expression.Type);
-            return (IQueryable)Activator.CreateInstance(
-                typeof(TestGraphQueryable<>).MakeGenericType(elementType),
-                this,
-                expression)!;
-        }
-
-        public IQueryable<TElement> CreateQuery<TElement>(Expression expression) =>
-            new TestGraphQueryable<TElement>(this, expression);
-
-        IGraphQueryable<TElement> IGraphQueryProvider.CreateQuery<TElement>(Expression expression) =>
-            new TestGraphQueryable<TElement>(this, expression);
-
-        public object? Execute(Expression expression) =>
-            throw new NotSupportedException();
-
-        public TResult Execute<TResult>(Expression expression) =>
-            throw new NotSupportedException();
-
-        public Task<TResult> ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task<object?> ExecuteAsync(Expression expression, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-    }
 }

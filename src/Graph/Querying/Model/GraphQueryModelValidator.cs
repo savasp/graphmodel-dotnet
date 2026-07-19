@@ -509,9 +509,9 @@ public static class GraphQueryModelValidator
 
     private static void ValidateDepthRange(DepthRange depth, int stepIndex)
     {
-        if (depth.Min < 0)
+        if (depth.Min < 1)
         {
-            throw new GraphException($"Traversal step {stepIndex} depth range minimum must be non-negative.");
+            throw new GraphException($"Traversal step {stepIndex} depth range minimum must be at least 1: a traversal is one or more relationship hops.");
         }
 
         if (depth.Max < depth.Min)
