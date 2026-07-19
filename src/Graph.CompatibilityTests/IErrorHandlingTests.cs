@@ -139,25 +139,26 @@ public interface IErrorHandlingTests : IGraphTest
     }
 
     [Fact]
-    public async Task DeleteNodeAsync_SameIdUnderDifferentLabels_ThrowsAndLeavesNodesUntouched()
+    public async Task DeleteNodeAsync_ByIdAlone_DeletesTheNodeWhateverItsLabel()
     {
-        var id = Guid.NewGuid().ToString("N");
-        var person = new Person { Id = id, FirstName = "Shared", LastName = "Person" };
-        var address = new Address { Id = id, Street = "1 Graph St", City = "Neo" };
+        // Delete takes an id and no type, which is only well defined because an id names at most one
+        // node graph-wide - see INodeIdentityTests. Nodes under unrelated labels are untouched.
+        var addressId = Guid.NewGuid().ToString("N");
+        await Graph.CreateNodeAsync(
+            new Address { Id = addressId, Street = "1 Graph St", City = "Neo" },
+            null,
+            TestContext.Current.CancellationToken);
 
+        var person = new Person { FirstName = "Kept", LastName = "Person" };
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
-        await Graph.CreateNodeAsync(address, null, TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<GraphException>(async () =>
-        {
-            await Graph.DeleteNodeAsync(id, true, null, TestContext.Current.CancellationToken);
-        });
+        await Graph.DeleteNodeAsync(addressId, true, null, TestContext.Current.CancellationToken);
 
-        var remainingPerson = await Graph.GetNodeAsync<Person>(id, null, TestContext.Current.CancellationToken);
-        var remainingAddress = await Graph.GetNodeAsync<Address>(id, null, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
+            await Graph.GetNodeAsync<Address>(addressId, null, TestContext.Current.CancellationToken));
 
-        Assert.Equal(person.FirstName, remainingPerson.FirstName);
-        Assert.Equal(address.Street, remainingAddress.Street);
+        var survivor = await Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken);
+        Assert.Equal("Kept", survivor.FirstName);
     }
 
     [Fact]

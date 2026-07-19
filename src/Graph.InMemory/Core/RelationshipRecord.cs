@@ -46,4 +46,16 @@ internal sealed record RelationshipRecord(
     /// Gets the id of the node the physical edge arrives at, per <see cref="Direction"/>.
     /// </summary>
     public string PhysicalTargetId => Direction == RelationshipDirection.Outgoing ? EndNodeId : StartNodeId;
+
+    /// <summary>
+    /// Gets the store key of the node the physical edge leaves from, per <see cref="Direction"/>,
+    /// or null for a user relationship (which links by node id alone).
+    /// </summary>
+    public Guid? PhysicalSourceKey => Direction == RelationshipDirection.Outgoing ? StartKey : EndKey;
+
+    /// <summary>
+    /// Gets the store key of the node the physical edge arrives at, per <see cref="Direction"/>,
+    /// or null for a user relationship (which links by node id alone).
+    /// </summary>
+    public Guid? PhysicalTargetKey => Direction == RelationshipDirection.Outgoing ? EndKey : StartKey;
 }

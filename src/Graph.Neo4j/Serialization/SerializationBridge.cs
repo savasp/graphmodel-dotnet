@@ -19,6 +19,27 @@ internal static class SerializationBridge
     private const string TypeNameKey = "type";
 
     /// <summary>
+    /// The reserved label carried by every root node this provider writes, and by no decomposed
+    /// complex-property value node.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Node ids are unique graph-wide, and a Neo4j uniqueness constraint is declared for a single
+    /// label (<c>FOR (n:Label)</c>) - there is no label-spanning form in any edition. Root nodes
+    /// otherwise carry only their own CLR type's label, so without one shared label no constraint
+    /// could span them and the invariant would have to fall back to a read-then-write check, which
+    /// two concurrent creates can both pass. This label exists to give that constraint something to
+    /// attach to; it is infrastructure, never part of a node's public
+    /// <see cref="Graph.INode.Labels"/>, and <c>Neo4jRecordAdapter</c> strips it on the way back out.
+    /// </para>
+    /// <para>
+    /// Nodes written before this label existed do not carry it, so the constraint cannot see them.
+    /// The create path probes for those separately rather than assuming the constraint is complete.
+    /// </para>
+    /// </remarks>
+    internal const string RootNodeLabel = "__CvoyaRootNode";
+
+    /// <summary>
     /// Converts a .NET value to a Neo4j-compatible value.
     /// </summary>
     public static object? ToNeo4jValue(object? value)

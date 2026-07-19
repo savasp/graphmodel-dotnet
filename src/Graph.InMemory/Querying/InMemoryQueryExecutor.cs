@@ -616,14 +616,11 @@ internal sealed class InMemoryQueryExecutor(
                     continue;
                 }
 
-                foreach (var neighborId in Neighbors(relationship, nodeId, step.Direction))
+                foreach (var neighbor in NeighborRecords(relationship, nodeId, step.Direction))
                 {
-                    foreach (var neighbor in NodeRecordsById(neighborId))
-                    {
-                        var extended = new List<Hop>(path) { new(relationship, neighbor) };
-                        yield return extended;
-                        stack.Push((neighbor.Id, extended));
-                    }
+                    var extended = new List<Hop>(path) { new(relationship, neighbor) };
+                    yield return extended;
+                    stack.Push((neighbor.Id, extended));
                 }
             }
         }
@@ -631,6 +628,62 @@ internal sealed class InMemoryQueryExecutor(
 
     private IEnumerable<NodeRecord> NodeRecordsById(string id) =>
         _state.Nodes.Values.Where(n => n.Id == id);
+
+    /// <summary>
+    /// Resolves the records one relationship reaches when followed out of <paramref name="nodeId"/>.
+    /// A single physical edge contributes a single hop: complex-property edges carry the owned
+    /// record's store key and so resolve exactly, and user relationships link by node id, which the
+    /// graph-wide id invariant guarantees names at most one root record. Traversal multiplicity
+    /// therefore tracks edges, never id collisions.
+    /// </summary>
+    private IEnumerable<NodeRecord> NeighborRecords(
+        RelationshipRecord relationship,
+        string nodeId,
+        GraphTraversalDirection direction)
+    {
+        var matchesOutgoing = direction is GraphTraversalDirection.Outgoing or GraphTraversalDirection.Both &&
+            relationship.PhysicalSourceId == nodeId;
+        var matchesIncoming = direction is GraphTraversalDirection.Incoming or GraphTraversalDirection.Both &&
+            relationship.PhysicalTargetId == nodeId;
+
+        // Both matches can only be true together for a self-loop, and that is one physical edge, not
+        // two - see Neighbors for the matching degree-projection contract.
+        var (endpointId, endpointKey) = matchesOutgoing
+            ? (relationship.PhysicalTargetId, relationship.PhysicalTargetKey)
+            : matchesIncoming
+                ? (relationship.PhysicalSourceId, relationship.PhysicalSourceKey)
+                : (null, null);
+
+        if (endpointId is null)
+        {
+            yield break;
+        }
+
+        if (ResolveEndpointRecord(endpointId, endpointKey) is { } record)
+        {
+            yield return record;
+        }
+    }
+
+    private NodeRecord? ResolveEndpointRecord(string id, Guid? storeKey)
+    {
+        if (storeKey is { } key)
+        {
+            return _state.Nodes.TryGetValue(key, out var owned) ? owned : null;
+        }
+
+        var roots = _state.RootNodes(id);
+
+        // Unreachable while the graph-wide id invariant holds. Failing closed keeps a regression from
+        // silently multiplying every path through the ambiguous endpoint, or picking one arbitrarily.
+        if (roots.Count > 1)
+        {
+            throw new GraphException(
+                $"Node ID {id} matches {roots.Count} nodes under different labels; refusing an ambiguous traversal.");
+        }
+
+        return roots.Count == 1 ? roots[0] : null;
+    }
 
     private IEnumerable<Row> ApplyLabelFilters(
         IEnumerable<Row> rows,

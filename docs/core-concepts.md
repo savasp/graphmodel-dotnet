@@ -49,6 +49,8 @@ public interface IEntity
     /// <summary>
     /// Gets the unique identifier of the entity.
     /// Identifiers should be immutable once the entity has been persisted to ensure referential integrity.
+    /// A node id is unique graph-wide: within one configured graph or store it identifies at most one
+    /// node, regardless of its labels or CLR type.
     /// </summary>
     string Id { get; init; }
 }
@@ -59,6 +61,8 @@ public interface IEntity
 - **Immutable after persistence**: Once saved to the graph, the `Id` should not change
 - **String-based**: Uses strings for maximum flexibility across different graph databases
 - **Required for all entities**: Both nodes and relationships must have unique identifiers
+- **Node ids are unique graph-wide**: An id identifies at most one node within a configured graph or store, across *all* labels and CLR types. Creating a `Person` and an `Address` with the same id fails on the second create. This is what makes id-only APIs — relationship endpoints, `GetNodeAsync`, `DeleteNodeAsync`, traversal — unambiguous; an operation that cannot resolve exactly one node fails before writing anything rather than picking a match.
+- **Node and relationship ids are separate namespaces**: A relationship may reuse an id that a node already holds. The same id is also valid in a different configured graph or store.
 
 ### Example Implementation
 

@@ -134,7 +134,7 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
             // marker that gates the subtree creation below so a matched endpoint's subtree is never
             // duplicated.
             parameters[$"{variable}_id"] = id;
-            var setLabels = labelClause is null ? string.Empty : $"{variable}:{labelClause}, ";
+            var setLabels = $"{variable}:{labelClause}, ";
             var transientMarker = specs.Count > 0
                 ? $"{TransientCreatedMarkerPrefix}_{Guid.NewGuid():N}"
                 : null;
@@ -148,7 +148,7 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
         }
         else
         {
-            var labels = labelClause is null ? string.Empty : $":{labelClause}";
+            var labels = $":{labelClause}";
             builder.Append("CREATE (").Append(variable).Append(labels)
                 .Append(" $").Append(variable).Append("_props)\n");
 
@@ -244,16 +244,24 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
             .Append(" $rel_props]->(").Append(targetVariable).Append(")\n");
     }
 
-    private static string? BuildNodeLabelClause(EntityInfo entity)
+    /// <summary>
+    /// Builds the label clause for a subgraph endpoint. Every endpoint is a root node, so the clause
+    /// always leads with the reserved root label that carries the graph-wide id constraint - even for
+    /// a dynamic node that declares no labels of its own. Complex-property value nodes are labelled
+    /// separately (see <see cref="AppendValueNodes"/>) and never get it.
+    /// </summary>
+    private static string BuildNodeLabelClause(EntityInfo entity)
     {
+        var rootLabel = CypherIdentifier.Escape(SerializationBridge.RootNodeLabel, "node label");
+
         if (entity.ActualType.IsAssignableTo(typeof(Graph.DynamicNode)))
         {
             return entity.ActualLabels is { Count: > 0 }
-                ? CypherIdentifier.EscapeLabels(entity.ActualLabels)
-                : null;
+                ? $"{rootLabel}:{CypherIdentifier.EscapeLabels(entity.ActualLabels)}"
+                : rootLabel;
         }
 
-        return CypherIdentifier.Escape(entity.Label, "node label");
+        return $"{rootLabel}:{CypherIdentifier.Escape(entity.Label, "node label")}";
     }
 
     private static Dictionary<string, object?> BuildNodeProperties(EntityInfo entity)

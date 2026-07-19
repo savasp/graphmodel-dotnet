@@ -80,12 +80,37 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         {
             throw;
         }
+        catch (Neo4jException ex) when (IsRootNodeIdConstraintViolation(ex))
+        {
+            _logger.LogErrorNeo4jNodeManager85(ex, typeof(TNode).Name);
+            throw new GraphException(
+                $"A node with ID {node.Id} already exists. Node IDs are unique across all labels within a graph.",
+                ex);
+        }
         catch (Exception ex)
         {
             _logger.LogErrorNeo4jNodeManager85(ex, typeof(TNode).Name);
             throw new GraphException($"Failed to create node: {ex.Message}", ex);
         }
     }
+
+    /// <summary>
+    /// Determines whether <paramref name="exception"/> is the database rejecting a duplicate
+    /// root-node id, as opposed to any other constraint the provider installs.
+    /// </summary>
+    /// <remarks>
+    /// The driver reports every constraint breach under one code, so something in the message has to
+    /// separate a duplicate id from a violated <c>[Property(IsUnique)]</c> or composite key. Neo4j
+    /// words it as <c>Node(0) already exists with label `X` and property `Id` = '...'</c> - it names
+    /// the label, never the constraint - and the root label is reserved to this one constraint, so
+    /// the label is the discriminator. Without this the caller would get the raw driver wording,
+    /// which names the internal root label and reads as an implementation leak.
+    /// </remarks>
+    private static bool IsRootNodeIdConstraintViolation(Neo4jException exception) =>
+        string.Equals(exception.Code, ConstraintValidationFailedCode, StringComparison.Ordinal) &&
+        exception.Message.Contains(SerializationBridge.RootNodeLabel, StringComparison.Ordinal);
+
+    private const string ConstraintValidationFailedCode = "Neo.ClientError.Schema.ConstraintValidationFailed";
 
     public async Task<bool> UpdateNodeAsync<TNode>(
         TNode node,
@@ -264,6 +289,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         string cypher;
 
+        // Every root node also carries the reserved root label, which is what the graph-wide id
+        // uniqueness constraint is declared on. It is prepended, not appended, so a node with no
+        // other label still has one.
+        var rootLabel = CypherIdentifier.Escape(SerializationBridge.RootNodeLabel, "node label");
+
         // For dynamic nodes, use the actual labels from ActualLabels
         if (entity.ActualType.IsAssignableTo(typeof(Graph.DynamicNode)))
         {
@@ -273,12 +303,12 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 // caller-supplied input (DynamicNode.Labels is set at runtime), so validate and
                 // escape each one before interpolation.
                 var labels = CypherIdentifier.EscapeLabels(entity.ActualLabels);
-                cypher = $"CREATE (n:{labels} $props) RETURN elementId(n) AS nodeId";
+                cypher = $"CREATE (n:{rootLabel}:{labels} $props) RETURN elementId(n) AS nodeId";
             }
             else
             {
-                // For dynamic nodes with no labels, create without any labels
-                cypher = "CREATE (n $props) RETURN elementId(n) AS nodeId";
+                // For dynamic nodes with no labels, only the reserved root label is written
+                cypher = $"CREATE (n:{rootLabel} $props) RETURN elementId(n) AS nodeId";
             }
         }
         else
@@ -287,7 +317,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // strongly-typed nodes, but is still routed through the same escaping for consistency
             // and defense-in-depth.
             var label = CypherIdentifier.Escape(entity.Label, "node label");
-            cypher = $"CREATE (n:{label} $props) RETURN elementId(n) AS nodeId";
+            cypher = $"CREATE (n:{rootLabel}:{label} $props) RETURN elementId(n) AS nodeId";
         }
 
         var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
@@ -333,7 +363,14 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // interpolation - the current labels may predate this validation (data written by an
             // older version of this library, or by another client) and the new labels can
             // originate from caller-supplied input (DynamicNode.Labels).
-            var escapedCurrentLabels = currentLabels.Select(label => CypherIdentifier.Escape(label, "node label")).ToList();
+            //
+            // The reserved root label is excluded from the swap: it identifies the node as a root for
+            // the graph-wide id constraint and must survive a label change, not be removed with the
+            // caller's previous labels and silently drop the node out of the constraint.
+            var escapedCurrentLabels = currentLabels
+                .Where(label => !string.Equals(label, SerializationBridge.RootNodeLabel, StringComparison.Ordinal))
+                .Select(label => CypherIdentifier.Escape(label, "node label"))
+                .ToList();
 
             // Build the REMOVE clause for current labels
             var removeLabelsClause = escapedCurrentLabels.Count > 0

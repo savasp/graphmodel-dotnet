@@ -52,6 +52,45 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         public int AccountNumber { get; set; }
     }
 
+    // Deliberately free of unique/key properties: a create of one of these takes exactly one advisory
+    // lock, the root-node id claim, so the contention assertions below cannot be satisfied by some
+    // other constraint's lock.
+    [Node("ConcurrentPlainLeft")]
+    public record ConcurrentPlainLeft : Node
+    {
+        [Property]
+        public string Note { get; set; } = string.Empty;
+    }
+
+    [Node("ConcurrentPlainRight")]
+    public record ConcurrentPlainRight : Node
+    {
+        [Property]
+        public string Note { get; set; } = string.Empty;
+    }
+
+    [Fact]
+    public async Task ConcurrentCreates_WithTheSameIdUnderDifferentLabels_LetExactlyOneCommit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sharedId = $"root-{Guid.NewGuid():N}";
+
+        // Both writers claim one id under different labels. Neither type declares a unique or key
+        // property, so the lock the winner is observed to hold - and the loser is observed to wait on -
+        // can only be the graph-wide root-node id claim.
+        var failure = await StageContentionAsync(
+            (transaction, suffix) => suffix == "winner"
+                ? this.Graph.CreateNodeAsync(
+                    new ConcurrentPlainLeft { Id = sharedId, Note = suffix }, transaction, ct)
+                : this.Graph.CreateNodeAsync(
+                    new ConcurrentPlainRight { Id = sharedId, Note = suffix }, transaction, ct),
+            ct);
+
+        Assert.Contains("unique across all labels", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(1, await CountAsync("ConcurrentPlainLeft", ct));
+        Assert.Equal(0, await CountAsync("ConcurrentPlainRight", ct));
+    }
+
     [Node("ConcurrentMappedAccount")]
     public record ConcurrentMappedAccount : Node
     {

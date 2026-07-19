@@ -33,6 +33,30 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         MATCH (n {{Id: $nodeId}})
         WHERE n.{SerializationBridge.EntityKindPropertyName} = $nodeEntityKind";
 
+    // Matches root nodes carrying $nodeId. Every node this provider writes - root or decomposed
+    // complex-property value node - shares one physical label and one entity-kind marker, so root-ness
+    // is established by the absence of an owning complex-property edge, not by the label. Excluding
+    // value nodes keeps the graph-wide id invariant off ids the provider generated for itself.
+    private const string RootNodeByIdPrelude = $@"
+        MATCH (n {{Id: $nodeId}})
+        OPTIONAL MATCH ()-[owning]->(n)
+        WHERE coalesce(owning.{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = true
+        WITH n, COUNT(owning) AS owningCount
+        WHERE owningCount = 0";
+
+    /// <summary>Counts the root nodes carrying <c>$nodeId</c>; the invariant caps this at one.</summary>
+    internal const string RootNodeCountByIdCypher = $@"
+        {RootNodeByIdPrelude}
+        RETURN COUNT(n) AS rootCount";
+
+    /// <summary>
+    /// Returns the AGE-internal id of every root node carrying <c>$nodeId</c>, so a caller can bind an
+    /// id-only endpoint to one physical node instead of re-matching on the id.
+    /// </summary>
+    internal const string RootNodeInternalIdsByIdCypher = $@"
+        {RootNodeByIdPrelude}
+        RETURN id(n) AS internalId";
+
     public async Task<TNode> CreateNodeAsync<TNode>(
         TNode node,
         AgeGraphTransaction transaction,
@@ -58,10 +82,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             await ValidateNodeUniquenessAsync(node, transaction.Runner, excludeId: null, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (await NodeExistsAsync(node.Id, entity.Label, transaction.Runner, cancellationToken).ConfigureAwait(false))
-            {
-                throw new GraphException($"Node with ID '{node.Id}' already exists.");
-            }
+            await ClaimRootNodeIdAsync(node.Id, transaction.Runner, cancellationToken).ConfigureAwait(false);
 
             // Create the main node
             var nodeId = await CreateMainNodeAsync(entity, transaction.Runner, cancellationToken).ConfigureAwait(false);
@@ -94,7 +115,13 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        if (await NodeExistsByIdAsync(node.Id, transaction.Runner, cancellationToken).ConfigureAwait(false))
+        // Claim the id before probing so a competing transaction cannot create the same endpoint
+        // between this probe and the create below; the claim is held until this transaction ends.
+        await transaction.Runner.AcquireUniquenessLocksAsync(
+            [AgeUniquenessLockKey.ComputeRootNodeId(context.GraphName, node.Id)],
+            cancellationToken).ConfigureAwait(false);
+
+        if (await RootNodeExistsAsync(node.Id, transaction.Runner, cancellationToken).ConfigureAwait(false))
         {
             _logger.LogDebugAgeNodeManager44(typeof(TNode).Name, node.Id);
             return;
@@ -293,27 +320,47 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             ?? throw new GraphException("Failed to create node - no ID returned");
     }
 
-    private static async Task<bool> NodeExistsAsync(
+    /// <summary>
+    /// Claims <paramref name="id"/> as a root-node id for the current transaction, failing when any
+    /// root node already holds it whatever its label.
+    /// </summary>
+    /// <remarks>
+    /// The advisory lock is taken before the probe and released only when the transaction ends, so
+    /// probe-then-create is atomic against a competing transaction claiming the same id: the loser
+    /// blocks on the lock and, under the READ COMMITTED default, its probe then sees the winner's
+    /// committed row. Without it the check would be a plain read-then-write race - which is what the
+    /// per-label check it replaces was.
+    /// </remarks>
+    private async Task ClaimRootNodeIdAsync(
         string id,
-        string label,
         AgeQueryRunner transaction,
         CancellationToken cancellationToken)
     {
-        var result = await transaction.RunAsync(
-            "MATCH (n {Id: $nodeId}) WHERE $nodeLabel IN coalesce(n.inheritance_labels, []) RETURN count(n) AS existingCount",
-            new { nodeId = id, nodeLabel = label }, cancellationToken).ConfigureAwait(false);
-        return (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["existingCount"].As<long>() > 0;
+        await transaction.AcquireUniquenessLocksAsync(
+            [AgeUniquenessLockKey.ComputeRootNodeId(context.GraphName, id)],
+            cancellationToken).ConfigureAwait(false);
+
+        if (await RootNodeExistsAsync(id, transaction, cancellationToken).ConfigureAwait(false))
+        {
+            throw new GraphException(
+                $"Node with ID '{id}' already exists. Node IDs are unique across all labels within a graph.");
+        }
     }
 
-    private static async Task<bool> NodeExistsByIdAsync(
+    private static async Task<bool> RootNodeExistsAsync(
         string id,
         AgeQueryRunner transaction,
         CancellationToken cancellationToken)
     {
         var result = await transaction.RunAsync(
-            "MATCH (n {Id: $nodeId}) RETURN count(n) AS existingCount",
-            new { nodeId = id }, cancellationToken).ConfigureAwait(false);
-        return (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["existingCount"].As<long>() > 0;
+            RootNodeCountByIdCypher,
+            new { nodeId = id },
+            cancellationToken).ConfigureAwait(false);
+        var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        // The WHERE on the aggregate filters the row away entirely when the only match is an owned
+        // value node, so an empty result means "no root node", not "no node".
+        return records.Count > 0 && records[0]["rootCount"].As<long>() > 0;
     }
 
     /// <returns>The updated node's Age elementId, or <see langword="null"/> when no node matched.</returns>

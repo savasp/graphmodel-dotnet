@@ -80,6 +80,19 @@ Cross-provider compatibility depends on matching these conventions exactly.
 
 Store the public `IEntity.Id` as a normal graph property named `Id`. Do not expose database-native IDs as CVOYA graph IDs. Relationship `StartNodeId` and `EndNodeId` refer to CVOYA graph node IDs.
 
+**A root-node ID is unique graph-wide.** Within one configured graph or store, an ID identifies at most one root node regardless of its labels or CLR type. Every ID-only surface — relationship endpoints, lookup, update, delete, traversal, path expansion — resolves through the ID alone, so a provider must guarantee it names exactly one node. Concretely:
+
+- Reject a create whose ID an existing root node already holds, whatever its label. Typed, dynamic, ordinary, and subgraph/batch creation paths all enforce it.
+- Enforce it atomically, not with a read-then-write check: two transactions creating one ID under different labels must not both commit. Use a provider-native mechanism — Neo4j declares a uniqueness constraint on a reserved root label carried by every root node (constraints are single-label, so a shared label is what lets one constraint span every CLR type), and Apache AGE takes a transaction-scoped `pg_advisory_xact_lock` on the ID before probing.
+- Resolve each relationship endpoint to exactly one root node **before** writing. Matching both endpoints by ID inside the `CREATE` binds every node carrying that ID and fires the create once per combination, storing a cross-product of edges that all share one relationship ID.
+- Fail closed on ambiguity. An ID that matches several root nodes — only reachable in data written before the invariant was enforced — must abort the operation without mutating anything, never pick a match.
+
+The invariant covers **root nodes only**. Provider-created complex-property value nodes carry generated IDs of their own and are excluded; distinguish them by the incoming `__graphModelComplexProperty` edge, not by label or entity kind, since both database providers stamp value nodes with the same entity kind as roots.
+
+Node IDs and relationship IDs are separate namespaces: a relationship may reuse an ID a node already holds. The same ID is also valid in a different configured graph or store.
+
+Data written before a provider enforced this may still hold duplicates; such nodes are outside any constraint the provider installs later. Providers are not expected to migrate them, but every ID-only path must fail closed when it meets one.
+
 ### Labels And Types
 
 For typed nodes, store labels derived from `[Node]` or the CLR type fallback. For dynamic nodes, store `DynamicNode.Labels` exactly. Neo4j also stores the runtime `Labels` property on the node to support materialization.
@@ -152,7 +165,7 @@ identity is an explicit delete-and-recreate operation, never an implicit update.
 
 ## Behavioral Contracts
 
-Mutations must validate entity constraints before writing: non-null entities, non-empty IDs, relationship endpoints, required properties, no reference cycles, and bounded complex-property depth. Cycle detection is implemented by `GraphDataModel.HasReferenceCycle` / `EnsureNoReferenceCycle`; depth validation uses `EnsureComplexPropertyDepth`.
+Mutations must validate entity constraints before writing: non-null entities, non-empty IDs, graph-wide root-node ID uniqueness (see [IDs](#ids)), relationship endpoints resolving to exactly one root node each, required properties, no reference cycles, and bounded complex-property depth. Cycle detection is implemented by `GraphDataModel.HasReferenceCycle` / `EnsureNoReferenceCycle`; depth validation uses `EnsureComplexPropertyDepth`.
 
 Queries must stay provider-side for supported LINQ operators. Unsupported operators should fail with a clear `GraphException`. Avoid silent client-side evaluation unless the operator explicitly materializes results.
 
@@ -164,7 +177,7 @@ Transaction behavior:
 
 Full-text search is part of `IGraph`: `Search`, `SearchNodes`, `SearchRelationships`, and typed overloads — thin synchronous conveniences over the `.Search()` LINQ operator (building a queryable performs no I/O). Providers should respect `[Property(IncludeInFullTextSearch = false)]`, support dynamic entities, and initialize required full-text indexes. A typed node search is also a valid source for `Traverse`, `PathSegments`, and `TraversePaths`; providers must preserve the searched node scope through every subsequent traversal step and LINQ operator. Mixed node-and-relationship search remains non-traversable because it has no single typed node scope.
 
-Exception behavior follows the public API contract: provider/backend failures are wrapped in `GraphException`, missing entities from get/update/delete operations throw `EntityNotFoundException` (derived from `GraphException`), and invalid caller input preserves argument exceptions where the public API already does so.
+Exception behavior follows the public API contract: provider/backend failures are wrapped in `GraphException`, missing entities from get/update/delete operations throw `EntityNotFoundException` (derived from `GraphException`), and invalid caller input preserves argument exceptions where the public API already does so. A duplicate root-node ID and an ambiguous ID-only operation both raise `GraphException` — nothing is missing in either case, so `EntityNotFoundException` is wrong. Translate a native constraint breach into that `GraphException` rather than surfacing the driver's wording, which names provider-internal schema objects.
 
 ## Contract-Test Reuse
 

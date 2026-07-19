@@ -212,16 +212,30 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             _ => throw new GraphException($"Unsupported relationship direction '{direction}'.")
         };
 
+        // Resolve each endpoint to one physical node up front. Matching both endpoints by id inside the
+        // CREATE would bind every node carrying that id and fire the CREATE once per combination, so a
+        // single API call could store a cross-product of edges all sharing one relationship id. Binding
+        // by AGE-internal id instead makes one call store exactly one edge by construction.
+        var sourceInternalId = await ResolveRootEndpointAsync(sourceNodeId, transaction, cancellationToken)
+            .ConfigureAwait(false);
+        var targetInternalId = await ResolveRootEndpointAsync(targetNodeId, transaction, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (sourceInternalId is null || targetInternalId is null)
+        {
+            return false;
+        }
+
         var properties = BuildRelationshipProperties(entity);
         var parameters = new Dictionary<string, object?>
         {
-            ["sourceNodeId"] = sourceNodeId,
-            ["targetNodeId"] = targetNodeId,
+            ["sourceInternalId"] = sourceInternalId,
+            ["targetInternalId"] = targetInternalId,
         };
         var setClause = AgeCypherProperties.BuildSetClause("r", properties, parameters, "relationshipProperty");
         var cypher = $@"
-            MATCH (source {{Id: $sourceNodeId}})
-            MATCH (target {{Id: $targetNodeId}})
+            MATCH (source) WHERE id(source) = toInteger($sourceInternalId)
+            MATCH (target) WHERE id(target) = toInteger($targetInternalId)
             CREATE (source)-[r:{SerializationBridge.PhysicalRelationshipType}]->(target)
             {setClause}
             RETURN r IS NOT NULL AS created";
@@ -230,6 +244,36 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
 
         var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
         return record["created"].As<bool>();
+    }
+
+    /// <summary>
+    /// Resolves an id-only endpoint to the AGE-internal id of the single root node carrying it.
+    /// </summary>
+    /// <returns>The internal id, or <see langword="null"/> when no root node carries the id.</returns>
+    /// <exception cref="GraphException">
+    /// The id matches more than one root node, which the graph-wide id invariant forbids. Pre-existing
+    /// data written before the invariant was enforced can still violate it, so the endpoint fails
+    /// closed here rather than binding an arbitrary match.
+    /// </exception>
+    private static async Task<string?> ResolveRootEndpointAsync(
+        string nodeId,
+        AgeQueryRunner transaction,
+        CancellationToken cancellationToken)
+    {
+        var result = await transaction.RunAsync(
+            AgeNodeManager.RootNodeInternalIdsByIdCypher,
+            new { nodeId },
+            cancellationToken).ConfigureAwait(false);
+        var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        if (records.Count > 1)
+        {
+            throw new GraphException(
+                $"Node ID {nodeId} matches {records.Count} nodes under different labels; " +
+                "refusing to create a relationship against an ambiguous endpoint.");
+        }
+
+        return records.Count == 1 ? records[0]["internalId"].As<string>() : null;
     }
 
     private static async Task<bool> RelationshipExistsAsync(

@@ -46,17 +46,27 @@ internal sealed record StoreState(
         Relationships.Values.Where(r => r.IsComplexProperty && r.StartKey == parentKey);
 
     /// <summary>
-    /// Adds a node together with its decomposed complex-property subtree. Throws when a node
-    /// with the same id and primary label already exists.
+    /// Adds a node together with its decomposed complex-property subtree. Throws when a root node
+    /// with the same id already exists, whatever its label: root node ids are unique graph-wide.
     /// </summary>
+    /// <remarks>
+    /// The check runs here rather than in the caller because it must be re-evaluated against the
+    /// latest committed state when <see cref="InMemoryStore.Commit"/> replays a transaction's
+    /// mutations, which is what makes two concurrent creates of the same id resolve to exactly one
+    /// winner. Matching goes through <see cref="RootNodes"/> so the invariant stays off the
+    /// provider-created complex-property value nodes, which carry generated ids of their own.
+    /// </remarks>
     public StoreState AddNode(
         NodeRecord node,
         IReadOnlyList<NodeRecord> complexValueNodes,
         IReadOnlyList<RelationshipRecord> complexEdges)
     {
-        if (Nodes.Values.Any(n => n.Id == node.Id && string.Equals(n.Label, node.Label, StringComparison.Ordinal)))
+        var existing = RootNodes(node.Id);
+        if (existing.Count > 0)
         {
-            throw new GraphException($"A node with ID {node.Id} and label {node.Label} already exists.");
+            throw new GraphException(
+                $"A node with ID {node.Id} already exists under label {existing[0].Label}. " +
+                "Node IDs are unique across all labels within a graph.");
         }
 
         var nodes = Nodes.Add(node.Key, node);
@@ -108,8 +118,7 @@ internal sealed record StoreState(
 
     /// <summary>
     /// Deletes the node with the given id, applying the public cascade contract: missing node
-    /// throws <see cref="EntityNotFoundException"/>, the same id under more than one label
-    /// throws and leaves everything untouched, user relationships block the delete unless
+    /// throws <see cref="EntityNotFoundException"/>, user relationships block the delete unless
     /// <paramref name="cascadeDelete"/> is set, and the complex-property subtree always goes
     /// with the node.
     /// </summary>
@@ -121,6 +130,9 @@ internal sealed record StoreState(
             throw new EntityNotFoundException($"Node with ID {id} not found for deletion");
         }
 
+        // Unreachable while the graph-wide id invariant holds (AddNode enforces it), but kept so a
+        // regression that lets a duplicate in fails closed here instead of silently deleting one of
+        // the matches.
         if (roots.Count > 1)
         {
             throw new GraphException(

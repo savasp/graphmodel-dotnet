@@ -35,6 +35,21 @@ internal static class AgeUniquenessLockKey
     /// <summary>Identifies a relationship-entity constraint in <see cref="Compute"/>'s entity-kind component.</summary>
     internal const string RelationshipEntityKind = "relationship";
 
+    /// <summary>Identifies the graph-wide root-node id claim in <see cref="Compute"/>'s constraint component.</summary>
+    internal const string RootNodeIdConstraint = "root-node-id";
+
+    /// <summary>
+    /// Computes the advisory-lock identifier claiming <paramref name="nodeId"/> as a root-node id.
+    /// </summary>
+    /// <remarks>
+    /// The label component is deliberately empty: the claim spans every label, so two writers
+    /// creating the same id under different labels must contend on one key. An empty label cannot
+    /// collide with a real one because <see cref="BuildConstraintIdentity"/> length-frames each
+    /// component and a node label is never empty.
+    /// </remarks>
+    internal static long ComputeRootNodeId(string graphName, string nodeId) =>
+        Compute(graphName, NodeEntityKind, label: string.Empty, RootNodeIdConstraint, [nodeId]);
+
     /// <summary>
     /// Computes the advisory-lock identifier for one constraint instance. Scoping by
     /// <paramref name="graphName"/> keeps graphs in the same PostgreSQL database (advisory locks are

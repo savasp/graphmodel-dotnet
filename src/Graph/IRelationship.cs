@@ -56,8 +56,15 @@ public interface IRelationship : IEntity
     /// Gets the ID of the start node in this relationship.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This is the first endpoint in the relationship's logical node tuple. The stored edge
     /// originates here only when <see cref="Direction"/> is <see cref="RelationshipDirection.Outgoing"/>.
+    /// </para>
+    /// <para>
+    /// The endpoint is identified by node id alone, which resolves to exactly one node because node ids
+    /// are unique graph-wide (see <see cref="IEntity.Id"/>). An endpoint that resolves to no node, or to
+    /// more than one, fails the operation before anything is written.
+    /// </para>
     /// </remarks>
     string StartNodeId { get; init; }
 
@@ -65,8 +72,15 @@ public interface IRelationship : IEntity
     /// Gets the ID of the end node in this relationship.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This is the second endpoint in the relationship's logical node tuple. The stored edge
     /// points here only when <see cref="Direction"/> is <see cref="RelationshipDirection.Outgoing"/>.
+    /// </para>
+    /// <para>
+    /// The endpoint is identified by node id alone, which resolves to exactly one node because node ids
+    /// are unique graph-wide (see <see cref="IEntity.Id"/>). An endpoint that resolves to no node, or to
+    /// more than one, fails the operation before anything is written.
+    /// </para>
     /// </remarks>
     string EndNodeId { get; init; }
 }

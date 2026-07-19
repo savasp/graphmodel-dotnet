@@ -74,7 +74,8 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             {
                 throw new GraphException(
                     $"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}. " +
-                    "One or both nodes may not exist.");
+                    "One or both endpoint IDs did not identify exactly one node: the node may not exist, or - " +
+                    "for data written before node IDs were unique across labels - the ID may match several nodes.");
             }
 
             _logger.LogInformationNeo4jRelationshipManager77(typeof(TRelationship).Name, relationship.Id);
@@ -217,9 +218,29 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             _ => throw new GraphException($"Unsupported relationship direction '{direction}'.")
         };
 
+        // Each endpoint must resolve to exactly one node before anything is written. Matching both
+        // endpoints inline would bind every node carrying that id and fire the CREATE once per
+        // combination, so one API call could store a cross-product of edges all sharing one
+        // relationship id. Collecting each endpoint and requiring a single match makes the write
+        // all-or-nothing: an endpoint that is missing or ambiguous yields no row, so nothing is
+        // created and the caller gets the not-created path below. Owned complex-property value nodes
+        // are excluded so they can never be mistaken for a business endpoint.
         var cypher = $@"
             MATCH (source {{Id: $sourceNodeId}})
+            WHERE NOT EXISTS {{
+                MATCH ()-[owningProperty]->(source)
+                WHERE owningProperty.{ComplexPropertyStorage.RelationshipMarkerProperty} = true
+            }}
+            WITH collect(source) AS sources
             MATCH (target {{Id: $targetNodeId}})
+            WHERE NOT EXISTS {{
+                MATCH ()-[owningProperty]->(target)
+                WHERE owningProperty.{ComplexPropertyStorage.RelationshipMarkerProperty} = true
+            }}
+            WITH sources, collect(target) AS targets
+            WHERE size(sources) = 1 AND size(targets) = 1
+            UNWIND sources AS source
+            UNWIND targets AS target
             CREATE (source)-[r:{relationshipType} $props]->(target)
             RETURN r IS NOT NULL AS created";
 
@@ -232,8 +253,9 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             props = properties
         }).ConfigureAwait(false);
 
-        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
-        return record["created"].As<bool>();
+        // No row means an endpoint did not resolve to exactly one node, so the CREATE never ran.
+        var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+        return records.Count == 1 && records[0]["created"].As<bool>();
     }
 
 

@@ -7,6 +7,7 @@ using System.Linq;
 using Cvoya.Graph;
 using Cvoya.Graph.Neo4j.Core;
 using Cvoya.Graph.Neo4j.Querying.Cypher;
+using Cvoya.Graph.Neo4j.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -72,6 +73,11 @@ internal class Neo4jSchemaManager
             // Read the installed schema once so re-initialization over an existing equivalent
             // schema skips creation without a per-object conflict round trip.
             var existingSchema = await GetExistingSchemaSnapshotAsync(cancellationToken).ConfigureAwait(false);
+
+            // The graph-wide root-node id constraint is not per-label, so it is created once here
+            // rather than inside the loop below. A store used only for dynamic nodes registers no
+            // labels at all, and would otherwise get no id constraint whatsoever.
+            await CreateRootNodeIdConstraintAsync(existingSchema, cancellationToken).ConfigureAwait(false);
 
             // Create constraints and indexes for all discovered node types
             var nodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
@@ -226,6 +232,44 @@ internal class Neo4jSchemaManager
         }
 
         _logger.LogDebugNeo4jSchemaManager216(type);
+    }
+
+    /// <summary>
+    /// The name of the uniqueness constraint backing the graph-wide root-node id invariant.
+    /// </summary>
+    private const string RootNodeIdConstraintName = "unique_cvoya_root_node_id";
+
+    /// <summary>
+    /// Creates the uniqueness constraint backing the graph-wide root-node id invariant.
+    /// </summary>
+    /// <remarks>
+    /// Every root node carries <see cref="SerializationBridge.RootNodeLabel"/>, so this one
+    /// single-label constraint spans every root regardless of its CLR type - which is the only way
+    /// Neo4j can express a label-spanning uniqueness rule. Enforcement is therefore the database's,
+    /// not a read-then-write check, so two concurrent creates of one id cannot both commit.
+    /// Uniqueness constraints are available in Community Edition, so this needs no edition gate.
+    /// </remarks>
+    private async Task CreateRootNodeIdConstraintAsync(
+        SchemaSnapshot? existingSchema,
+        CancellationToken cancellationToken)
+    {
+        var created = await CreateSchemaObjectAsync(
+            new Neo4jSchemaObjectCreation(
+                new Neo4jSchemaObjectDescriptor(
+                    RootNodeIdConstraintName,
+                    Neo4jSchemaObjectKind.NodeUniquenessConstraint,
+                    Neo4jSchemaEntityType.Node,
+                    [SerializationBridge.RootNodeLabel],
+                    ["Id"]),
+                $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(RootNodeIdConstraintName, "constraint name")} " +
+                $"FOR (n:{EscapedLabel(SerializationBridge.RootNodeLabel)}) REQUIRE n.Id IS UNIQUE"),
+            existingSchema,
+            cancellationToken).ConfigureAwait(false);
+
+        if (created)
+        {
+            _logger.LogDebugNeo4jSchemaManager239(SerializationBridge.RootNodeLabel);
+        }
     }
 
     private async Task CreateNodeConstraintsAsync(

@@ -387,24 +387,4 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         }
     }
 
-    private sealed class AsyncBarrier(int participantCount)
-    {
-        private readonly TaskCompletionSource<bool> allParticipantsReady =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int remainingParticipants = participantCount;
-
-        public async Task SignalAndWaitAsync(CancellationToken cancellationToken)
-        {
-            Signal();
-            await allParticipantsReady.Task.WaitAsync(cancellationToken);
-        }
-
-        public void Signal()
-        {
-            if (Interlocked.Decrement(ref remainingParticipants) == 0)
-            {
-                allParticipantsReady.TrySetResult(true);
-            }
-        }
-    }
 }

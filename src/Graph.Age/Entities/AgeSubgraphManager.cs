@@ -68,11 +68,15 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
 
         // The batch interleaves the uniqueness probes with the writes they guard, so the locks have
         // to be held before the batch is sent - not as commands inside it - for the whole subgraph
-        // create to be atomic against a competing transaction claiming the same values.
+        // create to be atomic against a competing transaction claiming the same values. The endpoint
+        // id claims join them so a concurrent create of either endpoint id under another label
+        // contends here too, exactly as it would on the single-node create path.
         await transaction.Runner.AcquireUniquenessLocksAsync(
-            sourceChecks.Concat(targetChecks).Concat(relationshipChecks)
-                .Select(check => check.LockKey)
-                .ToArray(),
+            [
+                .. sourceChecks.Concat(targetChecks).Concat(relationshipChecks).Select(check => check.LockKey),
+                AgeUniquenessLockKey.ComputeRootNodeId(context.GraphName, source.Id),
+                AgeUniquenessLockKey.ComputeRootNodeId(context.GraphName, target.Id),
+            ],
             cancellationToken).ConfigureAwait(false);
 
         var results = await transaction.Runner.RunBatchAsync(commands, cancellationToken).ConfigureAwait(false);

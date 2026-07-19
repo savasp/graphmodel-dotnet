@@ -2,6 +2,7 @@
 // See LICENSE in the project root for full license terms.
 
 using System.Collections;
+using Cvoya.Graph.Neo4j.Serialization;
 using Cvoya.Graph.Serialization.Results;
 using global::Neo4j.Driver;
 using Neo4jNode = global::Neo4j.Driver.INode;
@@ -45,7 +46,11 @@ internal sealed class Neo4jRecordAdapter
 
     private GraphValue AdaptNode(Neo4jNode node) => GraphValue.Node(
         node.ElementId,
-        node.Labels,
+        // The reserved root-node label is storage infrastructure carrying the graph-wide id
+        // constraint. Dropping it here keeps it out of DynamicNode.Labels, out of CLR type discovery,
+        // and out of the primary-label choice, so it stays invisible above the provider.
+        [.. node.Labels.Where(label =>
+            !string.Equals(label, SerializationBridge.RootNodeLabel, StringComparison.Ordinal))],
         node.Properties.ToDictionary(
             pair => pair.Key,
             pair => AdaptValue(pair.Value),
