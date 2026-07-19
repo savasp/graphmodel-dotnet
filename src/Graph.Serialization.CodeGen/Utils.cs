@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 
 internal static class Utils
@@ -114,6 +115,17 @@ internal static class Utils
 
         return false;
     }
+
+    /// <summary>
+    /// Escapes a consumer-provided string (e.g. a <c>[Property(Label = ...)]</c> value, which may
+    /// legally contain quotes, backslashes, or braces) for embedding inside a generated
+    /// interpolated string literal: string-literal escapes first, then doubled braces so the text
+    /// cannot terminate the literal or open an interpolation hole.
+    /// </summary>
+    internal static string EscapeForGeneratedInterpolatedString(string value) =>
+        SymbolDisplay.FormatLiteral(value, quote: false)
+            .Replace("{", "{{")
+            .Replace("}", "}}");
 
     internal static string GetTypeOfName(ITypeSymbol type)
     {

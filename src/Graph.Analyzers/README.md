@@ -56,6 +56,7 @@ public class User : INode
 | **CG014** | Graph entity types (INode/IRelationship) must be reference types        | Error    |
 | **CG015** | [ComplexProperty] has no effect on the configured property              | Warning  |
 | **CG016** | Open generic graph entities are not supported                           | Error    |
+| **CG017** | Nullable complex collection elements are not supported                  | Error    |
 
 ## 🔧 Configuration
 
@@ -136,6 +137,28 @@ public record StringNode : GenericNode<string>;
 The serialization generator supports non-generic concrete entities built from closed generic
 constructions. It does not generate serializers for concrete open generic entity declarations or
 entities nested in an open generic containing type.
+
+### CG017: Nullable Complex Collection Elements Are Not Supported
+
+```csharp
+// ❌ Bad - a null element has nowhere to live on the wire
+public record Person : Node
+{
+    public List<Address?> Addresses { get; set; } = new();
+}
+
+// ✅ Good - declare the element type as non-nullable
+public record Person : Node
+{
+    public List<Address> Addresses { get; set; } = new();
+}
+```
+
+A collection of complex values is stored as one relationship per element, so an absent element is
+indistinguishable from a shorter collection. Serialization and materialization therefore throw a
+`GraphException` naming the property, the element type, and the zero-based index rather than
+silently dropping the element. Collections of *simple* values are unaffected: `List<string?>` and
+`List<int?>` keep their null elements and their positions.
 
 ## 📚 Documentation
 

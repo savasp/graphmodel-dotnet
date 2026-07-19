@@ -37,7 +37,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         DiagnosticDescriptors.ConflictingNodeAndRelationshipAttributes,
         DiagnosticDescriptors.EntityTypeMustBeReferenceType,
         DiagnosticDescriptors.IneffectiveComplexPropertyAttribute,
-        DiagnosticDescriptors.OpenGenericEntityUnsupported);
+        DiagnosticDescriptors.OpenGenericEntityUnsupported,
+        DiagnosticDescriptors.NullableComplexCollectionElement);
 
     /// <summary>
     /// Initializes the analyzer and registers the symbol action for named types.
@@ -148,6 +149,60 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         // CG010: Check circular references
         AnalyzeCircularReferences(context, namedTypeSymbol, helper);
+
+        // CG017: Check for nullable complex collection elements
+        AnalyzeNullableComplexCollectionElements(context, namedTypeSymbol, helper);
+    }
+
+    /// <summary>
+    /// CG017: Reports every <c>List&lt;Address?&gt;</c>-shaped property reachable from the entity,
+    /// including the ones declared on the complex types it uses, because generated serialization
+    /// walks the same graph. Each offending property is reported at its own declaration so the fix
+    /// lands where the type is declared, not where the entity happens to reference it.
+    /// </summary>
+    private static void AnalyzeNullableComplexCollectionElements(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
+    {
+        var visited = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+        var pending = new Stack<INamedTypeSymbol>();
+        pending.Push(namedType);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (!visited.Add(current))
+                continue;
+
+            foreach (var property in GetAllProperties(current))
+            {
+                if (IsCompilerGeneratedProperty(property))
+                    continue;
+
+                if (helper.IsCollectionOfNullableComplexTypes(property.Type))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.NullableComplexCollectionElement,
+                        property.Locations.FirstOrDefault(),
+                        property.Name,
+                        current.Name,
+                        GetShortTypeName(property.Type),
+                        GetShortTypeName(AnalyzerHelper.UnwrapNullableElementType(
+                            AnalyzerHelper.GetCollectionElementType(property.Type)!))));
+                }
+
+                // Descend into complex property types (and complex collection element types) so a
+                // nullable element nested one level down is not missed.
+                var complexType = helper.IsCollectionOfComplexTypes(property.Type)
+                    ? AnalyzerHelper.GetCollectionElementType(property.Type)
+                    : property.Type;
+
+                if (complexType is INamedTypeSymbol complexNamedType &&
+                    helper.IsComplexType(complexType) &&
+                    !helper.IsGraphInterfaceType(complexType))
+                {
+                    pending.Push(complexNamedType);
+                }
+            }
+        }
     }
 
     /// <summary>

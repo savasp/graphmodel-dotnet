@@ -72,11 +72,15 @@ internal sealed class PersonSerializer : IEntitySerializer
             ? new System.Collections.Generic.List<TestNamespace.PhoneNumber>()
             : phonenumbersPropRep.Value is EntityCollection phonenumbersPropRepEntityCollection
                 ? phonenumbersPropRepEntityCollection.Entities
-                    .Select(entityItem => (_serializerRegistry.GetSerializer(entityItem.ActualType)
+                    .Select((entityItem, index) => (_serializerRegistry.GetSerializer(entityItem.ActualType)
                         ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.PhoneNumber))
                         ?? throw new InvalidOperationException($"No serializer found for element type {entityItem.ActualType}"))
-                        .Deserialize(entityItem))
-                    .OfType<TestNamespace.PhoneNumber>()
+                        .Deserialize(entityItem) switch
+                        {
+                            TestNamespace.PhoneNumber typedElement => typedElement,
+                            null => throw new GraphException($"Complex collection property 'PhoneNumbers' contains a null element at index {index}, but its target element type '{typeof(TestNamespace.PhoneNumber)}' does not allow null elements."),
+                            var untypedElement => throw new GraphException($"Complex collection property 'PhoneNumbers' contains an element of type '{untypedElement.GetType()}' at index {index}, which is not assignable to its target element type '{typeof(TestNamespace.PhoneNumber)}'."),
+                        })
                     .ToList()
                 : throw new InvalidOperationException("Required collection property 'PhoneNumbers' is missing or null");
         // Look for property 'Labels' in both simple and complex properties
@@ -134,9 +138,9 @@ internal sealed class PersonSerializer : IEntitySerializer
                 : new EntityCollection(
                     Type: typeof(TestNamespace.PhoneNumber),
                     Entities: value
-                        .Where(item => item is not null)
-                        .Select(item =>
-                            (_serializerRegistry.GetSerializer(item!.GetType())
+                        .Select((item, index) => item is null
+                            ? throw new GraphException($"Complex collection property 'PhoneNumbers' contains a null element at index {index}, but its target element type '{typeof(TestNamespace.PhoneNumber)}' does not allow null elements.")
+                            : (_serializerRegistry.GetSerializer(item.GetType())
                                 ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.PhoneNumber))
                                 ?? throw new InvalidOperationException($"No serializer found for type {item.GetType()}"))
                                 .Serialize(item))

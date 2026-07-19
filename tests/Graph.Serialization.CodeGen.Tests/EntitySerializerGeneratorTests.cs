@@ -306,6 +306,166 @@ public class EntitySerializerGeneratorTests
             exception.Message);
     }
 
+    /// <summary>
+    /// Source shared by the complex-collection null/mistyped-element tests: a node with a
+    /// <c>List&lt;Address&gt;</c> plus a second, unrelated complex type so a wrongly-typed element
+    /// can be constructed from a serializer that is genuinely registered.
+    /// </summary>
+    private const string ComplexCollectionSource = """
+        using System.Collections.Generic;
+        using Cvoya.Graph;
+
+        namespace ComplexCollections;
+
+        public record Address
+        {
+            public string Street { get; set; } = string.Empty;
+        }
+
+        public record Tag
+        {
+            public string Name { get; set; } = string.Empty;
+        }
+
+        [Node("Person")]
+        public record Person : Node
+        {
+            public List<Address> Addresses { get; set; } = new();
+
+            public Tag PrimaryTag { get; set; } = new();
+        }
+        """;
+
+    [Fact]
+    public void NodeWithComplexCollection_RejectsNullElementOnWriteWithIndexedDiagnostic()
+    {
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(ComplexCollectionSource);
+        var nodeType = assembly.GetType("ComplexCollections.Person", throwOnError: true)!;
+        var addressType = assembly.GetType("ComplexCollections.Address", throwOnError: true)!;
+        var serializerType = assembly.GetType(
+            "ComplexCollections.Generated.PersonSerializer",
+            throwOnError: true)!;
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+
+        var addresses = (System.Collections.IList)Activator.CreateInstance(
+            typeof(List<>).MakeGenericType(addressType))!;
+        addresses.Add(Activator.CreateInstance(addressType));
+        addresses.Add(null);
+        addresses.Add(Activator.CreateInstance(addressType));
+
+        var node = Activator.CreateInstance(nodeType)!;
+        nodeType.GetProperty("Addresses")!.SetValue(node, addresses);
+
+        var exception = Assert.Throws<GraphException>(() => serializer.Serialize(node));
+
+        Assert.Equal(
+            "Complex collection property 'Addresses' contains a null element at index 1, " +
+            $"but its target element type '{addressType}' does not allow null elements.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void NodeWithComplexCollection_RejectsMistypedElementOnReadWithIndexedDiagnostic()
+    {
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(ComplexCollectionSource);
+        var nodeType = assembly.GetType("ComplexCollections.Person", throwOnError: true)!;
+        var addressType = assembly.GetType("ComplexCollections.Address", throwOnError: true)!;
+        var tagType = assembly.GetType("ComplexCollections.Tag", throwOnError: true)!;
+        var serializerType = assembly.GetType(
+            "ComplexCollections.Generated.PersonSerializer",
+            throwOnError: true)!;
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+
+        // The second element carries Tag's ActualType, so it resolves to a real registered
+        // serializer and materializes as a Tag - the exact case .OfType<Address>() used to drop.
+        var entity = new EntityInfo(
+            nodeType,
+            "Person",
+            ["Person"],
+            new Dictionary<string, Property>(),
+            new Dictionary<string, Property>
+            {
+                ["Addresses"] = new Property(
+                    nodeType.GetProperty("Addresses")!,
+                    "Addresses",
+                    Value: new EntityCollection(
+                        addressType,
+                        [
+                            NewComplexEntity(addressType, "Address", "Street"),
+                            NewComplexEntity(tagType, "Tag", "Name"),
+                        ])),
+            });
+
+        var exception = Assert.Throws<GraphException>(() => serializer.Deserialize(entity));
+
+        Assert.Equal(
+            $"Complex collection property 'Addresses' contains an element of type '{tagType}' at index 1, " +
+            $"which is not assignable to its target element type '{addressType}'.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void NodeWithComplexCollection_PreservesCountAndOrderForValidElements()
+    {
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(ComplexCollectionSource);
+        var nodeType = assembly.GetType("ComplexCollections.Person", throwOnError: true)!;
+        var addressType = assembly.GetType("ComplexCollections.Address", throwOnError: true)!;
+        var serializerType = assembly.GetType(
+            "ComplexCollections.Generated.PersonSerializer",
+            throwOnError: true)!;
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+
+        var streetProperty = addressType.GetProperty("Street")!;
+        var addresses = (System.Collections.IList)Activator.CreateInstance(
+            typeof(List<>).MakeGenericType(addressType))!;
+        foreach (var street in new[] { "First", "Second", "Third" })
+        {
+            var address = Activator.CreateInstance(addressType)!;
+            streetProperty.SetValue(address, street);
+            addresses.Add(address);
+        }
+
+        var node = Activator.CreateInstance(nodeType)!;
+        nodeType.GetProperty("Addresses")!.SetValue(node, addresses);
+
+        var roundTripped = serializer.Deserialize(serializer.Serialize(node));
+
+        var actual = (System.Collections.IList)nodeType.GetProperty("Addresses")!.GetValue(roundTripped)!;
+        Assert.Equal(
+            new[] { "First", "Second", "Third" },
+            actual.Cast<object>().Select(address => streetProperty.GetValue(address)));
+    }
+
+    [Fact]
+    public void NodeWithEmptyComplexCollection_RoundTripsAsEmpty()
+    {
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(ComplexCollectionSource);
+        var nodeType = assembly.GetType("ComplexCollections.Person", throwOnError: true)!;
+        var serializerType = assembly.GetType(
+            "ComplexCollections.Generated.PersonSerializer",
+            throwOnError: true)!;
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+
+        var roundTripped = serializer.Deserialize(serializer.Serialize(Activator.CreateInstance(nodeType)!));
+
+        var actual = (System.Collections.IList)nodeType.GetProperty("Addresses")!.GetValue(roundTripped)!;
+        Assert.Empty(actual);
+    }
+
+    private static EntityInfo NewComplexEntity(Type type, string label, string propertyName) =>
+        new(
+            type,
+            label,
+            [],
+            new Dictionary<string, Property>
+            {
+                [propertyName] = new Property(
+                    type.GetProperty(propertyName)!,
+                    propertyName,
+                    Value: new SimpleValue("value", typeof(string))),
+            },
+            new Dictionary<string, Property>());
+
     [Fact]
     public void NodeWithNullableObliviousSimpleCollection_TreatsElementsAsNonNullable()
     {

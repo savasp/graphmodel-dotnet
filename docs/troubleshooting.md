@@ -330,6 +330,7 @@ TransientException: Deadlock detected
 | **CG014** | Graph entity types (INode/IRelationship) must be reference types | Error |
 | **CG015** | [ComplexProperty] has no effect on the configured property | Warning |
 | **CG016** | Open generic graph entities are not supported | Error |
+| **CG017** | Nullable complex collection elements are not supported | Error |
 
 **Solutions:**
 See the [Analyzers README](https://github.com/cvoya-com/graph/blob/main/src/Graph.Analyzers/README.md) for detailed examples of each warning and how to fix them.
