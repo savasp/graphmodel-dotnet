@@ -447,6 +447,33 @@ public class GraphResultMaterializerTests
     }
 
     [Fact]
+    public void ComplexCollectionSchema_RejectsNullableElementStateCopiedFromSimpleCollection()
+    {
+        var simpleProperty = typeof(NameCollectionProjection)
+            .GetProperty(nameof(NameCollectionProjection.Names))!;
+        var complexProperty = typeof(NullableComplexCollectionProjection)
+            .GetProperty(nameof(NullableComplexCollectionProjection.Addresses))!;
+        var simpleSchema = new PropertySchema(
+            simpleProperty,
+            simpleProperty.Name,
+            PropertyType.SimpleCollection,
+            typeof(string))
+        {
+            IsElementNullable = true,
+        };
+
+        var schema = simpleSchema with
+        {
+            PropertyInfo = complexProperty,
+            PropertyName = "stored{addresses}",
+            PropertyType = PropertyType.ComplexCollection,
+            ElementType = typeof(MaterializedAddress),
+        };
+
+        Assert.False(schema.IsElementNullable);
+    }
+
+    [Fact]
     public void SimpleCollectionSchema_PreservesExplicitNullableElementOverride()
     {
         var property = typeof(NameCollectionProjection)

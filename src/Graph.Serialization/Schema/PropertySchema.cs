@@ -42,7 +42,7 @@ public record PropertySchema(
     /// </remarks>
     public bool IsElementNullable
     {
-        get => _isElementNullable;
+        get => PropertyType == PropertyType.SimpleCollection && _isElementNullable;
         init => _isElementNullable = PropertyType == PropertyType.SimpleCollection && value;
     }
 }
