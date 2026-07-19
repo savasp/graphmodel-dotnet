@@ -6,6 +6,7 @@ namespace Cvoya.Graph.InMemory.Querying;
 using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Querying;
+using Cvoya.Graph.Serialization;
 
 /// <summary>
 /// Interprets a <see cref="GraphQueryModel"/> with LINQ-to-objects over one store snapshot.
@@ -1254,6 +1255,40 @@ internal sealed class InMemoryQueryExecutor(
             ? BuildGraphPath(row)
             : ResolveInput(row, null, selector.Parameters[0].Type);
 
+        // Constructor projections must read required simple arguments from the stored record just
+        // like scalar projections do below. Invoking the compiled selector against a hydrated entity
+        // would otherwise observe the deserializer's default for an absent property and silently
+        // construct a projection whose corresponding parameter cannot hold that value.
+        if (StripConvert(selector.Body) is NewExpression construction &&
+            input is not null &&
+            row.Sources.TryGetValue(input, out var constructorSource))
+        {
+            var parameters = construction.Constructor?.GetParameters() ?? [];
+            for (var index = 0; index < construction.Arguments.Count && index < parameters.Length; index++)
+            {
+                if (StripConvert(construction.Arguments[index]) is not MemberExpression
+                    {
+                        Expression: ParameterExpression parameter,
+                        Member: PropertyInfo constructionProperty,
+                    } constructionMember ||
+                    parameter != selector.Parameters[0] ||
+                    (!GraphDataModel.IsSimple(constructionMember.Type) &&
+                     !GraphDataModel.IsCollectionOfSimple(constructionMember.Type)) ||
+                    NullabilityDerivation.IsParameterNullable(parameters[index]))
+                {
+                    continue;
+                }
+
+                if (!constructorSource.TryGetValue(Labels.GetLabelFromProperty(constructionProperty), out var constructionStored) ||
+                    constructionStored.Value is null)
+                {
+                    throw new GraphException(
+                        $"Cannot materialize null into non-nullable type '{parameters[index].ParameterType.FullName}' " +
+                        $"for '{parameters[index].Name ?? $"param{index}"}'.");
+                }
+            }
+        }
+
         // A scalar projection of one simple member reads the stored value: an entity hydrated
         // from a record that never stored the member (e.g. created dynamically) must surface
         // "null into non-nullable" as a materialization error, not the CLR default the
@@ -1268,7 +1303,7 @@ internal sealed class InMemoryQueryExecutor(
         {
             if (member.Type.IsValueType && Nullable.GetUnderlyingType(member.Type) is null)
             {
-                throw new InvalidOperationException(
+                throw new GraphException(
                     $"Cannot materialize null into non-nullable type '{member.Type.FullName}' for '{member.Member.Name}'.");
             }
 

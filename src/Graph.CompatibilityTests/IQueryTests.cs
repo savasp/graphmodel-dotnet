@@ -477,7 +477,7 @@ public interface IQueryTests : IGraphTest
 
         await this.Graph.CreateNodeAsync(node, null, cancellationToken);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
             this.Graph.Nodes<Person>()
                 .Where(p => p.LastName == group)
                 .Select(p => p.Age)
@@ -486,6 +486,104 @@ public interface IQueryTests : IGraphTest
         Assert.Contains("Cannot materialize null into non-nullable type", exception.Message);
         Assert.Contains(typeof(int).FullName!, exception.Message);
         Assert.DoesNotContain("Sequence contains no elements", exception.Message);
+    }
+
+    [Fact]
+    public async Task FirstAsync_AbsentConstructorProjectionToNonNullableValue_ThrowsClearMaterializationError()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"FirstAsync-absent-constructor-{Guid.NewGuid():N}";
+        var node = new DynamicNode(
+            [nameof(Person)],
+            new Dictionary<string, object?>
+            {
+                [nameof(Person.FirstName)] = "AbsentConstructor",
+                [nameof(Person.LastName)] = group
+            });
+
+        await this.Graph.CreateNodeAsync(node, null, cancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            this.Graph.Nodes<Person>()
+                .Where(p => p.LastName == group)
+                .Select(p => new { p.Age })
+                .FirstAsync(cancellationToken));
+
+        Assert.Contains("Cannot materialize null into non-nullable type", exception.Message);
+        Assert.Contains(typeof(int).FullName!, exception.Message);
+        Assert.Contains("Age", exception.Message);
+    }
+
+    [Fact]
+    public async Task FirstAsync_AbsentConstructorProjectionToNonNullableReference_ThrowsClearMaterializationError()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"FirstAsync-absent-reference-constructor-{Guid.NewGuid():N}";
+        var node = new DynamicNode(
+            [nameof(Person)],
+            new Dictionary<string, object?>
+            {
+                [nameof(Person.FirstName)] = "AbsentReferenceConstructor",
+                [nameof(Person.LastName)] = group,
+            });
+
+        await this.Graph.CreateNodeAsync(node, null, cancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            this.Graph.Nodes<Person>()
+                .Where(p => p.LastName == group)
+                .Select(p => new RequiredBioProjection(p.Bio))
+                .FirstAsync(cancellationToken));
+
+        Assert.Contains("Cannot materialize null into non-nullable type", exception.Message);
+        Assert.Contains(typeof(string).FullName!, exception.Message);
+        Assert.Contains(nameof(RequiredBioProjection.Bio), exception.Message);
+    }
+
+    [Fact]
+    public async Task ToListAsync_NullReferenceScalarProjection_PreservesRowAndOrder()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"ToListAsync-null-reference-{Guid.NewGuid():N}";
+        var nodes = new[]
+        {
+            new DynamicNode(
+                [nameof(Person)],
+                new Dictionary<string, object?>
+                {
+                    [nameof(Person.FirstName)] = "1",
+                    [nameof(Person.LastName)] = group,
+                    [nameof(Person.Bio)] = "first",
+                }),
+            new DynamicNode(
+                [nameof(Person)],
+                new Dictionary<string, object?>
+                {
+                    [nameof(Person.FirstName)] = "2",
+                    [nameof(Person.LastName)] = group,
+                }),
+            new DynamicNode(
+                [nameof(Person)],
+                new Dictionary<string, object?>
+                {
+                    [nameof(Person.FirstName)] = "3",
+                    [nameof(Person.LastName)] = group,
+                    [nameof(Person.Bio)] = "third",
+                }),
+        };
+
+        foreach (var node in nodes)
+        {
+            await this.Graph.CreateNodeAsync(node, null, cancellationToken);
+        }
+
+        var values = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == group)
+            .OrderBy(p => p.FirstName)
+            .Select(p => p.Bio)
+            .ToListAsync(cancellationToken);
+
+        Assert.Equal(new string?[] { "first", null, "third" }, values);
     }
 
     [Fact]
@@ -967,3 +1065,5 @@ public interface IQueryTests : IGraphTest
         Assert.Single(memories);
     }
 }
+
+internal sealed record RequiredBioProjection(string Bio);

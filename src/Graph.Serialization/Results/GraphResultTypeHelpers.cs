@@ -5,39 +5,31 @@ namespace Cvoya.Graph.Serialization.Results;
 
 internal static class GraphResultTypeHelpers
 {
-    public static Type GetTargetTypeIfCollection(Type type)
+    public static Type GetTargetTypeIfCollection(Type type) =>
+        GetCollectionElementType(type) ?? type;
+
+    public static Type? GetCollectionElementType(Type type)
     {
-        if (type.IsArray)
+        if (type == typeof(string))
         {
-            return type.GetElementType()!;
+            return null;
         }
 
-        // If it's already not a collection type, return as-is
-        if (!type.IsGenericType)
-            return type;
+        if (type.IsArray)
+        {
+            return type.GetElementType();
+        }
 
-        // Check if it's IEnumerable<T>, List<T>, etc.
-        var genericTypeDefinition = type.GetGenericTypeDefinition();
-
-        if (genericTypeDefinition == typeof(IEnumerable<>) ||
-            genericTypeDefinition == typeof(List<>) ||
-            genericTypeDefinition == typeof(IList<>) ||
-            genericTypeDefinition == typeof(ICollection<>))
+        if (type.IsGenericType &&
+            type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
         {
             return type.GetGenericArguments()[0];
         }
 
-        // Check if it implements IEnumerable<T>
         var enumerableInterface = type.GetInterfaces()
             .FirstOrDefault(i => i.IsGenericType &&
                                 i.GetGenericTypeDefinition() == typeof(IEnumerable<>));
 
-        if (enumerableInterface != null)
-        {
-            return enumerableInterface.GetGenericArguments()[0];
-        }
-
-        // If we can't determine the element type, return the original type
-        return type;
+        return enumerableInterface?.GetGenericArguments()[0];
     }
 }

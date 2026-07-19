@@ -34,32 +34,7 @@ public record PropertySchema(
     /// default to reflection metadata so nullable reference annotations are not inferred from the
     /// runtime element type alone.
     /// </remarks>
-    public bool IsElementNullable { get; init; } = GetElementNullability(PropertyInfo, ElementType);
-
-    private static bool GetElementNullability(PropertyInfo propertyInfo, Type? elementType)
-    {
-        if (elementType is null)
-        {
-            return false;
-        }
-
-        if (Nullable.GetUnderlyingType(elementType) is not null)
-        {
-            return true;
-        }
-
-        if (elementType.IsValueType)
-        {
-            return false;
-        }
-
-        var propertyNullability = new NullabilityInfoContext().Create(propertyInfo);
-        var elementNullability = propertyInfo.PropertyType.IsArray
-            ? propertyNullability.ElementType
-            : propertyNullability.GenericTypeArguments.FirstOrDefault();
-
-        return elementNullability?.ReadState == NullabilityState.Nullable;
-    }
+    public bool IsElementNullable { get; init; } = NullabilityDerivation.IsElementNullable(PropertyInfo, ElementType);
 }
 
 /// <summary>
