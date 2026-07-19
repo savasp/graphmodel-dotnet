@@ -43,9 +43,13 @@ public sealed class Neo4jHarness : IGraphProviderTestHarness
     /// <inheritdoc/>
     public async ValueTask<IGraph> GetGraphAsync(StoreIsolation isolation, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
-            return await fixture.GetGraph(getNewDatabase: isolation == StoreIsolation.FreshStore);
+            return isolation == StoreIsolation.IndependentStore
+                ? fixture.GetIndependentGraph()
+                : await fixture.GetGraph(getNewDatabase: isolation == StoreIsolation.FreshStore);
         }
         catch (TestInfrastructureFixture.Neo4jTestInfrastructureUnavailableException ex)
         {

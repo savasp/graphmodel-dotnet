@@ -101,7 +101,13 @@ internal static class TransactionHelpers
         if (transaction is not GraphTransaction graphTransaction)
         {
             throw new GraphException(
-                "The given transaction is not a valid Neo4j transaction. You need to use Neo4jStore.Graph.BeginTransaction() to create a transaction.");
+                "The given transaction is not a valid Neo4j transaction. Use Neo4jGraphStore.Graph.GetTransactionAsync() to create one.");
+        }
+
+        if (!graphTransaction.BelongsTo(graphContext))
+        {
+            throw new GraphException(
+                "The given transaction was created by a different Neo4j graph store. A transaction can only be used with the graph that created it.");
         }
 
         return graphTransaction;

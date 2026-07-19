@@ -27,13 +27,23 @@ public interface IGraphProviderTestHarness : IAsyncLifetime
     CapabilitySet Capabilities { get; }
 
     /// <summary>
-    /// Gets an <see cref="IGraph"/> over an empty store, called once per test.
+    /// Gets an <see cref="IGraph"/> over an empty store. Called once per test with
+    /// <see cref="StoreIsolation.CleanSharedStore"/> or <see cref="StoreIsolation.FreshStore"/>;
+    /// cross-store contract tests additionally call it with
+    /// <see cref="StoreIsolation.IndependentStore"/> to obtain a second store instance that must
+    /// coexist with the one already returned - which, unlike the other levels, may share the first
+    /// store's data.
     /// </summary>
     /// <param name="isolation">
     /// The isolation the returned store must provide - see <see cref="StoreIsolation"/>.
     /// </param>
     /// <param name="cancellationToken">A cancellation token for the acquisition.</param>
-    /// <returns>An <see cref="IGraph"/> backed by an empty store.</returns>
+    /// <returns>
+    /// An <see cref="IGraph"/> satisfying <paramref name="isolation"/>. The store is empty for
+    /// <see cref="StoreIsolation.CleanSharedStore"/> and <see cref="StoreIsolation.FreshStore"/>;
+    /// an <see cref="StoreIsolation.IndependentStore"/> may see data from a previously returned
+    /// graph.
+    /// </returns>
     /// <exception cref="GraphProviderUnavailableException">
     /// The backing infrastructure (for example, a Docker-hosted database) could not be started or
     /// reached.
