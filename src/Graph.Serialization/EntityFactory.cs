@@ -598,17 +598,18 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                         actualType: null);
                 }
 
-                if (!elementType.IsAssignableFrom(item.GetType()))
+                var actualType = item.GetType();
+                if (!elementType.IsAssignableFrom(actualType))
                 {
                     throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
                         propertyName,
                         elementType,
                         index,
-                        item.GetType());
+                        actualType);
                 }
 
                 // Recursively serialize complex objects with cycle detection
-                var itemEntityInfo = SerializeComplexObject(item, elementType, visited);
+                var itemEntityInfo = SerializeComplexObject(item, actualType, visited);
                 complexValues.Add(itemEntityInfo);
                 index++;
             }
@@ -848,17 +849,18 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                                 actualType: null);
                         }
 
-                        if (!elementType.IsAssignableFrom(item.GetType()))
+                        var actualType = item.GetType();
+                        if (!elementType.IsAssignableFrom(actualType))
                         {
                             throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
                                 propertyName,
                                 elementType,
                                 index,
-                                item.GetType());
+                                actualType);
                         }
 
                         // Recursively serialize complex objects with cycle detection
-                        var itemEntityInfo = SerializeComplexObject(item, elementType, visited);
+                        var itemEntityInfo = SerializeComplexObject(item, actualType, visited);
                         complexValues.Add(itemEntityInfo);
                         index++;
                     }
