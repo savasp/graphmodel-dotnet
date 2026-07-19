@@ -738,4 +738,119 @@ public interface IFullTextSearchTests : IGraphTest
         var result = Assert.Single(results);
         Assert.Equal(matching.Id, result.Id);
     }
+
+    // ---- #374: the full-text contract must hold inside set-operation branches ----
+
+    [Fact]
+    [RequiresCapability(GraphCapability.SetOperations)]
+    public async Task UnionOfSearches_AppliesAllTermsMatchPerBranchAndDistinctResults()
+    {
+        // FirstName/LastName stay term-free so Bio carries the only searchable tokens under test.
+        var cloudBoth = new Person { FirstName = "UnionFirst", LastName = "Branch", Bio = "cloud computing platforms" };
+        var cloudOnly = new Person { FirstName = "UnionSecond", LastName = "Branch", Bio = "expertise in cloud systems" };
+        var dataBoth = new Person { FirstName = "UnionThird", LastName = "Branch", Bio = "data science research" };
+        var dataOnly = new Person { FirstName = "UnionFourth", LastName = "Branch", Bio = "open data initiative" };
+        var overlap = new Person { FirstName = "UnionFifth", LastName = "Branch", Bio = "cloud computing data science hub" };
+
+        await this.Graph.CreateNodeAsync(cloudBoth, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(cloudOnly, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(dataBoth, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(dataOnly, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(overlap, null, TestContext.Current.CancellationToken);
+
+        // Each branch keeps its own raw query under the ALL-terms contract: a branch that leaks
+        // the raw string to the provider's parser degrades to an OR combinator and also matches
+        // the single-term decoys.
+        var results = await this.Graph.SearchNodes<Person>("cloud computing")
+            .Union(this.Graph.SearchNodes<Person>("data science"))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, results.Count);
+        Assert.Contains(results, person => person.Id == cloudBoth.Id);
+        Assert.Contains(results, person => person.Id == dataBoth.Id);
+
+        // Matched by both branches, returned once: the union stays distinct.
+        Assert.Single(results, person => person.Id == overlap.Id);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.SetOperations)]
+    public async Task ConcatOfSearches_PreservesDuplicatesAndPerBranchSemantics()
+    {
+        var overlap = new Person { FirstName = "ConcatFirst", LastName = "Branch", Bio = "cloud computing data science hub" };
+        var cloudOnly = new Person { FirstName = "ConcatSecond", LastName = "Branch", Bio = "expertise in cloud systems" };
+
+        await this.Graph.CreateNodeAsync(overlap, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(cloudOnly, null, TestContext.Current.CancellationToken);
+
+        // Concat keeps the row each branch contributes, both branches apply ALL-terms matching,
+        // and the trailing branch - whose query tokenizes to no terms - must contribute nothing
+        // rather than throw. (Whitespace-only queries are rejected at the query surface, so a
+        // query that tokenizes away is the reachable empty-query case.)
+        var results = await this.Graph.SearchNodes<Person>("cloud computing")
+            .Concat(this.Graph.SearchNodes<Person>("data science"))
+            .Concat(this.Graph.SearchNodes<Person>("   ~*  "))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.All(results, person => Assert.Equal(overlap.Id, person.Id));
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.SetOperations)]
+    public async Task UnionOfSearches_SanitizesNonMatchingAndMetacharacterBranches()
+    {
+        var person = new Person { FirstName = "Holiday", LastName = "Planner", Bio = "planning a long vacation abroad" };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
+        // A branch whose query tokenizes to no terms must match nothing (not throw, not match
+        // everything).
+        var emptyTokenBranch = await this.Graph.SearchNodes<Person>("   ~*  ")
+            .Union(this.Graph.SearchNodes<Person>("vacation"))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(person.Id, Assert.Single(emptyTokenBranch).Id);
+
+        // Live metacharacter syntax must be neutralized in both branches: the metacharacter-only
+        // query matches nothing and the suffixed query still matches the plain token.
+        var metacharacterBranch = await this.Graph.SearchNodes<Person>("~*")
+            .Union(this.Graph.SearchNodes<Person>("vacation~"))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(person.Id, Assert.Single(metacharacterBranch).Id);
+
+        // Whole-token matching also holds inside a branch: a sub-token must not match.
+        var subTokenBranch = await this.Graph.SearchNodes<Person>("vaca")
+            .Union(this.Graph.SearchNodes<Person>("vacation"))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(person.Id, Assert.Single(subTokenBranch).Id);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.SetOperations)]
+    public async Task LeftAssociatedThreeBranchUnionOfSearches_SanitizesEveryBranch()
+    {
+        var alpha = new Person { FirstName = "TripleFirst", LastName = "Branch", Bio = "alphaseed shared marker" };
+        var beta = new Person { FirstName = "TripleSecond", LastName = "Branch", Bio = "betaseed shared marker" };
+        var gamma = new Person { FirstName = "TripleThird", LastName = "Branch", Bio = "gammaseed shared marker" };
+
+        // Matches every branch's query under an OR combinator ("shared" alone), no branch's query
+        // under the ALL-terms contract.
+        var decoy = new Person { FirstName = "TripleFourth", LastName = "Branch", Bio = "shared marker only" };
+
+        await this.Graph.CreateNodeAsync(alpha, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(beta, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(gamma, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(decoy, null, TestContext.Current.CancellationToken);
+
+        // Left-associated chaining nests the first union inside the second's left branch, so the
+        // innermost branches sit two set-operation levels deep and every level must be sanitized.
+        var results = await this.Graph.SearchNodes<Person>("alphaseed shared")
+            .Union(this.Graph.SearchNodes<Person>("betaseed shared"))
+            .Union(this.Graph.SearchNodes<Person>("gammaseed shared"))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, results.Count);
+        Assert.Contains(results, person => person.Id == alpha.Id);
+        Assert.Contains(results, person => person.Id == beta.Id);
+        Assert.Contains(results, person => person.Id == gamma.Id);
+    }
 }

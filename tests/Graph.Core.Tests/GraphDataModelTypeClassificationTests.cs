@@ -8,6 +8,13 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 
 
+/// <summary>
+/// Runtime truth table for <see cref="GraphDataModel"/> type classification. Mirrored by
+/// <c>Cvoya.Graph.Analyzers.Tests.AnalyzerHelperTypeClassificationTests</c> and
+/// <c>Cvoya.Graph.Serialization.CodeGen.Tests.GraphDataModelTypeClassificationTests</c>, which
+/// contain a matching named-simple-type slice for the analyzer's and source generator's independent
+/// implementations; keep Point, the temporal types, Guid, and Uri aligned across all three (#387).
+/// </summary>
 [Trait("Area", "GraphDataModel")]
 public class GraphDataModelTypeClassificationTests
 {
@@ -29,6 +36,8 @@ public class GraphDataModelTypeClassificationTests
         { typeof(GraphDataModelTestEnum), true },
         { typeof(string), true },
         { typeof(Point), true },
+        { typeof(System.Drawing.Point), false },
+        { typeof(System.Drawing.Point?), false },
         { typeof(DateTime), true },
         { typeof(DateTimeOffset), true },
         { typeof(TimeSpan), true },
@@ -72,6 +81,8 @@ public class GraphDataModelTypeClassificationTests
         { typeof(List<int>), true },
         { typeof(List<int?>), true },
         { typeof(List<string>), true },
+        { typeof(List<Point>), true },
+        { typeof(List<System.Drawing.Point>), false },
         { typeof(IReadOnlyList<Guid>), true },
         { typeof(IEnumerable<DateOnly>), true },
         { typeof(HashSet<TimeOnly>), true },
@@ -99,6 +110,7 @@ public class GraphDataModelTypeClassificationTests
         { typeof(IReadOnlyList<FlatValueObject>), true },
         { typeof(List<RecursiveValueObject>), true },
         { typeof(List<SimpleStruct>), true },
+        { typeof(List<System.Drawing.Point>), true },
         { typeof(List<List<FlatValueObject>>), false },
         { typeof(Dictionary<string, FlatValueObject>), false },
         { typeof(IDictionary<string, FlatValueObject>), false },
@@ -111,6 +123,7 @@ public class GraphDataModelTypeClassificationTests
         { typeof(int), false },
         { typeof(int?), false },
         { typeof(Point), false },
+        { typeof(System.Drawing.Point), true },
         { typeof(Uri), false },
         { typeof(byte[]), false },
         { typeof(List<int>), false },

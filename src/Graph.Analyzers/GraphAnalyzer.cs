@@ -565,6 +565,15 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             return $"{GetShortTypeName(arrayType.ElementType)}[{new string(',', arrayType.Rank - 1)}]";
         }
 
+        // Preserve the namespace for the unsupported spatial lookalike so CG004/CG005 do not say
+        // that the supported Cvoya.Graph.Point is invalid. Generic/nullable wrappers recurse here,
+        // producing equally unambiguous names for those shapes (#387).
+        if (type is INamedTypeSymbol { Name: "Point" } pointType &&
+            pointType.ContainingNamespace?.ToDisplayString() == "System.Drawing")
+        {
+            return "System.Drawing.Point";
+        }
+
         // Handle nullable value types
         if (type is INamedTypeSymbol nullable && nullable.OriginalDefinition?.SpecialType == SpecialType.System_Nullable_T)
         {

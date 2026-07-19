@@ -225,6 +225,60 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
     }
 
     [Fact]
+    public async Task RelationshipWithPointType_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class TestRelationship : Relationship
+            {
+                public string Id { get; init; } = string.Empty;
+                public RelationshipDirection Direction { get; init; }
+                public string StartNodeId { get; init; } = string.Empty;
+                public string EndNodeId { get; init; } = string.Empty;
+                public Point Location { get; set; } = new();
+                public Point? MaybeLocation { get; set; }
+                public List<Point> Waypoints { get; set; } = new();
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RelationshipWithSystemDrawingPointType_ProducesDiagnostics()
+    {
+        // Mirrors NodeWithSystemDrawingPointType_ProducesDiagnostics: System.Drawing.Point is not a
+        // supported simple type anywhere in the stack, and relationships accept only simple values
+        // and collections of them (#387).
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class TestRelationship : Relationship
+            {
+                public string Id { get; init; } = string.Empty;
+                public RelationshipDirection Direction { get; init; }
+                public string StartNodeId { get; init; } = string.Empty;
+                public string EndNodeId { get; init; } = string.Empty;
+                public System.Drawing.Point {|#0:Location|} { get; set; }
+                public System.Drawing.Point? {|#1:MaybeLocation|} { get; set; }
+                public List<System.Drawing.Point> {|#2:Locations|} { get; set; } = new();
+            }
+            """;
+
+        var expected = new[]
+        {
+            VerifyCS.Diagnostic("CG005").WithLocation(0).WithArguments("Location", "TestRelationship", "System.Drawing.Point"),
+            VerifyCS.Diagnostic("CG005").WithLocation(1).WithArguments("MaybeLocation", "TestRelationship", "Nullable<System.Drawing.Point>"),
+            VerifyCS.Diagnostic("CG005").WithLocation(2).WithArguments("Locations", "TestRelationship", "List<System.Drawing.Point>"),
+        };
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task RelationshipWithNullableTypes_NoDiagnostic()
     {
         var test = """

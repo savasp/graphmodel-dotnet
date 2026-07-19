@@ -79,21 +79,59 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         CypherStatement statement,
         IReadOnlyDictionary<string, object?> parameters)
     {
-        var searchClauses = statement.Clauses.OfType<FullTextSearchClause>().ToList();
+        var searchClauses = new List<FullTextSearchClause>();
+        CollectFullTextSearchClauses(statement.Clauses, searchClauses);
         if (searchClauses.Count == 0)
         {
             return parameters;
         }
 
         var rewritten = new Dictionary<string, object?>(parameters);
+        var rewrittenNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var clause in searchClauses)
         {
             var parameterName = clause.Query.Name;
+
+            // The planner's parameter registry dedupes by value, so two search clauses with the
+            // same raw query share one parameter. Rewrite it exactly once: a second pass would
+            // tokenize the already-rewritten Lucene query ("a AND b" -> "a AND and AND b").
+            if (!rewrittenNames.Add(parameterName))
+            {
+                continue;
+            }
+
             var raw = rewritten.TryGetValue(parameterName, out var value) ? value as string ?? string.Empty : string.Empty;
             rewritten[parameterName] = RewriteToLuceneAndQuery(raw);
         }
 
         return rewritten;
+    }
+
+    // The statement's top-level clause list is not the complete clause tree: set-operation branches
+    // (UNION/UNION ALL, nesting for left-associated chains) and CALL subquery bodies carry whole
+    // nested clause pipelines. Search clauses in those branches reference branch-prefixed
+    // parameters (u0_, u1_, ...) that must be rewritten under the same contract as top-level ones;
+    // see #374.
+    private static void CollectFullTextSearchClauses(
+        IReadOnlyList<ICypherClause> clauses,
+        List<FullTextSearchClause> searchClauses)
+    {
+        foreach (var clause in clauses)
+        {
+            switch (clause)
+            {
+                case FullTextSearchClause search:
+                    searchClauses.Add(search);
+                    break;
+                case SetOperationClause setOperation:
+                    CollectFullTextSearchClauses(setOperation.First, searchClauses);
+                    CollectFullTextSearchClauses(setOperation.Second, searchClauses);
+                    break;
+                case CallSubqueryClause subquery:
+                    CollectFullTextSearchClauses(subquery.Body, searchClauses);
+                    break;
+            }
+        }
     }
 
     private static string RewriteToLuceneAndQuery(string raw)

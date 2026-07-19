@@ -62,7 +62,10 @@ public sealed class ComplianceInventoryTests
     // +1 for #385: freshly converted dynamic nodes and relationships round-trip with derived metadata.
     // +2 for #366: same-provider cross-store transaction misuse is rejected by reads/queries and by
     // every CRUD operation, leaving both stores unchanged and the transaction usable on its owner.
-    private const int ExpectedTotalTestMethods = 442;
+    // +4 for #374: full-text sanitization inside set-operation branches - per-branch ALL-terms
+    // union, duplicate-preserving concat with an empty-token branch, empty-token/metacharacter/
+    // sub-token branch neutralization, and a left-associated three-branch union.
+    private const int ExpectedTotalTestMethods = 446;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()
