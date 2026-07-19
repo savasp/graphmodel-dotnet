@@ -6,6 +6,7 @@ namespace Cvoya.Graph.Age.Querying.Cypher.Execution;
 using System.Collections;
 using System.Data.Common;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -94,6 +95,62 @@ internal sealed partial class AgeQueryRunner
             }
 
             return values;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsQueryExecutionFailure(exception))
+        {
+            throw WrapQueryExecutionFailure(exception);
+        }
+    }
+
+    /// <summary>
+    /// Takes transaction-scoped PostgreSQL advisory locks on <paramref name="lockKeys"/>, blocking
+    /// until every key is held. The locks release automatically when this runner's transaction
+    /// commits or rolls back, so they span the uniqueness probe and the mutation that follows it
+    /// without any explicit unlock path (see <see cref="Entities.AgeUniquenessLockKey"/>).
+    /// </summary>
+    /// <remarks>
+    /// Keys are deduplicated and acquired in ascending order so two transactions that need an
+    /// overlapping set can never take them in opposite orders and deadlock. The statements are sent
+    /// as one multi-statement command: PostgreSQL runs them sequentially in text order, which keeps
+    /// the ordering guarantee at the cost of a single round trip.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security",
+        "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "The statement text is constant apart from generated parameter placeholders; " +
+            "every lock key travels as a bind parameter.")]
+    internal async Task AcquireUniquenessLocksAsync(
+        IReadOnlyCollection<long> lockKeys,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lockKeys);
+        if (lockKeys.Count == 0)
+        {
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var ordered = lockKeys.Distinct().Order().ToArray();
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        var statements = new StringBuilder();
+        for (var index = 0; index < ordered.Length; index++)
+        {
+            statements.Append("SELECT pg_advisory_xact_lock(@lock").Append(index).Append(");");
+            command.Parameters.Add(new NpgsqlParameter<long>($"lock{index}", ordered[index]));
+        }
+
+        command.CommandText = statements.ToString();
+        await using var commandLease = command.ConfigureAwait(false);
+
+        try
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

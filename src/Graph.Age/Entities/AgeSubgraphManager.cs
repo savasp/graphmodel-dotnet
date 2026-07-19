@@ -66,6 +66,15 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             createMissingEndpoints,
             sameEndpoint);
 
+        // The batch interleaves the uniqueness probes with the writes they guard, so the locks have
+        // to be held before the batch is sent - not as commands inside it - for the whole subgraph
+        // create to be atomic against a competing transaction claiming the same values.
+        await transaction.Runner.AcquireUniquenessLocksAsync(
+            sourceChecks.Concat(targetChecks).Concat(relationshipChecks)
+                .Select(check => check.LockKey)
+                .ToArray(),
+            cancellationToken).ConfigureAwait(false);
+
         var results = await transaction.Runner.RunBatchAsync(commands, cancellationToken).ConfigureAwait(false);
         ValidateResults(
             results,
