@@ -1818,4 +1818,66 @@ public interface IQueryTraversalTests : IGraphTest
     }
 
     #endregion
+
+    #region Self-Loop Traversal Tests
+
+    [Fact]
+    public async Task SelfLoop_IsTraversedOncePerDirectionShape()
+    {
+        // A self-loop is one physical relationship. Outgoing and Incoming each match it once, and
+        // Both must not emit it twice just because it matches from either end (#380). This mirrors
+        // RelationshipCounts_CountAnUndirectedSelfLoopOnce, so traversal and degree agree.
+        var alice = new Person { FirstName = "Alice", LastName = "Loop" };
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows { StartNodeId = alice.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow },
+            null,
+            TestContext.Current.CancellationToken);
+
+        foreach (var direction in new[]
+        {
+            GraphTraversalDirection.Outgoing,
+            GraphTraversalDirection.Incoming,
+            GraphTraversalDirection.Both,
+        })
+        {
+            var results = await Graph.Nodes<Person>()
+                .Where(person => person.Id == alice.Id)
+                .Traverse<Knows, Person>(options => options.Direction(direction))
+                .ToListAsync(TestContext.Current.CancellationToken);
+
+            var reached = Assert.Single(results);
+            Assert.Equal(alice.Id, reached.Id);
+        }
+    }
+
+    [Fact]
+    public async Task SelfLoop_ProducesOneSegmentAndOnePath()
+    {
+        var alice = new Person { FirstName = "Alice", LastName = "Loop" };
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows { StartNodeId = alice.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var segments = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .PathSegments<Person, Knows, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var paths = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .TraversePaths<Knows, Person>(1, 1)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var segment = Assert.Single(segments);
+        Assert.Equal(alice.Id, segment.StartNode.Id);
+        Assert.Equal(alice.Id, segment.EndNode.Id);
+
+        var path = Assert.Single(paths);
+        Assert.Single(path.Segments);
+    }
+
+    #endregion
 }

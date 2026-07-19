@@ -11,13 +11,13 @@ public sealed record DepthRange
     /// <summary>
     /// Initializes a new instance of the <see cref="DepthRange"/> record.
     /// </summary>
-    /// <param name="min">The minimum traversal depth. Must be non-negative.</param>
+    /// <param name="min">The minimum traversal depth. Must be at least 1: a traversal is one or more relationship hops.</param>
     /// <param name="max">The maximum traversal depth. Must be greater than or equal to <paramref name="min"/>.</param>
     public DepthRange(int min, int max)
     {
-        if (min < 0)
+        if (min < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(min), "Minimum depth must be non-negative.");
+            throw new ArgumentOutOfRangeException(nameof(min), "Minimum depth must be at least 1.");
         }
 
         if (max < min)

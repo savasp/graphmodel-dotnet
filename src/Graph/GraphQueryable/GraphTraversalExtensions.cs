@@ -167,8 +167,9 @@ public static class GraphTraversalExtensions
     /// <typeparam name="TRel">The type of relationships to traverse</typeparam>
     /// <typeparam name="TEnd">The type of the target nodes</typeparam>
     /// <param name="source">The source queryable of starting nodes</param>
-    /// <param name="maxDepth">The maximum depth to traverse</param>
+    /// <param name="maxDepth">The maximum depth to traverse (must be at least 1).</param>
     /// <returns>A queryable of target nodes reached through the traversal</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="maxDepth"/> is less than 1.</exception>
     public static IGraphQueryable<TEnd> Traverse<TRel, TEnd>(
         this IGraphQueryable<INode> source,
         int maxDepth)
@@ -176,6 +177,9 @@ public static class GraphTraversalExtensions
         where TEnd : class, INode
     {
         ArgumentNullException.ThrowIfNull(source);
+
+        if (maxDepth < 1)
+            throw new ArgumentOutOfRangeException(nameof(maxDepth), "Maximum depth must be at least 1.");
 
         var chain = ReflectiveTraversalChain.FromPathSegments<TRel, TEnd>(source).WithDepth(maxDepth);
         return chain.SelectEndNode<TEnd>(source);
@@ -188,9 +192,10 @@ public static class GraphTraversalExtensions
     /// <typeparam name="TRel">The type of relationships to traverse</typeparam>
     /// <typeparam name="TEnd">The type of the target nodes</typeparam>
     /// <param name="source">The source queryable of starting nodes</param>
-    /// <param name="minDepth">The minimum depth to traverse</param>
-    /// <param name="maxDepth">The maximum depth to traverse</param>
+    /// <param name="minDepth">The minimum depth to traverse (must be at least 1).</param>
+    /// <param name="maxDepth">The maximum depth to traverse (must be greater than or equal to <paramref name="minDepth"/>).</param>
     /// <returns>A queryable of target nodes reached through the traversal</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="minDepth"/> is less than 1, or when <paramref name="maxDepth"/> is less than <paramref name="minDepth"/>.</exception>
     public static IGraphQueryable<TEnd> Traverse<TRel, TEnd>(
         this IGraphQueryable<INode> source,
         int minDepth,
@@ -199,6 +204,12 @@ public static class GraphTraversalExtensions
         where TEnd : class, INode
     {
         ArgumentNullException.ThrowIfNull(source);
+
+        if (minDepth < 1)
+            throw new ArgumentOutOfRangeException(nameof(minDepth), "Minimum depth must be at least 1.");
+
+        if (maxDepth < minDepth)
+            throw new ArgumentOutOfRangeException(nameof(maxDepth), "Maximum depth must be greater than or equal to minimum depth.");
 
         var chain = ReflectiveTraversalChain.FromPathSegments<TRel, TEnd>(source).WithDepth(minDepth, maxDepth);
         return chain.SelectEndNode<TEnd>(source);

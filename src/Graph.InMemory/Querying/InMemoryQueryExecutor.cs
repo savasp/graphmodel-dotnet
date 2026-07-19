@@ -288,7 +288,7 @@ internal sealed class InMemoryQueryExecutor(
         };
     }
 
-    private sealed record StepTrace(INode Start, IRelationship? LastRelationship, INode End);
+    private sealed record StepTrace(INode Start, IRelationship LastRelationship, INode End);
 
     private IEnumerable<Row> RootRows(QueryRoot root)
     {
@@ -468,17 +468,10 @@ internal sealed class InMemoryQueryExecutor(
             sourceNode = fallbackNode;
         }
 
-        var minDepth = Math.Max(step.Depth.Min, 0);
-        var maxDepth = Math.Max(step.Depth.Max, minDepth);
-
-        if (minDepth == 0)
-        {
-            var zeroRow = row.Clone();
-            zeroRow.Bindings[targetAlias] = sourceNode;
-            zeroRow.Current = sourceNode;
-            zeroRow.Traces.Add(new StepTrace(sourceNode, null, sourceNode));
-            yield return zeroRow;
-        }
+        // Depth bounds are validated to be positive and ordered before a model reaches a provider,
+        // so there is no zero-hop branch to expand here.
+        var minDepth = step.Depth.Min;
+        var maxDepth = step.Depth.Max;
 
         // Selection over all candidates only materializes for shortest-path grouping; a plain
         // traversal streams so a bounded terminal can stop the expansion early.
@@ -765,14 +758,21 @@ internal sealed class InMemoryQueryExecutor(
         string nodeId,
         GraphTraversalDirection direction)
     {
-        if (direction is GraphTraversalDirection.Outgoing or GraphTraversalDirection.Both &&
-            relationship.PhysicalSourceId == nodeId)
+        var matchesOutgoing = direction is GraphTraversalDirection.Outgoing or GraphTraversalDirection.Both &&
+            relationship.PhysicalSourceId == nodeId;
+        var matchesIncoming = direction is GraphTraversalDirection.Incoming or GraphTraversalDirection.Both &&
+            relationship.PhysicalTargetId == nodeId;
+
+        if (matchesOutgoing)
         {
             yield return relationship.PhysicalTargetId;
         }
 
-        if (direction is GraphTraversalDirection.Incoming or GraphTraversalDirection.Both &&
-            relationship.PhysicalTargetId == nodeId)
+        // Both matches can only be true together when the relationship is a self-loop on nodeId, and
+        // that is one physical edge, not two. Emitting it once keeps Both traversal consistent with the
+        // degree projection, which already counts a self-loop once for Both. Parallel relationships stay
+        // distinct because this is scoped to a single relationship record, not to neighbor identity.
+        if (matchesIncoming && !matchesOutgoing)
         {
             yield return relationship.PhysicalSourceId;
         }
@@ -1089,8 +1089,7 @@ internal sealed class InMemoryQueryExecutor(
         for (var i = row.Traces.Count - 1; i >= 0; i--)
         {
             var trace = row.Traces[i];
-            if (trace.LastRelationship is not null &&
-                arguments[0].IsInstanceOfType(trace.Start) &&
+            if (arguments[0].IsInstanceOfType(trace.Start) &&
                 arguments[1].IsInstanceOfType(trace.LastRelationship) &&
                 arguments[2].IsInstanceOfType(trace.End))
             {
@@ -1103,11 +1102,6 @@ internal sealed class InMemoryQueryExecutor(
 
     private static object BuildTypedSegment(StepTrace step, Type segmentType)
     {
-        if (step.LastRelationship is null)
-        {
-            throw new GraphException("A zero-hop traversal has no relationship to project into a path segment.");
-        }
-
         if (segmentType.IsGenericType &&
             segmentType.GetGenericTypeDefinition() == typeof(IGraphPathSegment<,,>))
         {

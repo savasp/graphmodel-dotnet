@@ -67,7 +67,11 @@ public sealed class ComplianceInventoryTests
     // sub-token branch neutralization, and a left-associated three-branch union.
     // +3 for #436/#437: absent value/reference constructor arguments reject implicit defaults,
     // and reference scalar collection projections preserve null rows and positional order.
-    private const int ExpectedTotalTestMethods = 449;
+    // +2 for #380: a self-loop is traversed once per direction shape, and yields one path segment
+    // and one path. Result-multiplicity cases live in the InMemory suite instead - see
+    // SelfLoopTraversalTests - because Neo4j collapses distinct relationships reaching the same
+    // target node.
+    private const int ExpectedTotalTestMethods = 451;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()
