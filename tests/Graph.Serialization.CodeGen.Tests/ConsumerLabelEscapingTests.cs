@@ -32,7 +32,7 @@ public class ConsumerLabelEscapingTests
         { "Control", "label\twith\0control\a" },
         { "NonAscii", "étiquette-日本語-Ünïcödé" },
         { "SurrogatePair", "label-\U0001F600-emoji" },
-        { "Combined", "l\"a\\b{c}d\ne\tfg'h\"\"{{i}}" },
+        { "Combined", "l\"a\\b{c}d\ne\tf\u0001g'h\"\"{{i}}" },
     };
 
     [Theory]
@@ -53,7 +53,7 @@ public class ConsumerLabelEscapingTests
             public record Subject : Node
             {
                 [Property(Label = {{Literal(simpleLabel)}})]
-                public string Value { get; set; } = string.Empty;
+                public string Value { get; init; } = string.Empty;
 
                 [Property(Label = {{Literal(simpleCollectionLabel)}})]
                 public List<string> Tags { get; set; } = new();
@@ -175,10 +175,13 @@ public class ConsumerLabelEscapingTests
 
     [Theory]
     [MemberData(nameof(HostileLabels))]
-    public void HostileLabel_InGeneratedExceptionMessage_IsReportedVerbatim(string caseName, string label)
+    public void HostileLabel_InGeneratedComplexCollectionGuards_IsReportedVerbatim(
+        string caseName,
+        string label)
     {
-        // The complex-collection null-element guard interpolates the property label into a generated
-        // interpolated string - the one context that needs brace doubling on top of literal escaping.
+        // The complex-collection guards interpolate the property label into generated strings on
+        // both the serialization and deserialization paths. These contexts need brace doubling on
+        // top of literal escaping.
         var source = $$"""
             using System.Collections.Generic;
             using Cvoya.Graph;
@@ -200,22 +203,30 @@ public class ConsumerLabelEscapingTests
 
         var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(
             source,
-            $"{nameof(HostileLabel_InGeneratedExceptionMessage_IsReportedVerbatim)}_{caseName}");
+            $"{nameof(HostileLabel_InGeneratedComplexCollectionGuards_IsReportedVerbatim)}_{caseName}");
         var subjectType = assembly.GetType("HostileMessageLabels.Subject", throwOnError: true)!;
         var detailType = assembly.GetType("HostileMessageLabels.Detail", throwOnError: true)!;
         var serializer = CreateSerializer(assembly, "HostileMessageLabels.Generated.SubjectSerializer");
 
         var details = (System.Collections.IList)typeof(List<>).MakeGenericType(detailType)
             .GetConstructor(Type.EmptyTypes)!.Invoke(null)!;
-        details.Add(null);
+        details.Add(Activator.CreateInstance(detailType));
         var subject = Activator.CreateInstance(subjectType)!;
         subjectType.GetProperty("Details")!.SetValue(subject, details);
 
-        var exception = Assert.Throws<GraphException>(() => serializer.Serialize(subject));
+        var serialized = serializer.Serialize(subject);
+        EntitySerializerRegistry.Instance.Register(detailType, new NullDeserializer(detailType));
+        var readException = Assert.Throws<GraphException>(() => serializer.Deserialize(serialized));
 
         // Doubled braces are an artifact of the interpolated-string context and must not survive
         // into the message the consumer reads.
-        Assert.Contains($"'{label}'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains($"'{label}'", readException.Message, StringComparison.Ordinal);
+
+        details.Clear();
+        details.Add(null);
+        var writeException = Assert.Throws<GraphException>(() => serializer.Serialize(subject));
+
+        Assert.Contains($"'{label}'", writeException.Message, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -316,5 +327,16 @@ public class ConsumerLabelEscapingTests
     {
         var serializerType = assembly.GetType(serializerTypeName, throwOnError: true)!;
         return Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+    }
+
+    private sealed class NullDeserializer(Type entityType) : IEntitySerializer
+    {
+        public Type EntityType => entityType;
+
+        public EntityInfo Serialize(object obj) => throw new NotSupportedException();
+
+        public object Deserialize(EntityInfo entity) => null!;
+
+        public EntitySchema GetSchema() => throw new NotSupportedException();
     }
 }
