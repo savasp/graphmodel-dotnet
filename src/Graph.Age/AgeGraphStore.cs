@@ -20,7 +20,8 @@ public sealed class AgeGraphStore : IAsyncDisposable
 {
     private readonly NpgsqlDataSource dataSource;
     private readonly bool ownsDataSource;
-    private bool disposed;
+    private readonly SemaphoreSlim provisioningGate = new(1, 1);
+    private int disposed;
     private volatile bool provisioned;
 
     /// <summary>Initializes a store from a PostgreSQL connection string.</summary>
@@ -94,12 +95,16 @@ public sealed class AgeGraphStore : IAsyncDisposable
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        if (disposed)
+        if (Interlocked.Exchange(ref disposed, 1) != 0)
         {
             return;
         }
 
-        disposed = true;
+        // SemaphoreSlim.Dispose cannot run concurrently with WaitAsync or Release. A caller may have
+        // passed OpenConnectionAsync's disposed check without reaching the gate yet, so its current
+        // count cannot prove that the gate is quiescent. AvailableWaitHandle is never read, meaning the
+        // gate owns no operating-system handle and can safely be reclaimed with the store instead.
+
         if (ownsDataSource)
         {
             await dataSource.DisposeAsync().ConfigureAwait(false);
@@ -116,9 +121,24 @@ public sealed class AgeGraphStore : IAsyncDisposable
     /// </summary>
     internal Action? BatchExecutionObserver { get; }
 
+    /// <summary>
+    /// Test instrumentation invoked once per execution of the provisioning sequence, including
+    /// attempts that go on to fail. It deliberately stays internal so counting provisioning runs does
+    /// not expand the public API.
+    /// </summary>
+    internal Action? ProvisioningObserver { get; set; }
+
+    /// <summary>
+    /// Test instrumentation invoked when a caller reaches the provisioning gate, before it waits on
+    /// it. Paired with <see cref="ProvisioningObserver"/> it lets a test prove every racer was
+    /// committed to the gate while a sequence was still in flight, rather than arriving after one
+    /// finished and taking the provisioned fast path - which would leave the test passing vacuously.
+    /// </summary>
+    internal Action? ProvisioningGateObserver { get; set; }
+
     internal async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -132,46 +152,126 @@ public sealed class AgeGraphStore : IAsyncDisposable
         }
     }
 
-    internal async Task CreateGraphIfNotExistsAsync(
+    /// <summary>
+    /// Runs the shared provisioning core unconditionally. An explicit request to create the graph
+    /// re-verifies the database rather than trusting what this store provisioned earlier, because the
+    /// caller may be recovering from a drop this store never observed.
+    /// </summary>
+    internal Task CreateGraphIfNotExistsAsync(
         NpgsqlConnection connection,
-        CancellationToken cancellationToken)
-    {
-        var exists = connection.CreateCommand();
-        await using var existsLease = exists.ConfigureAwait(false);
-        exists.CommandText = "SELECT EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE name = @name)";
-        exists.Parameters.AddWithValue("name", GraphName);
-        if (await exists.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is true)
-        {
-            await EnsurePhysicalLabelsAsync(connection, cancellationToken).ConfigureAwait(false);
-            await Schema.AgeFullTextIndex.EnsureAsync(connection, GraphName, cancellationToken).ConfigureAwait(false);
-            provisioned = true;
-            return;
-        }
-
-        var create = connection.CreateCommand();
-        await using var createLease = create.ConfigureAwait(false);
-        create.CommandText = "SELECT ag_catalog.create_graph(@name)";
-        create.Parameters.AddWithValue("name", GraphName);
-        await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        await EnsurePhysicalLabelsAsync(connection, cancellationToken).ConfigureAwait(false);
-        await Schema.AgeFullTextIndex.EnsureAsync(connection, GraphName, cancellationToken).ConfigureAwait(false);
-        provisioned = true;
-    }
+        CancellationToken cancellationToken) =>
+        ProvisionAsync(connection, skipWhenProvisioned: false, cancellationToken);
 
     /// <summary>
     /// Provisions the graph on first use only. The existence probe and physical-label round-trips
     /// would otherwise run (and write) on every transaction begin, including read-only ones.
     /// </summary>
-    internal async Task EnsureGraphProvisionedAsync(
+    internal Task EnsureGraphProvisionedAsync(
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken) =>
+        provisioned
+            ? Task.CompletedTask
+            : ProvisionAsync(connection, skipWhenProvisioned: true, cancellationToken);
+
+    /// <summary>
+    /// Serializes provisioning within this store and publishes <see cref="provisioned"/> only after the
+    /// whole sequence has succeeded.
+    /// </summary>
+    /// <remarks>
+    /// The gate keeps concurrent first-use operations on one store from each running the sequence;
+    /// <see cref="Schema.AgeProvisioningLock"/> extends that to the peers this store cannot see. Because
+    /// the flag is published last, a failed or cancelled attempt leaves the store unprovisioned and the
+    /// next caller free to retry.
+    /// </remarks>
+    private async Task ProvisionAsync(
+        NpgsqlConnection connection,
+        bool skipWhenProvisioned,
+        CancellationToken cancellationToken)
+    {
+        ProvisioningGateObserver?.Invoke();
+
+        await provisioningGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // The second check: callers that queued behind the winning first-use initialization
+            // inherit its result instead of each repeating it.
+            if (skipWhenProvisioned && provisioned)
+            {
+                return;
+            }
+
+            // An explicit call re-verifies a graph that may have been dropped since this store first
+            // provisioned it. Clear the cached success before that attempt so a failure or cancellation
+            // cannot leave later implicit first use trusting stale state.
+            provisioned = false;
+            await ProvisionCoreAsync(connection, cancellationToken).ConfigureAwait(false);
+            provisioned = true;
+        }
+        finally
+        {
+            provisioningGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// The one idempotent provisioning sequence: probe for the graph, create it when absent, then bring
+    /// the rest of the usable-store contract - the physical label tables and the managed full-text
+    /// objects - up to date.
+    /// </summary>
+    /// <remarks>
+    /// It runs in a single transaction holding <see cref="Schema.AgeProvisioningLock"/>, so peers racing
+    /// the same graph name run it one at a time and a failure part-way rolls the graph back instead of
+    /// leaving a half-provisioned one behind. Nothing is interpreted as an "already exists" race here:
+    /// permission, connectivity, syntax, timeout, and cancellation failures all propagate as themselves.
+    /// </remarks>
+    private async Task ProvisionCoreAsync(
         NpgsqlConnection connection,
         CancellationToken cancellationToken)
     {
-        if (provisioned)
+        ProvisioningObserver?.Invoke();
+
+        var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transactionLease = transaction.ConfigureAwait(false);
+        await Schema.AgeProvisioningLock
+            .AcquireAsync(connection, transaction, GraphName, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!await GraphExistsAsync(connection, transaction, cancellationToken).ConfigureAwait(false))
         {
-            return;
+            await CreateGraphAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
         }
 
-        await CreateGraphIfNotExistsAsync(connection, cancellationToken).ConfigureAwait(false);
+        await EnsurePhysicalLabelsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+        await Schema.AgeFullTextIndex
+            .EnsureAsync(connection, transaction, GraphName, cancellationToken)
+            .ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> GraphExistsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var command = connection.CreateCommand();
+        await using var commandLease = command.ConfigureAwait(false);
+        command.Transaction = transaction;
+        command.CommandText = "SELECT EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE name = @name)";
+        command.Parameters.AddWithValue("name", GraphName);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is true;
+    }
+
+    private async Task CreateGraphAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var command = connection.CreateCommand();
+        await using var commandLease = command.ConfigureAwait(false);
+        command.Transaction = transaction;
+        command.CommandText = "SELECT ag_catalog.create_graph(@name)";
+        command.Parameters.AddWithValue("name", GraphName);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
@@ -180,10 +280,12 @@ public sealed class AgeGraphStore : IAsyncDisposable
         Justification = "GraphName is validated by AgeSqlIdentifier.Validate at construction; the labels are compile-time constants.")]
     private async Task EnsurePhysicalLabelsAsync(
         NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
     {
         var command = connection.CreateCommand();
         await using var commandLease = command.ConfigureAwait(false);
+        command.Transaction = transaction;
         command.CommandText = $"""
             SELECT *
             FROM ag_catalog.cypher(
