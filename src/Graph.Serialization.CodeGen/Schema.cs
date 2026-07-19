@@ -11,7 +11,7 @@ internal static class Schema
     internal static void GenerateSchemaMethod(StringBuilder sb, SerializableTypeModel type)
     {
         var typeName = type.Type.TypeOfName;
-        var label = type.Label;
+        var label = Utils.EscapeForGeneratedStringLiteral(type.Label);
         var uniqueSerializerName = type.SerializerClassName;
 
         // Circular-schema detection belongs to the current synchronous call chain, not all
@@ -98,8 +98,9 @@ internal static class Schema
         SerializableTypeModel containingType)
     {
         var propertyType = property.Type;
-        var propertyName = property.Label;
+        var escapedLabel = Utils.EscapeForGeneratedStringLiteral(property.Label);
         var isNullable = propertyType.IsNullable;
+        var escapedPropertyName = Utils.EscapeForGeneratedStringLiteral(property.Name);
 
         sb.AppendLine($"        // Schema for property: {property.Name}");
         sb.AppendLine("        {");
@@ -107,19 +108,19 @@ internal static class Schema
         // For interface properties, we need to handle the PropertyInfo lookup differently
         if (property.ContainingTypeIsInterface)
         {
-            sb.AppendLine($"            var propInfo = typeof({containingType.Type.TypeOfName}).GetProperty(\"{property.Name}\")");
-            sb.AppendLine($"                ?? typeof({property.ContainingTypeDisplayName}).GetProperty(\"{property.Name}\")!;");
+            sb.AppendLine($"            var propInfo = typeof({containingType.Type.TypeOfName}).GetProperty(\"{escapedPropertyName}\")");
+            sb.AppendLine($"                ?? typeof({property.ContainingTypeDisplayName}).GetProperty(\"{escapedPropertyName}\")!;");
         }
         else
         {
-            sb.AppendLine($"            var propInfo = typeof({containingType.Type.TypeOfName}).GetProperty(\"{property.Name}\")!;");
+            sb.AppendLine($"            var propInfo = typeof({containingType.Type.TypeOfName}).GetProperty(\"{escapedPropertyName}\")!;");
         }
 
         if (propertyType.IsSimple)
         {
-            sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
+            sb.AppendLine($"            simpleProperties[\"{escapedLabel}\"] = new PropertySchema(");
             sb.AppendLine("                PropertyInfo: propInfo,");
-            sb.AppendLine($"                PropertyName: \"{propertyName}\",");
+            sb.AppendLine($"                PropertyName: \"{escapedLabel}\",");
             sb.AppendLine("                PropertyType: PropertyType.Simple,");
             sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
             sb.AppendLine("            );");
@@ -129,9 +130,9 @@ internal static class Schema
             var elementType = propertyType.ElementType;
             if (elementType is not null)
             {
-                sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine($"            simpleProperties[\"{escapedLabel}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
-                sb.AppendLine($"                PropertyName: \"{propertyName}\",");
+                sb.AppendLine($"                PropertyName: \"{escapedLabel}\",");
                 sb.AppendLine("                PropertyType: PropertyType.SimpleCollection,");
                 sb.AppendLine($"                ElementType: typeof({elementType.TypeOfName}),");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
@@ -141,9 +142,9 @@ internal static class Schema
             {
                 // Fallback - treat as simple property if we can't determine element type
                 sb.AppendLine($"            // Warning: Could not determine element type for collection property {property.Name}");
-                sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine($"            simpleProperties[\"{escapedLabel}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
-                sb.AppendLine($"                PropertyName: \"{propertyName}\",");
+                sb.AppendLine($"                PropertyName: \"{escapedLabel}\",");
                 sb.AppendLine("                PropertyType: PropertyType.Simple,");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
                 sb.AppendLine("            );");
@@ -156,9 +157,9 @@ internal static class Schema
             if (elementType is not null)
             {
                 var nestedSchemaCall = GetNestedSchemaCall(elementType);
-                sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine($"            complexProperties[\"{escapedLabel}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
-                sb.AppendLine($"                PropertyName: \"{propertyName}\",");
+                sb.AppendLine($"                PropertyName: \"{escapedLabel}\",");
                 sb.AppendLine("                PropertyType: PropertyType.ComplexCollection,");
                 sb.AppendLine($"                ElementType: typeof({elementType.TypeOfName}),");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
@@ -171,9 +172,9 @@ internal static class Schema
         {
             // Single complex property
             var nestedSchemaCall = GetNestedSchemaCall(propertyType);
-            sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
+            sb.AppendLine($"            complexProperties[\"{escapedLabel}\"] = new PropertySchema(");
             sb.AppendLine("                PropertyInfo: propInfo,");
-            sb.AppendLine($"                PropertyName: \"{propertyName}\",");
+            sb.AppendLine($"                PropertyName: \"{escapedLabel}\",");
             sb.AppendLine("                PropertyType: PropertyType.Complex,");
             sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
             sb.AppendLine($"                NestedSchema: {nestedSchemaCall},");
