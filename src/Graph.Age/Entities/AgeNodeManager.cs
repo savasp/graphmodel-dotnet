@@ -419,7 +419,15 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         CancellationToken cancellationToken)
         where TNode : class, Graph.INode
     {
-        foreach (var check in BuildNodeUniquenessChecks(node, excludeId))
+        var checks = BuildNodeUniquenessChecks(node, excludeId);
+
+        // Take every lock before the first probe: holding them through the write that follows makes
+        // probe-then-write atomic against a competing transaction claiming the same values.
+        await transaction.AcquireUniquenessLocksAsync(
+            checks.Select(check => check.LockKey).ToArray(),
+            cancellationToken).ConfigureAwait(false);
+
+        foreach (var check in checks)
         {
             var result = await transaction.RunAsync(
                 check.Cypher,
@@ -433,23 +441,44 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         }
     }
 
+    /// <summary>
+    /// Builds the uniqueness probes for <paramref name="node"/>. A <see cref="DynamicNode"/> is
+    /// checked against the registered schema of every label it carries, reading values from its
+    /// property bag by mapped storage name - the same resolution
+    /// <see cref="ValidateDynamicNodeProperties"/> uses for required/validation rules, so a dynamic
+    /// write cannot bypass constraints a typed write of the same label would honour.
+    /// </summary>
     internal IReadOnlyList<AgeUniquenessCheck> BuildNodeUniquenessChecks<TNode>(
         TNode node,
         string? excludeId)
         where TNode : class, Graph.INode
     {
-        if (node is DynamicNode)
+        if (node is DynamicNode dynamicNode)
         {
-            return [];
+            return dynamicNode.Labels
+                .Select(dynamicLabel => context.SchemaManager.GetSchemaRegistry().GetNodeSchema(dynamicLabel))
+                .OfType<EntitySchemaInfo>()
+                .DistinctBy(schema => schema.Label, StringComparer.OrdinalIgnoreCase)
+                .SelectMany(schema => BuildChecksForSchema(
+                    schema,
+                    property => dynamicNode.Properties.GetValueOrDefault(property.Name),
+                    excludeId))
+                .ToArray();
         }
 
         var label = Labels.GetLabelFromType(node.GetType());
         var schema = context.SchemaManager.GetSchemaRegistry().GetNodeSchema(label);
-        if (schema is null)
-        {
-            return [];
-        }
+        return schema is null
+            ? []
+            : BuildChecksForSchema(schema, property => property.PropertyInfo.GetValue(node), excludeId);
+    }
 
+    private List<AgeUniquenessCheck> BuildChecksForSchema(
+        EntitySchemaInfo schema,
+        Func<PropertySchemaInfo, object?> readValue,
+        string? excludeId)
+    {
+        var label = schema.Label;
         var checks = new List<AgeUniquenessCheck>();
         var keyProperties = schema.GetKeyProperties().ToArray();
         if (keyProperties.Length > 0)
@@ -475,7 +504,8 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             };
             var predicates = new List<string>
             {
-                "$entityLabel IN coalesce(n.inheritance_labels, [])",
+                "size([age_label IN coalesce(n.inheritance_labels, []) " +
+                    "WHERE toLower(age_label) = toLower($entityLabel)]) > 0",
             };
             if (excludeId is not null)
             {
@@ -487,7 +517,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             {
                 var property = properties[index];
                 var parameterName = $"uniqueValue{index}";
-                var value = SerializationBridge.ToAgeValue(property.PropertyInfo.GetValue(node));
+                var value = SerializationBridge.ToAgeValue(readValue(property));
                 parameters[parameterName] = value;
                 values.Add(value);
                 predicates.Add($"n.{CypherIdentifier.Escape(property.Name, "property name")} = ${parameterName}");
@@ -498,7 +528,13 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
                 $"MATCH (n) WHERE {string.Join(" AND ", predicates)} RETURN count(n) AS duplicateCount",
                 parameters,
                 $"Node '{label}' violates {constraint} uniqueness.",
-                constraintKey);
+                constraintKey,
+                AgeUniquenessLockKey.Compute(
+                    context.GraphName,
+                    AgeUniquenessLockKey.NodeEntityKind,
+                    label,
+                    constraint,
+                    values));
         }
     }
 

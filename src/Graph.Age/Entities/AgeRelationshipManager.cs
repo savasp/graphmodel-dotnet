@@ -457,7 +457,15 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         CancellationToken cancellationToken)
         where TRelationship : class, Graph.IRelationship
     {
-        foreach (var check in BuildRelationshipUniquenessChecks(relationship, excludeId))
+        var checks = BuildRelationshipUniquenessChecks(relationship, excludeId);
+
+        // Take every lock before the first probe: holding them through the write that follows makes
+        // probe-then-write atomic against a competing transaction claiming the same values.
+        await transaction.AcquireUniquenessLocksAsync(
+            checks.Select(check => check.LockKey).ToArray(),
+            cancellationToken).ConfigureAwait(false);
+
+        foreach (var check in checks)
         {
             var result = await transaction.RunAsync(
                 check.Cypher,
@@ -471,23 +479,31 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         }
     }
 
+    /// <summary>
+    /// Builds the uniqueness probes for <paramref name="relationship"/>. A
+    /// <see cref="DynamicRelationship"/> is checked against the registered schema of its type,
+    /// reading values from its property bag by mapped storage name - the same resolution
+    /// <see cref="ValidateDynamicRelationshipProperties"/> uses for required/validation rules, so a
+    /// dynamic write cannot bypass constraints a typed write of the same type would honour.
+    /// </summary>
     internal IReadOnlyList<AgeUniquenessCheck> BuildRelationshipUniquenessChecks<TRelationship>(
         TRelationship relationship,
         string? excludeId)
         where TRelationship : class, Graph.IRelationship
     {
-        if (relationship is DynamicRelationship)
-        {
-            return [];
-        }
+        var dynamicRelationship = relationship as DynamicRelationship;
+        var requestedType = dynamicRelationship?.Type ?? Labels.GetLabelFromType(relationship.GetType());
+        var readValue = dynamicRelationship is null
+            ? (Func<PropertySchemaInfo, object?>)(property => property.PropertyInfo.GetValue(relationship))
+            : property => dynamicRelationship.Properties.GetValueOrDefault(property.Name);
 
-        var type = Labels.GetLabelFromType(relationship.GetType());
-        var schema = context.SchemaManager.GetSchemaRegistry().GetRelationshipSchema(type);
+        var schema = context.SchemaManager.GetSchemaRegistry().GetRelationshipSchema(requestedType);
         if (schema is null)
         {
             return [];
         }
 
+        var type = schema.Label;
         var checks = new List<AgeUniquenessCheck>();
         var keyProperties = schema.GetKeyProperties().ToArray();
         if (keyProperties.Length > 0)
@@ -513,7 +529,8 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             };
             var predicates = new List<string>
             {
-                "$relationshipType IN coalesce(r.inheritance_labels, [])",
+                "size([age_type IN coalesce(r.inheritance_labels, []) " +
+                    "WHERE toLower(age_type) = toLower($relationshipType)]) > 0",
             };
             if (excludeId is not null)
             {
@@ -525,7 +542,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             {
                 var property = properties[index];
                 var parameterName = $"uniqueValue{index}";
-                var value = SerializationBridge.ToAgeValue(property.PropertyInfo.GetValue(relationship));
+                var value = SerializationBridge.ToAgeValue(readValue(property));
                 parameters[parameterName] = value;
                 values.Add(value);
                 predicates.Add($"r.{CypherIdentifier.Escape(property.Name, "property name")} = ${parameterName}");
@@ -536,7 +553,13 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 $"MATCH ()-[r]->() WHERE {string.Join(" AND ", predicates)} RETURN count(r) AS duplicateCount",
                 parameters,
                 $"Relationship '{type}' violates {constraint} uniqueness.",
-                constraintKey);
+                constraintKey,
+                AgeUniquenessLockKey.Compute(
+                    context.GraphName,
+                    AgeUniquenessLockKey.RelationshipEntityKind,
+                    type,
+                    constraint,
+                    values));
         }
     }
 
