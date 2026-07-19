@@ -38,7 +38,12 @@ public interface IGraphProviderTestHarness : IAsyncLifetime
     /// The isolation the returned store must provide - see <see cref="StoreIsolation"/>.
     /// </param>
     /// <param name="cancellationToken">A cancellation token for the acquisition.</param>
-    /// <returns>An <see cref="IGraph"/> backed by an empty store.</returns>
+    /// <returns>
+    /// An <see cref="IGraph"/> satisfying <paramref name="isolation"/>. The store is empty for
+    /// <see cref="StoreIsolation.CleanSharedStore"/> and <see cref="StoreIsolation.FreshStore"/>;
+    /// an <see cref="StoreIsolation.IndependentStore"/> may see data from a previously returned
+    /// graph.
+    /// </returns>
     /// <exception cref="GraphProviderUnavailableException">
     /// The backing infrastructure (for example, a Docker-hosted database) could not be started or
     /// reached.

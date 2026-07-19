@@ -161,7 +161,7 @@ public class TestInfrastructureFixture : IAsyncLifetime
     /// the class's lifetime starves the pool once classes run in parallel, which times out database
     /// acquisition suite-wide.
     /// </remarks>
-    public async Task<IGraph> GetIndependentGraph()
+    public IGraph GetIndependentGraph()
     {
         if (cachedDatabaseName == null)
         {
