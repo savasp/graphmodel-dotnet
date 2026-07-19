@@ -17,6 +17,8 @@ internal static class Serialization
         sb.AppendLine("        var complexProperties = new Dictionary<string, Property>();");
         sb.AppendLine();
 
+        var escapedLabel = Utils.EscapeForGeneratedStringLiteral(type.Label);
+
         foreach (var property in type.SerializationProperties.Items)
         {
             sb.AppendLine($"        // Serialize property: {property.Name}");
@@ -29,7 +31,7 @@ internal static class Serialization
         {
             // For nodes, populate ActualLabels from the Labels property
             sb.AppendLine($"        var actualLabels = entity.Labels?.ToList() ?? new List<string>();");
-            sb.AppendLine($"        var primaryLabel = actualLabels.Count > 0 ? actualLabels[0] : \"{type.Label}\";");
+            sb.AppendLine($"        var primaryLabel = actualLabels.Count > 0 ? actualLabels[0] : \"{escapedLabel}\";");
             sb.AppendLine($"        return new EntityInfo(");
             sb.AppendLine($"            ActualType: typeof({type.Type.TypeOfName}),");
             sb.AppendLine($"            Label: primaryLabel,");
@@ -41,7 +43,7 @@ internal static class Serialization
         else if (type.Kind == SerializableTypeKind.Relationship)
         {
             // For relationships, use the Type property as the label
-            sb.AppendLine($"        var relationshipType = !string.IsNullOrEmpty(entity.Type) ? entity.Type : \"{type.Label}\";");
+            sb.AppendLine($"        var relationshipType = !string.IsNullOrEmpty(entity.Type) ? entity.Type : \"{escapedLabel}\";");
             sb.AppendLine($"        return new EntityInfo(");
             sb.AppendLine($"            ActualType: typeof({type.Type.TypeOfName}),");
             sb.AppendLine($"            Label: relationshipType,");
@@ -55,7 +57,7 @@ internal static class Serialization
             // For other types (complex properties), use the type name as label
             sb.AppendLine($"        return new EntityInfo(");
             sb.AppendLine($"            ActualType: typeof({type.Type.TypeOfName}),");
-            sb.AppendLine($"            Label: \"{type.Label}\",");
+            sb.AppendLine($"            Label: \"{escapedLabel}\",");
             sb.AppendLine($"            ActualLabels: new List<string>(),");
             sb.AppendLine($"            SimpleProperties: simpleProperties,");
             sb.AppendLine($"            ComplexProperties: complexProperties");
@@ -73,19 +75,21 @@ internal static class Serialization
         var isSimple = propertyType.IsSimple;
         var isCollection = propertyType.IsCollectionOfSimple || propertyType.IsCollectionOfComplex;
         var isNullable = propertyType.IsNullable;
+        var escapedPropertyName = Utils.EscapeForGeneratedStringLiteral(property.Name);
+        var escapedLabel = Utils.EscapeForGeneratedStringLiteral(propertyName);
 
         sb.AppendLine($"        {{");
         if (property.RequiresDeclaredOnlyLookup)
         {
             sb.AppendLine($"            var propInfo = typeof({property.ContainingTypeDisplayName}).GetProperty(");
-            sb.AppendLine($"                \"{property.Name}\",");
+            sb.AppendLine($"                \"{escapedPropertyName}\",");
             sb.AppendLine("                System.Reflection.BindingFlags.Public |");
             sb.AppendLine("                System.Reflection.BindingFlags.Instance |");
             sb.AppendLine("                System.Reflection.BindingFlags.DeclaredOnly)!;");
         }
         else
         {
-            sb.AppendLine($"            var propInfo = typeof({property.ContainingTypeDisplayName}).GetProperty(\"{property.Name}\")!;");
+            sb.AppendLine($"            var propInfo = typeof({property.ContainingTypeDisplayName}).GetProperty(\"{escapedPropertyName}\")!;");
         }
         sb.AppendLine($"            var value = entity.{property.Name};");
         sb.AppendLine($"            Serialized? serializedValue;");
@@ -140,7 +144,7 @@ internal static class Serialization
         sb.AppendLine();
         sb.AppendLine($"            var propertyRep = new Property(");
         sb.AppendLine($"                PropertyInfo: propInfo,");
-        sb.AppendLine($"                Label: \"{propertyName}\",");
+        sb.AppendLine($"                Label: \"{escapedLabel}\",");
         sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLower()},");
         var isComplex = !isSimple && (!isCollection || propertyType.IsCollectionOfComplex);
         sb.AppendLine($"                Value: serializedValue{(isComplex ? "," : string.Empty)}");
@@ -149,7 +153,7 @@ internal static class Serialization
             sb.AppendLine("                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)");
         }
         sb.AppendLine($"            );");
-        sb.AppendLine($"            {dictionaryName}[\"{propertyName}\"] = propertyRep;");
+        sb.AppendLine($"            {dictionaryName}[\"{escapedLabel}\"] = propertyRep;");
         sb.AppendLine($"        }}");
         sb.AppendLine();
     }

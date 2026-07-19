@@ -117,13 +117,35 @@ internal static class Utils
     }
 
     /// <summary>
-    /// Escapes a consumer-provided string (e.g. a <c>[Property(Label = ...)]</c> value, which may
-    /// legally contain quotes, backslashes, or braces) for embedding inside a generated
-    /// interpolated string literal: string-literal escapes first, then doubled braces so the text
-    /// cannot terminate the literal or open an interpolation hole.
+    /// Escapes a consumer-provided string (e.g. a <c>[Node(...)]</c>, <c>[Relationship(...)]</c>, or
+    /// <c>[Property(Label = ...)]</c> value, which may legally contain quotes, backslashes, or
+    /// control characters) for embedding inside an ordinary generated string literal. The result is
+    /// the literal's content only - callers supply the surrounding quotes - and decodes back to the
+    /// exact input, so the runtime label value is preserved.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SymbolDisplay.FormatLiteral(string, bool)"/> only escapes the quote character when
+    /// it is also emitting the quotes, so the quoted form is requested and then unwrapped. That form
+    /// is always a regular (non-verbatim) literal here, because this overload always escapes
+    /// non-printable characters, which rules out the verbatim form even for values containing a
+    /// newline. Ordinary labels come back unchanged, keeping generated output byte-stable.
+    /// </remarks>
+    internal static string EscapeForGeneratedStringLiteral(string value)
+    {
+        var literal = SymbolDisplay.FormatLiteral(value, quote: true);
+
+        return literal.Substring(1, literal.Length - 2);
+    }
+
+    /// <summary>
+    /// Escapes a consumer-provided string for embedding inside a generated <em>interpolated</em>
+    /// string literal: string-literal escapes first (see
+    /// <see cref="EscapeForGeneratedStringLiteral"/>), then doubled braces so the text cannot
+    /// terminate the literal or open an interpolation hole. Brace doubling belongs only to this
+    /// context - applying it to an ordinary literal would change the runtime value.
     /// </summary>
     internal static string EscapeForGeneratedInterpolatedString(string value) =>
-        SymbolDisplay.FormatLiteral(value, quote: false)
+        EscapeForGeneratedStringLiteral(value)
             .Replace("{", "{{")
             .Replace("}", "}}");
 

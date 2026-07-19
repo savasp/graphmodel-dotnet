@@ -34,7 +34,7 @@ internal static class Deserialization
         }
         else
         {
-            sb.AppendLine($"        throw new InvalidOperationException(\"No suitable constructor found for type {type.Name}\");");
+            sb.AppendLine($"        throw new InvalidOperationException(\"No suitable constructor found for type {Utils.EscapeForGeneratedStringLiteral(type.Name)}\");");
         }
 
         sb.AppendLine("        return result;");
@@ -131,6 +131,7 @@ internal static class Deserialization
     private static void GeneratePropertyExtraction(StringBuilder sb, SerializablePropertyModel property, string entityVar)
     {
         var propertyName = property.Label;
+        var escapedLabel = Utils.EscapeForGeneratedStringLiteral(propertyName);
         var propName = property.Name;
         var propertyType = property.Type.DisplayName;
         var variableName = $"{propName.ToLowerInvariant()}Value";
@@ -143,9 +144,9 @@ internal static class Deserialization
         var initializerKind = property.IsRequired && !property.SetterIsInitOnly ? "required" : "init-only";
         sb.AppendLine($"        // Extracting {initializerKind} property '{propName}'");
         sb.AppendLine($"        {propertyType} {variableName};");
-        sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
-        sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
-        sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
+        sb.AppendLine($"        // Look for property '{escapedLabel}' in both simple and complex properties");
+        sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{escapedLabel}\", out var {simplePropVar}) ? {simplePropVar}");
+        sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{escapedLabel}\", out var {complexPropVar}) ? {complexPropVar} : null;");
         GenerateValueExtraction(
             sb,
             property.Type,
@@ -182,10 +183,11 @@ internal static class Deserialization
         sb.AppendLine($"        {paramType} {paramName};");
 
         var propertyName = parameter.PropertyName;
+        var escapedLabel = Utils.EscapeForGeneratedStringLiteral(propertyName);
 
-        sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
-        sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
-        sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
+        sb.AppendLine($"        // Look for property '{escapedLabel}' in both simple and complex properties");
+        sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{escapedLabel}\", out var {simplePropVar}) ? {simplePropVar}");
+        sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{escapedLabel}\", out var {complexPropVar}) ? {complexPropVar} : null;");
         GenerateValueExtraction(
             sb,
             parameter.Type,
@@ -205,6 +207,7 @@ internal static class Deserialization
         foreach (var property in properties)
         {
             var propertyName = property.Label;
+            var escapedLabel = Utils.EscapeForGeneratedStringLiteral(propertyName);
             var propName = property.Name;
 
             // Use property-specific variable names to avoid conflicts
@@ -212,9 +215,9 @@ internal static class Deserialization
             var simplePropVar = $"{propName.ToLowerInvariant()}SimpleProp";
             var complexPropVar = $"{propName.ToLowerInvariant()}ComplexProp";
 
-            sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
-            sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
-            sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
+            sb.AppendLine($"        // Look for property '{escapedLabel}' in both simple and complex properties");
+            sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{escapedLabel}\", out var {simplePropVar}) ? {simplePropVar}");
+            sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{escapedLabel}\", out var {complexPropVar}) ? {complexPropVar} : null;");
             GenerateValueExtraction(
                 sb,
                 property.Type,
@@ -401,7 +404,7 @@ internal static class Deserialization
 
         var defaultValue = GetDefaultValueForProperty(propertyName, propertyType, out var shouldThrow);
         return shouldThrow
-            ? $"throw new InvalidOperationException(\"No sensible default value for property '{propertyLabel}' of type '{propertyType.DisplayName}'.\")"
+            ? $"throw new InvalidOperationException(\"No sensible default value for property '{Utils.EscapeForGeneratedStringLiteral(propertyLabel)}' of type '{propertyType.DisplayName}'.\")"
             : defaultValue;
     }
 
@@ -419,7 +422,7 @@ internal static class Deserialization
 
         var defaultValue = GetDefaultValueForParameter(parameter.Name, parameter.Type, out var shouldThrow);
         return shouldThrow
-            ? $"throw new InvalidOperationException(\"No sensible default value for parameter '{parameter.Name}' of type '{parameter.Type.DisplayName}'.\")"
+            ? $"throw new InvalidOperationException(\"No sensible default value for parameter '{Utils.EscapeForGeneratedStringLiteral(parameter.Name)}' of type '{parameter.Type.DisplayName}'.\")"
             : defaultValue;
     }
 
@@ -432,7 +435,7 @@ internal static class Deserialization
 
         var defaultValue = GetDefaultValueForProperty(propertyLabel, targetType, out var shouldThrow);
         return shouldThrow
-            ? $"throw new InvalidOperationException(\"No sensible default value for property '{propertyLabel}' of type '{targetType.DisplayName}'.\")"
+            ? $"throw new InvalidOperationException(\"No sensible default value for property '{Utils.EscapeForGeneratedStringLiteral(propertyLabel)}' of type '{targetType.DisplayName}'.\")"
             : defaultValue;
     }
 
@@ -440,13 +443,13 @@ internal static class Deserialization
     {
         return targetType.IsNullable
             ? "null"
-            : $"throw new InvalidOperationException(\"Required complex property '{propertyLabel}' is missing or null\")";
+            : $"throw new InvalidOperationException(\"Required complex property '{Utils.EscapeForGeneratedStringLiteral(propertyLabel)}' is missing or null\")";
     }
 
     private static string GetInvalidCollectionValueExpression(string propertyLabel, TypeReferenceModel collectionType)
     {
         return collectionType.IsReferenceType && !collectionType.IsNullable
-            ? $"throw new InvalidOperationException(\"Required collection property '{propertyLabel}' is missing or null\")"
+            ? $"throw new InvalidOperationException(\"Required collection property '{Utils.EscapeForGeneratedStringLiteral(propertyLabel)}' is missing or null\")"
             : $"default({collectionType.DisplayName})";
     }
 
