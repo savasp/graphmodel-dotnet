@@ -12,8 +12,8 @@ using System.Globalization;
 /// Runtime truth table for <see cref="GraphDataModel"/> type classification. Mirrored by
 /// <c>Cvoya.Graph.Analyzers.Tests.AnalyzerHelperTypeClassificationTests</c> and
 /// <c>Cvoya.Graph.Serialization.CodeGen.Tests.GraphDataModelTypeClassificationTests</c>, which
-/// assert the analyzer's and source generator's independent implementations over the same shapes;
-/// keep the named simple types (Point, DateTime, Guid, Uri, ...) aligned across all three (#387).
+/// contain a matching named-simple-type slice for the analyzer's and source generator's independent
+/// implementations; keep Point, the temporal types, Guid, and Uri aligned across all three (#387).
 /// </summary>
 [Trait("Area", "GraphDataModel")]
 public class GraphDataModelTypeClassificationTests

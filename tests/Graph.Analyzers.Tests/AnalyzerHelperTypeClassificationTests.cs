@@ -15,8 +15,9 @@ using Xunit;
 /// independent (the analyzer targets netstandard2.0 and works on <see cref="ITypeSymbol"/>, so it
 /// cannot call the runtime <c>GraphDataModel</c> directly) - this test class exists so they cannot
 /// silently drift apart. The source generator's independent classification has the same mirror in
-/// <c>Cvoya.Graph.Serialization.CodeGen.Tests.GraphDataModelTypeClassificationTests</c>; keep the
-/// named simple types (Point, DateTime, Guid, Uri, ...) aligned across all three tables (#387).
+/// <c>Cvoya.Graph.Serialization.CodeGen.Tests.GraphDataModelTypeClassificationTests</c>; its matching
+/// named-simple-type slice keeps Point, the temporal types, Guid, and Uri aligned across all three
+/// tables (#387).
 /// </summary>
 public class AnalyzerHelperTypeClassificationTests
 {
@@ -110,9 +111,19 @@ public class AnalyzerHelperTypeClassificationTests
             "object" => Object(),
             "Guid" => Named("System.Guid"),
             "DateTime" => Named("System.DateTime"),
+            "DateTimeOffset" => Named("System.DateTimeOffset"),
+            "TimeSpan" => Named("System.TimeSpan"),
+            "TimeOnly" => Named("System.TimeOnly"),
+            "DateOnly" => Named("System.DateOnly"),
             "Uri" => Named("System.Uri"),
             "Point" => Point(),
             "Point?" => Nullable(Point()),
+            "DateTime?" => Nullable(Named("System.DateTime")),
+            "DateTimeOffset?" => Nullable(Named("System.DateTimeOffset")),
+            "TimeSpan?" => Nullable(Named("System.TimeSpan")),
+            "TimeOnly?" => Nullable(Named("System.TimeOnly")),
+            "DateOnly?" => Nullable(Named("System.DateOnly")),
+            "Guid?" => Nullable(Named("System.Guid")),
             "List<Point>" => Named("System.Collections.Generic.List`1", Point()),
             "System.Drawing.Point" => Named("System.Drawing.Point"),
             "System.Drawing.Point?" => Nullable(Named("System.Drawing.Point")),
@@ -172,9 +183,19 @@ public class AnalyzerHelperTypeClassificationTests
         { "System.Drawing.Point", false },
         { "System.Drawing.Point?", false },
         { "DateTime", true },
+        { "DateTimeOffset", true },
+        { "TimeSpan", true },
+        { "TimeOnly", true },
+        { "DateOnly", true },
         { "Guid", true },
-        { "byte[]", true },
         { "Uri", true },
+        { "DateTime?", true },
+        { "DateTimeOffset?", true },
+        { "TimeSpan?", true },
+        { "TimeOnly?", true },
+        { "DateOnly?", true },
+        { "Guid?", true },
+        { "byte[]", true },
         { "object", false },
         { "FlatValueObject", false },
         { "RecursiveValueObject", false },

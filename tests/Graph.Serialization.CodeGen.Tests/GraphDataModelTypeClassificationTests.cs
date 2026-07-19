@@ -7,15 +7,15 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
 /// <summary>
-/// Truth table for the source generator's <see cref="GraphDataModel"/> type classification,
-/// mirroring <c>Cvoya.Graph.Core.Tests.GraphDataModelTypeClassificationTests</c> (the runtime,
+/// Truth table for the source generator's <see cref="GraphDataModel"/> type classification. Its
+/// named-simple-type slice matches
+/// <c>Cvoya.Graph.Core.Tests.GraphDataModelTypeClassificationTests</c> (the runtime,
 /// <see cref="Type"/>-based implementation) and
-/// <c>Cvoya.Graph.Analyzers.Tests.AnalyzerHelperTypeClassificationTests</c> (the analyzer) over the
-/// same shapes. The three implementations are independent by design (the generator and analyzer
-/// target netstandard2.0 and work on <see cref="ITypeSymbol"/>s), so this table is what keeps the
-/// named simple types from drifting apart: in particular, <c>Cvoya.Graph.Point</c> is the only
-/// supported spatial simple type - <c>System.Drawing.Point</c> must classify as not-simple in every
-/// layer (#387).
+/// <c>Cvoya.Graph.Analyzers.Tests.AnalyzerHelperTypeClassificationTests</c> (the analyzer). The three
+/// implementations are independent by design (the generator and analyzer target netstandard2.0 and
+/// work on <see cref="ITypeSymbol"/>s), so these matching cases keep the named simple types from
+/// drifting apart: in particular, <c>Cvoya.Graph.Point</c> is the only supported spatial simple type
+/// - <c>System.Drawing.Point</c> must classify as not-simple in every layer (#387).
 /// </summary>
 public class GraphDataModelTypeClassificationTests
 {
@@ -95,10 +95,15 @@ public class GraphDataModelTypeClassificationTests
             "System.Drawing.Point" => DrawingPoint(),
             "System.Drawing.Point?" => Nullable(DrawingPoint()),
             "DateTime" => Named("System.DateTime"),
+            "DateTime?" => Nullable(Named("System.DateTime")),
             "DateTimeOffset" => Named("System.DateTimeOffset"),
+            "DateTimeOffset?" => Nullable(Named("System.DateTimeOffset")),
             "TimeSpan" => Named("System.TimeSpan"),
+            "TimeSpan?" => Nullable(Named("System.TimeSpan")),
             "TimeOnly" => Named("System.TimeOnly"),
+            "TimeOnly?" => Nullable(Named("System.TimeOnly")),
             "DateOnly" => Named("System.DateOnly"),
+            "DateOnly?" => Nullable(Named("System.DateOnly")),
             "Guid" => Named("System.Guid"),
             "Guid?" => Nullable(Named("System.Guid")),
             "Uri" => Named("System.Uri"),
@@ -134,9 +139,14 @@ public class GraphDataModelTypeClassificationTests
         { "TimeOnly", true },
         { "DateOnly", true },
         { "Guid", true },
+        { "Uri", true },
+        { "DateTime?", true },
+        { "DateTimeOffset?", true },
+        { "TimeSpan?", true },
+        { "TimeOnly?", true },
+        { "DateOnly?", true },
         { "Guid?", true },
         { "byte[]", true },
-        { "Uri", true },
         { "object", false },
         { "FlatValueObject", false },
         { "SimpleStruct", false },

@@ -479,9 +479,9 @@ public class CG004_InvalidPropertyTypeForNodeTests
 
         var expected = new[]
         {
-            VerifyCS.Diagnostic("CG004").WithLocation(0).WithArguments("Location", "TestNode", "Point"),
-            VerifyCS.Diagnostic("CG004").WithLocation(1).WithArguments("MaybeLocation", "TestNode", "Nullable<Point>"),
-            VerifyCS.Diagnostic("CG004").WithLocation(2).WithArguments("Locations", "TestNode", "List<Point>"),
+            VerifyCS.Diagnostic("CG004").WithLocation(0).WithArguments("Location", "TestNode", "System.Drawing.Point"),
+            VerifyCS.Diagnostic("CG004").WithLocation(1).WithArguments("MaybeLocation", "TestNode", "Nullable<System.Drawing.Point>"),
+            VerifyCS.Diagnostic("CG004").WithLocation(2).WithArguments("Locations", "TestNode", "List<System.Drawing.Point>"),
         };
 
         await VerifyAnalyzerAsync(test, expected);
