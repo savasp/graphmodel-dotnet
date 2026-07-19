@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.Globalization;
+using System.Reflection;
 
 namespace Cvoya.Graph.Serialization.Results;
 
@@ -14,7 +15,7 @@ internal static class GraphValueConverter
 
     public static object? ConvertTo(object? value, Type targetType)
     {
-        return ConvertTo(value, targetType, propertyName: null, isElementNullable: null);
+        return ConvertTo(value, targetType, context: null);
     }
 
     public static object? ConvertTo(
@@ -24,18 +25,46 @@ internal static class GraphValueConverter
         bool isElementNullable)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
-        return ConvertTo(value, targetType, propertyName, (bool?)isElementNullable);
+        return ConvertTo(
+            value,
+            targetType,
+            new ConversionContext(
+                Subject: $"Collection property '{propertyName}'",
+                ParameterName: null,
+                Declaration: null,
+                ElementNullableOverride: isElementNullable,
+                UnknownIsNullable: false));
+    }
+
+    public static object? ConvertTo(object? value, Type targetType, ParameterInfo parameter)
+    {
+        ArgumentNullException.ThrowIfNull(parameter);
+        var parameterName = parameter.Name ?? $"param{parameter.Position}";
+        return ConvertTo(
+            value,
+            targetType,
+            new ConversionContext(
+                Subject: $"Constructor parameter '{parameterName}'",
+                ParameterName: parameterName,
+                Declaration: NullabilityDerivation.ForParameter(parameter),
+                ElementNullableOverride: null,
+                UnknownIsNullable: true));
     }
 
     private static object? ConvertTo(
         object? value,
         Type targetType,
-        string? propertyName,
-        bool? isElementNullable)
+        ConversionContext? context)
     {
         ArgumentNullException.ThrowIfNull(targetType);
         if (value is null)
         {
+            if (context?.Declaration is { } declaration &&
+                !declaration.AllowsNull(context.UnknownIsNullable))
+            {
+                throw CreateNullValueException(targetType, context.ParameterName);
+            }
+
             return targetType.IsValueType && Nullable.GetUnderlyingType(targetType) is null
                 ? Activator.CreateInstance(targetType)
                 : null;
@@ -44,7 +73,7 @@ internal static class GraphValueConverter
         var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
         if (underlyingType.IsInstanceOfType(value))
         {
-            ValidateNullElements(value, underlyingType, propertyName, isElementNullable);
+            ValidateNullElements(value, underlyingType, context);
             return value;
         }
 
@@ -116,8 +145,7 @@ internal static class GraphValueConverter
         if (TryConvertCollection(
             value,
             underlyingType,
-            propertyName,
-            isElementNullable,
+            context,
             out var collection))
         {
             return collection;
@@ -149,8 +177,7 @@ internal static class GraphValueConverter
     private static bool TryConvertCollection(
         object value,
         Type targetType,
-        string? propertyName,
-        bool? isElementNullable,
+        ConversionContext? context,
         out object? result)
     {
         result = null;
@@ -159,31 +186,30 @@ internal static class GraphValueConverter
             return false;
         }
 
-        var elementType = targetType.IsArray
-            ? targetType.GetElementType()
-            : targetType.IsGenericType
-                ? targetType.GetGenericArguments().FirstOrDefault()
-                : null;
+        var elementType = GraphResultTypeHelpers.GetCollectionElementType(targetType);
         if (elementType is null)
         {
             return false;
         }
 
-        var values = source.Cast<object?>()
-            .Select((item, index) =>
+        var elementContext = context?.ForElement(elementType);
+        var values = new List<object?>();
+        var index = 0;
+        foreach (var item in source)
+        {
+            if (item is null && context?.AllowsElementNull(elementType, elementContext) == false)
             {
-                if (item is null && isElementNullable == false)
-                {
-                    throw CreateNullElementException(propertyName!, elementType, index);
-                }
+                throw CreateNullElementException(context.Subject, elementType, index);
+            }
 
-                return ConvertTo(item, elementType);
-            })
-            .ToArray();
+            values.Add(ConvertTo(item, elementType, elementContext));
+            index++;
+        }
+
         if (targetType.IsArray)
         {
-            var array = Array.CreateInstance(elementType, values.Length);
-            for (var index = 0; index < values.Length; index++)
+            var array = Array.CreateInstance(elementType, values.Count);
+            for (index = 0; index < values.Count; index++)
             {
                 array.SetValue(values[index], index);
             }
@@ -211,22 +237,16 @@ internal static class GraphValueConverter
     private static void ValidateNullElements(
         object value,
         Type targetType,
-        string? propertyName,
-        bool? isElementNullable)
+        ConversionContext? context)
     {
-        if (isElementNullable != false ||
-            propertyName is null ||
+        if (context is null ||
             value is not IEnumerable source ||
             value is string)
         {
             return;
         }
 
-        var elementType = targetType.IsArray
-            ? targetType.GetElementType()
-            : targetType.IsGenericType
-                ? targetType.GetGenericArguments().FirstOrDefault()
-                : null;
+        var elementType = GraphResultTypeHelpers.GetCollectionElementType(targetType);
         if (elementType is null)
         {
             return;
@@ -234,30 +254,84 @@ internal static class GraphValueConverter
 
         // A CLR collection of a non-nullable value type cannot contain null, so scanning it
         // (boxing every element — e.g. each byte of a byte[] blob property) proves nothing.
-        if (elementType.IsValueType && Nullable.GetUnderlyingType(elementType) is null)
+        var sourceElementType = GraphResultTypeHelpers.GetCollectionElementType(value.GetType());
+        if (sourceElementType is not null &&
+            sourceElementType.IsValueType &&
+            Nullable.GetUnderlyingType(sourceElementType) is null)
         {
             return;
         }
 
+        var elementContext = context.ForElement(elementType);
         var index = 0;
         foreach (var item in source)
         {
-            if (item is null)
+            if (item is null && context.AllowsElementNull(elementType, elementContext) == false)
             {
-                throw CreateNullElementException(propertyName, elementType, index);
+                throw CreateNullElementException(context.Subject, elementType, index);
+            }
+
+            if (item is not null && GraphResultTypeHelpers.GetCollectionElementType(elementType) is not null)
+            {
+                ValidateNullElements(item, elementType, elementContext);
             }
 
             index++;
         }
     }
 
-    private static GraphException CreateNullElementException(
-        string propertyName,
+    internal static GraphException CreateNullValueException(Type targetType, string? parameterName) =>
+        new(parameterName is null
+            ? $"Cannot materialize null into non-nullable type '{targetType.FullName}'."
+            : $"Cannot materialize null into non-nullable type '{targetType.FullName}' for '{parameterName}'.");
+
+    internal static GraphException CreateNullElementException(
+        string subject,
         Type elementType,
         int index)
     {
         return new GraphException(
-            $"Collection property '{propertyName}' contains a null element at index {index}, " +
+            $"{subject} contains a null element at index {index}, " +
             $"but its target element type '{elementType}' is non-nullable.");
+    }
+
+    private sealed record ConversionContext(
+        string Subject,
+        string? ParameterName,
+        NullabilityDeclaration? Declaration,
+        bool? ElementNullableOverride,
+        bool UnknownIsNullable)
+    {
+        public ConversionContext ForElement(Type elementType) => new(
+            Subject,
+            ParameterName,
+            Declaration?.GetElement(elementType),
+            ElementNullableOverride: null,
+            UnknownIsNullable: false);
+
+        public bool? AllowsElementNull(Type elementType, ConversionContext? elementContext)
+        {
+            if (ElementNullableOverride is { } elementNullable)
+            {
+                return elementNullable;
+            }
+
+            if (elementContext?.Declaration is { } declaration)
+            {
+                return declaration.AllowsNull(unknownIsNullable: false);
+            }
+
+            if (ParameterName is null)
+            {
+                return null;
+            }
+
+            if (Nullable.GetUnderlyingType(elementType) is not null)
+            {
+                return true;
+            }
+
+            return false;
+        }
     }
 }

@@ -156,7 +156,6 @@ public sealed class GraphResultMaterializer
 
         var elements = entityInfos
             .Select(entityInfo => MaterializeSingleElement<object>(entityInfo, elementType))
-            .Where(item => item is not null)
             .ToList();
 
         _logger.LogDebugGraphResultMaterializer164(elements.Count);
@@ -241,21 +240,26 @@ public sealed class GraphResultMaterializer
 
     private static object? CreateSimpleValue(EntityInfo entityInfo, Type targetType)
     {
-        if (entityInfo.SimpleProperties.Count == 1)
+        if (entityInfo.SimpleProperties.Count != 1 || entityInfo.ComplexProperties.Count != 0)
         {
-            var singleProperty = entityInfo.SimpleProperties.Values.First();
-            if (singleProperty.Value is SimpleValue simpleValue)
-            {
-                if (simpleValue.Object is null && IsNonNullableValueType(targetType))
-                {
-                    throw NullValueException(targetType, parameterName: null);
-                }
-
-                return ConvertValueToTargetType(simpleValue.Object, targetType);
-            }
+            throw new GraphException(
+                $"Cannot materialize type '{targetType}' from a projection with " +
+                $"{entityInfo.SimpleProperties.Count} simple and {entityInfo.ComplexProperties.Count} complex values.");
         }
 
-        return GetDefaultValue(targetType);
+        var singleProperty = entityInfo.SimpleProperties.Values.First();
+        if (singleProperty.Value is not SimpleValue simpleValue)
+        {
+            throw new GraphException(
+                $"Cannot materialize type '{targetType}' from projection value '{singleProperty.Value?.GetType()}'.");
+        }
+
+        if (simpleValue.Object is null && IsNonNullableValueType(targetType))
+        {
+            throw GraphValueConverter.CreateNullValueException(targetType, parameterName: null);
+        }
+
+        return ConvertValueToTargetType(simpleValue.Object, targetType);
     }
 
     private static object? ConvertValueToTargetType(object? value, Type targetType)
@@ -288,45 +292,44 @@ public sealed class GraphResultMaterializer
         // Try each constructor until we find one that works
         foreach (var constructor in constructors)
         {
+            var parameters = constructor.GetParameters();
+            var values = new object?[parameters.Length];
+
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebugGraphResultMaterializer306(parameters.Length, string.Join(", ", parameters.Select(p => $"{p.Name}:{p.ParameterType.Name}")));
+            }
+
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                var param = parameters[i];
+                var paramName = param.Name ?? $"param{i}";
+                var matchingProperty = FindPropertyInEntityInfo(entityInfo, paramName);
+
+                _logger.LogDebugGraphResultMaterializer316(paramName, matchingProperty != null ? "FOUND" : "NOT_FOUND", matchingProperty?.Value?.GetType().Name ?? "null");
+
+                values[i] = matchingProperty?.Value switch
+                {
+                    SimpleValue simpleValue => ConvertToParameterType(simpleValue.Object, param),
+                    EntityInfo complexEntityInfo => MaterializeSingleElement<object>(complexEntityInfo, param.ParameterType),
+                    EntityCollection entityCollection => MaterializeEntityCollection(entityCollection, param),
+                    _ => GetMissingParameterValue(param)
+                };
+
+                _logger.LogDebugGraphResultMaterializer327(paramName, values[i]?.GetType().Name ?? "null");
+            }
+
             try
             {
-                var parameters = constructor.GetParameters();
-                var values = new object?[parameters.Length];
-
-                if (_logger.IsEnabled(LogLevel.Debug))
-                {
-                    _logger.LogDebugGraphResultMaterializer306(parameters.Length, string.Join(", ", parameters.Select(p => $"{p.Name}:{p.ParameterType.Name}")));
-                }
-
-                for (int i = 0; i < parameters.Length; i++)
-                {
-                    var param = parameters[i];
-                    var paramName = param.Name ?? $"param{i}";
-                    var matchingProperty = FindPropertyInEntityInfo(entityInfo, paramName);
-
-                    _logger.LogDebugGraphResultMaterializer316(paramName, matchingProperty != null ? "FOUND" : "NOT_FOUND", matchingProperty?.Value?.GetType().Name ?? "null");
-
-                    values[i] = matchingProperty?.Value switch
-                    {
-                        SimpleValue simpleValue => ConvertToParameterType(simpleValue.Object, param),
-                        EntityInfo complexEntityInfo => MaterializeSingleElement<object>(complexEntityInfo, param.ParameterType),
-                        EntityCollection entityCollection => MaterializeEntityCollection(entityCollection, param.ParameterType),
-                        SimpleCollection simpleCollection => MaterializeSimpleCollection(simpleCollection, param),
-                        _ => param.HasDefaultValue ? param.DefaultValue : GetDefaultValue(param.ParameterType)
-                    };
-
-                    _logger.LogDebugGraphResultMaterializer327(paramName, values[i]?.GetType().Name ?? "null");
-                }
-
-                // Use constructor.Invoke instead of Activator.CreateInstance to avoid ambiguity
+                // Use constructor.Invoke instead of Activator.CreateInstance to avoid ambiguity.
                 var result = constructor.Invoke(values);
                 _logger.LogDebugGraphResultMaterializer335(typeToInstantiate.Name);
                 return result;
             }
-            catch (Exception ex) when (ex is ArgumentException || ex is AmbiguousMatchException || ex is TargetParameterCountException)
+            catch (Exception ex) when (ex is ArgumentException or AmbiguousMatchException or TargetParameterCountException)
             {
                 _logger.LogDebugGraphResultMaterializer340(ex.Message);
-                // Try the next constructor
+                // The values do not fit this constructor's shape; try the next constructor.
                 continue;
             }
         }
@@ -353,76 +356,25 @@ public sealed class GraphResultMaterializer
 
     private static object? ConvertToParameterType(object? value, ParameterInfo parameter)
     {
-        var targetType = parameter.ParameterType;
+        return GraphValueConverter.ConvertTo(value, parameter.ParameterType, parameter);
+    }
 
-        if (value is null)
+    private static object? GetMissingParameterValue(ParameterInfo parameter)
+    {
+        if (parameter.HasDefaultValue)
         {
-            if (IsNonNullableValueType(targetType))
-            {
-                throw NullValueException(targetType, ParameterName(parameter));
-            }
+            return parameter.DefaultValue;
+        }
 
+        if (NullabilityDerivation.IsParameterNullable(parameter))
+        {
             return null;
         }
 
-        // A projected list of scalars arrives as a wire list inside a SimpleValue rather than as a
-        // SimpleCollection, so its elements are checked here rather than in MaterializeSimpleCollection.
-        RejectNullElements(value, parameter, targetType);
-
-        // Convert provider-neutral scalar values to the requested CLR type.
-        return GraphValueConverter.ConvertTo(value, targetType);
+        throw GraphValueConverter.CreateNullValueException(
+            parameter.ParameterType,
+            ParameterName(parameter));
     }
-
-    private static void RejectNullElements(object value, ParameterInfo parameter, Type targetType)
-    {
-        if (value is not IEnumerable source || value is string)
-        {
-            return;
-        }
-
-        // Deliberately not GetTargetTypeIfCollection: that returns the type itself when it is not a
-        // collection, so an `object` parameter would resolve `object` as its own element type and
-        // reject the nulls a wire list is entitled to carry into it. Returning null here skips the
-        // scan for any target that declares no element contract to enforce.
-        var elementType = GetCollectionElementType(targetType);
-        if (elementType is null)
-        {
-            return;
-        }
-
-        // A CLR collection of a non-nullable value type cannot contain null, so scanning it
-        // (boxing every element — e.g. each byte of a byte[] blob) proves nothing. Resolve what the
-        // source actually yields through its IEnumerable<T> interface: a generic type's first
-        // argument is not necessarily its element type (List<long>.Select(...) is an iterator over
-        // long that yields anything), and reading it as one would skip the scan over a real null.
-        if (IsNonNullableValueType(GraphResultTypeHelpers.GetTargetTypeIfCollection(value.GetType())))
-        {
-            return;
-        }
-
-        // Nullable metadata is read on the first null only — a collection carrying none never needs it.
-        var index = 0;
-        foreach (var item in source)
-        {
-            if (item is null)
-            {
-                if (NullabilityDerivation.IsElementNullable(parameter, elementType))
-                {
-                    return;
-                }
-
-                throw NullElementException(parameter, elementType, index);
-            }
-
-            index++;
-        }
-    }
-
-    private static Type? GetCollectionElementType(Type type) => type.IsArray
-        ? type.GetElementType()
-        : type.IsGenericType
-            ? type.GetGenericArguments().FirstOrDefault()
-            : null;
 
     private static bool IsNonNullableValueType(Type type) =>
         type.IsValueType && Nullable.GetUnderlyingType(type) is null;
@@ -430,45 +382,27 @@ public sealed class GraphResultMaterializer
     private static string ParameterName(ParameterInfo parameter) =>
         parameter.Name ?? $"param{parameter.Position}";
 
-    private static GraphException NullValueException(Type targetType, string? parameterName) =>
-        new(parameterName is null
-            ? $"Cannot materialize null into non-nullable type '{targetType.FullName}'."
-            : $"Cannot materialize null into non-nullable type '{targetType.FullName}' for '{parameterName}'.");
-
     private static GraphException NullElementException(ParameterInfo parameter, Type elementType, int index) =>
-        new($"Constructor parameter '{ParameterName(parameter)}' contains a null element at index {index}, " +
-            $"but its target element type '{elementType}' is non-nullable.");
+        GraphValueConverter.CreateNullElementException(
+            $"Constructor parameter '{ParameterName(parameter)}'",
+            elementType,
+            index);
 
     private static bool IsPathSegmentType(Type type) =>
         type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IGraphPathSegment<,,>);
 
-    private static object? GetDefaultValue(Type type) =>
-        type.IsValueType ? Activator.CreateInstance(type) : null;
-
-    private object? MaterializeEntityCollection(EntityCollection collection, Type targetType)
-    {
-        var elementType = GraphResultTypeHelpers.GetTargetTypeIfCollection(targetType);
-        var elements = collection.Entities
-            .Select(entity => MaterializeSingleElement<object>(entity, elementType))
-            .ToList();
-        return BuildCollection(elements, elementType, targetType);
-    }
-
-    // No wire shape currently binds a SimpleCollection to a constructor parameter — projections carry
-    // scalar lists as a wire list inside a SimpleValue, which ConvertToParameterType checks instead.
-    // The guard below keeps this path on the same contract as its two siblings for whenever one does;
-    // whether the path is dead outright is #429.
-    private static object? MaterializeSimpleCollection(SimpleCollection collection, ParameterInfo parameter)
+    private object? MaterializeEntityCollection(EntityCollection collection, ParameterInfo parameter)
     {
         var targetType = parameter.ParameterType;
         var elementType = GraphResultTypeHelpers.GetTargetTypeIfCollection(targetType);
-        var elements = new List<object?>(collection.Values.Count);
+        var elements = new List<object?>(collection.Entities.Count);
 
         bool? isElementNullable = null;
         var index = 0;
-        foreach (var value in collection.Values)
+        foreach (var entity in collection.Entities)
         {
-            if (value.Object is null)
+            var value = MaterializeSingleElement<object>(entity, elementType);
+            if (value is null)
             {
                 isElementNullable ??= NullabilityDerivation.IsElementNullable(parameter, elementType);
                 if (isElementNullable is false)
@@ -477,7 +411,7 @@ public sealed class GraphResultMaterializer
                 }
             }
 
-            elements.Add(GraphValueConverter.ConvertTo(value.Object, elementType));
+            elements.Add(value);
             index++;
         }
 
@@ -507,7 +441,7 @@ public sealed class GraphResultMaterializer
         return list;
     }
 
-    private static T ConvertToCollectionType<T>(List<object> items, Type elementType)
+    private static T ConvertToCollectionType<T>(List<object?> items, Type elementType)
     {
         var targetType = typeof(T);
 

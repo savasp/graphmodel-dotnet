@@ -63,7 +63,9 @@ public sealed class ComplianceInventoryTests
     // +4 for #374: full-text sanitization inside set-operation branches - per-branch ALL-terms
     // union, duplicate-preserving concat with an empty-token branch, empty-token/metacharacter/
     // sub-token branch neutralization, and a left-associated three-branch union.
-    private const int ExpectedTotalTestMethods = 444;
+    // +3 for #436/#437: absent value/reference constructor arguments reject implicit defaults,
+    // and reference scalar collection projections preserve null rows and positional order.
+    private const int ExpectedTotalTestMethods = 447;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()
