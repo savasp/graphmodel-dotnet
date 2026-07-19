@@ -38,8 +38,9 @@ using Npgsql;
 internal static class AgeProvisioningLock
 {
     /// <summary>
-    /// The advisory-lock class shared by every graph-provisioning lock. It separates provisioning from
-    /// any other two-key advisory lock a host application takes in the same database.
+    /// The stable advisory-lock class shared by every graph-provisioning lock. The Cvoya-specific input
+    /// makes accidental collisions with other two-key advisory locks unlikely; PostgreSQL advisory-lock
+    /// keys remain cooperative, so applications must still avoid deliberately reusing the same pair.
     /// </summary>
     internal static readonly int ClassId = Hash("cvoya:age:graph-provisioning");
 

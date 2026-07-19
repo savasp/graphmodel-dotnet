@@ -100,15 +100,10 @@ public sealed class AgeGraphStore : IAsyncDisposable
             return;
         }
 
-        // Disposing the gate under an initialization that holds it would fault that initialization,
-        // so it is only disposed when free and an in-flight sequence finishes cleanly. A SemaphoreSlim
-        // whose AvailableWaitHandle was never read holds nothing unmanaged, so leaving a contended one
-        // to the garbage collector costs nothing. A caller that has not yet reached the gate still
-        // gets an ObjectDisposedException, which is the right answer for a store already disposed.
-        if (await provisioningGate.WaitAsync(0).ConfigureAwait(false))
-        {
-            provisioningGate.Dispose();
-        }
+        // SemaphoreSlim.Dispose cannot run concurrently with WaitAsync or Release. A caller may have
+        // passed OpenConnectionAsync's disposed check without reaching the gate yet, so its current
+        // count cannot prove that the gate is quiescent. AvailableWaitHandle is never read, meaning the
+        // gate owns no operating-system handle and can safely be reclaimed with the store instead.
 
         if (ownsDataSource)
         {
@@ -205,6 +200,10 @@ public sealed class AgeGraphStore : IAsyncDisposable
                 return;
             }
 
+            // An explicit call re-verifies a graph that may have been dropped since this store first
+            // provisioned it. Clear the cached success before that attempt so a failure or cancellation
+            // cannot leave later implicit first use trusting stale state.
+            provisioned = false;
             await ProvisionCoreAsync(connection, cancellationToken).ConfigureAwait(false);
             provisioned = true;
         }

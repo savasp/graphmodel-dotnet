@@ -142,11 +142,16 @@ public sealed class AgeProvisioningConcurrencyTests
         var cancellationToken = TestContext.Current.CancellationToken;
         var graphName = NewGraphName();
         await using var dataSource = CreateDataSource();
+        await using var store = new AgeGraphStore(dataSource, graphName);
+
+        // Begin with a successful provisioning run so the store has cached a true state, then remove
+        // the graph behind its back. The explicit API is the supported recovery path for that case.
+        await store.CreateGraphIfNotExistsAsync(cancellationToken);
+        await DropGraphAsync(dataSource, graphName, cancellationToken);
 
         // A schema squatting on the graph's name makes ag_catalog.create_graph fail for a reason that
         // has nothing to do with a create race, so the error has to surface unchanged.
         await ExecuteAsync(dataSource, $"CREATE SCHEMA \"{graphName}\"", cancellationToken);
-        await using var store = new AgeGraphStore(dataSource, graphName);
 
         var failure = await Assert.ThrowsAsync<PostgresException>(
             () => store.CreateGraphIfNotExistsAsync(cancellationToken));
@@ -157,8 +162,8 @@ public sealed class AgeProvisioningConcurrencyTests
 
         await ExecuteAsync(dataSource, $"DROP SCHEMA \"{graphName}\"", cancellationToken);
 
-        // Implicit first use still provisions: the failure neither published the provisioned state nor
-        // latched the store into it.
+        // Implicit first use still provisions: the failed recovery cleared the previous cached success
+        // rather than leaving the store falsely convinced that the dropped graph still exists.
         await AssertGraphIsUsableAsync(dataSource, store, graphName, cancellationToken);
     }
 
@@ -169,6 +174,11 @@ public sealed class AgeProvisioningConcurrencyTests
         var graphName = NewGraphName();
         await using var dataSource = CreateDataSource();
         await using var store = new AgeGraphStore(dataSource, graphName);
+
+        // Exercise cancellation from a previously successful state: this is the path where preserving
+        // the old cached value would make the later implicit retry skip provisioning.
+        await store.CreateGraphIfNotExistsAsync(cancellationToken);
+        await DropGraphAsync(dataSource, graphName, cancellationToken);
 
         var holder = await ProvisioningLockHolder.AcquireAsync(dataSource, graphName, cancellationToken);
         await using var holderLease = holder.ConfigureAwait(false);
@@ -346,6 +356,20 @@ public sealed class AgeProvisioningConcurrencyTests
         return (int)(long)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
     }
 
+    private static async Task DropGraphAsync(
+        NpgsqlDataSource dataSource,
+        string graphName,
+        CancellationToken cancellationToken)
+    {
+        var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var connectionLease = connection.ConfigureAwait(false);
+        var command = connection.CreateCommand();
+        await using var commandLease = command.ConfigureAwait(false);
+        command.CommandText = "SELECT ag_catalog.drop_graph(@name, true)";
+        command.Parameters.AddWithValue("name", graphName);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
         "Security",
         "CA2100:Review SQL queries for security vulnerabilities",
@@ -363,6 +387,10 @@ public sealed class AgeProvisioningConcurrencyTests
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security",
+        "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "Test-only helper; every caller passes a constant statement and binds data as parameters.")]
     private static async Task<List<string>> ScalarStringsAsync(
         NpgsqlDataSource dataSource,
         string sql,
