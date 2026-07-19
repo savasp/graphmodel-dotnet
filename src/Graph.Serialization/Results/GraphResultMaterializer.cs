@@ -246,11 +246,9 @@ public sealed class GraphResultMaterializer
             var singleProperty = entityInfo.SimpleProperties.Values.First();
             if (singleProperty.Value is SimpleValue simpleValue)
             {
-                if (simpleValue.Object is null &&
-                    targetType.IsValueType &&
-                    Nullable.GetUnderlyingType(targetType) is null)
+                if (simpleValue.Object is null && IsNonNullableValueType(targetType))
                 {
-                    throw new InvalidOperationException($"Cannot materialize null into non-nullable type {targetType.FullName}.");
+                    throw NullValueException(targetType, parameterName: null);
                 }
 
                 return ConvertValueToTargetType(simpleValue.Object, targetType);
@@ -310,10 +308,10 @@ public sealed class GraphResultMaterializer
 
                     values[i] = matchingProperty?.Value switch
                     {
-                        SimpleValue simpleValue => ConvertToParameterType(simpleValue.Object, param.ParameterType),
+                        SimpleValue simpleValue => ConvertToParameterType(simpleValue.Object, param),
                         EntityInfo complexEntityInfo => MaterializeSingleElement<object>(complexEntityInfo, param.ParameterType),
                         EntityCollection entityCollection => MaterializeEntityCollection(entityCollection, param.ParameterType),
-                        SimpleCollection simpleCollection => MaterializeSimpleCollection(simpleCollection, param.ParameterType),
+                        SimpleCollection simpleCollection => MaterializeSimpleCollection(simpleCollection, param),
                         _ => param.HasDefaultValue ? param.DefaultValue : GetDefaultValue(param.ParameterType)
                     };
 
@@ -353,11 +351,93 @@ public sealed class GraphResultMaterializer
                .FirstOrDefault(kv => string.Equals(kv.Key, paramName, StringComparison.OrdinalIgnoreCase)).Value;
     }
 
-    private static object? ConvertToParameterType(object? value, Type targetType)
+    private static object? ConvertToParameterType(object? value, ParameterInfo parameter)
     {
+        var targetType = parameter.ParameterType;
+
+        if (value is null)
+        {
+            if (IsNonNullableValueType(targetType))
+            {
+                throw NullValueException(targetType, ParameterName(parameter));
+            }
+
+            return null;
+        }
+
+        // A projected list of scalars arrives as a wire list inside a SimpleValue rather than as a
+        // SimpleCollection, so its elements are checked here rather than in MaterializeSimpleCollection.
+        RejectNullElements(value, parameter, targetType);
+
         // Convert provider-neutral scalar values to the requested CLR type.
         return GraphValueConverter.ConvertTo(value, targetType);
     }
+
+    private static void RejectNullElements(object value, ParameterInfo parameter, Type targetType)
+    {
+        if (value is not IEnumerable source || value is string)
+        {
+            return;
+        }
+
+        // Deliberately not GetTargetTypeIfCollection: that returns the type itself when it is not a
+        // collection, so an `object` parameter would resolve `object` as its own element type and
+        // reject the nulls a wire list is entitled to carry into it. Returning null here skips the
+        // scan for any target that declares no element contract to enforce.
+        var elementType = GetCollectionElementType(targetType);
+        if (elementType is null)
+        {
+            return;
+        }
+
+        // A CLR collection of a non-nullable value type cannot contain null, so scanning it
+        // (boxing every element — e.g. each byte of a byte[] blob) proves nothing. Resolve what the
+        // source actually yields through its IEnumerable<T> interface: a generic type's first
+        // argument is not necessarily its element type (List<long>.Select(...) is an iterator over
+        // long that yields anything), and reading it as one would skip the scan over a real null.
+        if (IsNonNullableValueType(GraphResultTypeHelpers.GetTargetTypeIfCollection(value.GetType())))
+        {
+            return;
+        }
+
+        // Nullable metadata is read on the first null only — a collection carrying none never needs it.
+        var index = 0;
+        foreach (var item in source)
+        {
+            if (item is null)
+            {
+                if (NullabilityDerivation.IsElementNullable(parameter, elementType))
+                {
+                    return;
+                }
+
+                throw NullElementException(parameter, elementType, index);
+            }
+
+            index++;
+        }
+    }
+
+    private static Type? GetCollectionElementType(Type type) => type.IsArray
+        ? type.GetElementType()
+        : type.IsGenericType
+            ? type.GetGenericArguments().FirstOrDefault()
+            : null;
+
+    private static bool IsNonNullableValueType(Type type) =>
+        type.IsValueType && Nullable.GetUnderlyingType(type) is null;
+
+    private static string ParameterName(ParameterInfo parameter) =>
+        parameter.Name ?? $"param{parameter.Position}";
+
+    private static GraphException NullValueException(Type targetType, string? parameterName) =>
+        new(parameterName is null
+            ? $"Cannot materialize null into non-nullable type '{targetType.FullName}'."
+            : $"Cannot materialize null into non-nullable type '{targetType.FullName}' for '{parameterName}'.");
+
+    private static GraphException NullElementException(ParameterInfo parameter, Type elementType, int index) =>
+        new($"Constructor parameter '{ParameterName(parameter)}' contains a null element at index {index}, " +
+            $"but its target element type '{elementType}' is non-nullable.");
 
     private static bool IsPathSegmentType(Type type) =>
         type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IGraphPathSegment<,,>);
@@ -374,12 +454,33 @@ public sealed class GraphResultMaterializer
         return BuildCollection(elements, elementType, targetType);
     }
 
-    private static object? MaterializeSimpleCollection(SimpleCollection collection, Type targetType)
+    // No wire shape currently binds a SimpleCollection to a constructor parameter — projections carry
+    // scalar lists as a wire list inside a SimpleValue, which ConvertToParameterType checks instead.
+    // The guard below keeps this path on the same contract as its two siblings for whenever one does;
+    // whether the path is dead outright is #429.
+    private static object? MaterializeSimpleCollection(SimpleCollection collection, ParameterInfo parameter)
     {
+        var targetType = parameter.ParameterType;
         var elementType = GraphResultTypeHelpers.GetTargetTypeIfCollection(targetType);
-        var elements = collection.Values
-            .Select(value => GraphValueConverter.ConvertTo(value.Object, elementType))
-            .ToList();
+        var elements = new List<object?>(collection.Values.Count);
+
+        bool? isElementNullable = null;
+        var index = 0;
+        foreach (var value in collection.Values)
+        {
+            if (value.Object is null)
+            {
+                isElementNullable ??= NullabilityDerivation.IsElementNullable(parameter, elementType);
+                if (isElementNullable is false)
+                {
+                    throw NullElementException(parameter, elementType, index);
+                }
+            }
+
+            elements.Add(GraphValueConverter.ConvertTo(value.Object, elementType));
+            index++;
+        }
+
         return BuildCollection(elements, elementType, targetType);
     }
 

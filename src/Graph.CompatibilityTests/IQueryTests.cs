@@ -477,7 +477,7 @@ public interface IQueryTests : IGraphTest
 
         await this.Graph.CreateNodeAsync(node, null, cancellationToken);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
             this.Graph.Nodes<Person>()
                 .Where(p => p.LastName == group)
                 .Select(p => p.Age)

@@ -1268,7 +1268,7 @@ internal sealed class InMemoryQueryExecutor(
         {
             if (member.Type.IsValueType && Nullable.GetUnderlyingType(member.Type) is null)
             {
-                throw new InvalidOperationException(
+                throw new GraphException(
                     $"Cannot materialize null into non-nullable type '{member.Type.FullName}' for '{member.Member.Name}'.");
             }
 
