@@ -554,6 +554,107 @@ public class EntityFactoryTests
     }
 
     [Fact]
+    public void DynamicNode_WithNullComplexCollectionElement_ThrowsIndexedDiagnostic()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-null-complex",
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["stored_addresses"] = new List<FactoryAddress?>
+                {
+                    new("First", "Seattle"),
+                    null,
+                },
+            });
+
+        var exception = Assert.Throws<GraphException>(() => factory.Serialize(node));
+
+        Assert.Equal(
+            "Complex collection property 'stored_addresses' contains a null element at index 1, " +
+            $"but its target element type '{typeof(FactoryAddress)}' does not allow null elements.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void DynamicNode_WithNullComplexCollectionNestedInPoco_ThrowsIndexedDiagnostic()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-nested-null-complex",
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["directory"] = new FactoryDirectory
+                {
+                    Offices = [new("First", "Seattle"), null],
+                },
+            });
+
+        var exception = Assert.Throws<GraphException>(() => factory.Serialize(node));
+
+        Assert.Equal(
+            "Complex collection property 'stored_offices' contains a null element at index 1, " +
+            $"but its target element type '{typeof(FactoryAddress)}' does not allow null elements.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void DynamicNode_WithNullDictionaryCollectionElement_ThrowsIndexedDiagnostic()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-null-dictionary",
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["entries"] = new List<Dictionary<string, object?>?>
+                {
+                    new() { ["name"] = "first" },
+                    null,
+                },
+            });
+
+        var exception = Assert.Throws<GraphException>(() => factory.Serialize(node));
+
+        Assert.Equal(
+            "Complex collection property 'entries' contains a null element at index 1, " +
+            $"but its target element type '{typeof(Dictionary<string, object?>)}' does not allow null elements.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void DynamicNode_WithMistypedStoredComplexElement_ThrowsIndexedDiagnostic()
+    {
+        var factory = new EntityFactory();
+        var entity = factory.Serialize(new DynamicNode(
+            "dynamic-mistyped-complex",
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["stored_addresses"] = new List<FactoryAddress>
+                {
+                    new("First", "Seattle"),
+                },
+            }));
+        var property = entity.ComplexProperties["stored_addresses"];
+        var collection = Assert.IsType<EntityCollection>(property.Value);
+        var mistyped = collection.Entities.Single() with { ActualType = typeof(FactorySurvey) };
+        entity.ComplexProperties["stored_addresses"] = property with
+        {
+            Value = new EntityCollection(collection.Type, [mistyped]),
+        };
+
+        var exception = Assert.Throws<GraphException>(() => factory.Deserialize<DynamicNode>(entity));
+
+        Assert.Equal(
+            $"Complex collection property 'stored_addresses' contains an element of type '{typeof(FactorySurvey)}' at index 0, " +
+            $"which is not assignable to its target element type '{typeof(FactoryAddress)}'.",
+            exception.Message);
+    }
+
+    [Fact]
     public void DynamicNode_WithSelfReferentialDictionary_ThrowsGraphException()
     {
         var factory = new EntityFactory();
@@ -646,6 +747,12 @@ public class EntityFactoryTests
     private sealed record FactorySurvey
     {
         public List<int?> Scores { get; init; } = [1, null, 3];
+    }
+
+    private sealed record FactoryDirectory
+    {
+        [Property(Label = "stored_offices")]
+        public List<FactoryAddress?> Offices { get; init; } = [];
     }
 
     private sealed record LabeledContact

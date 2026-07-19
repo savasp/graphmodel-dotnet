@@ -164,7 +164,7 @@ internal static class Schema
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
                 sb.AppendLine($"                NestedSchema: {nestedSchemaCall},");
                 sb.AppendLine("                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)");
-                sb.AppendLine($"            ) {{ IsElementNullable = {elementType.IsNullable.ToString().ToLowerInvariant()} }};");
+                sb.AppendLine("            );");
             }
         }
         else

@@ -171,4 +171,14 @@ internal static class DiagnosticDescriptors
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG016_Description);
+
+    // CG017: Nullable complex collection elements are not supported
+    public static readonly DiagnosticDescriptor NullableComplexCollectionElement = new(
+        id: "CG017",
+        title: Resources.CG017_Title,
+        messageFormat: Resources.CG017_MessageFormat,
+        category: "Cvoya.Graph",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: Resources.CG017_Description);
 }

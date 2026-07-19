@@ -271,7 +271,7 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
         var expected = new[]
         {
             VerifyCS.Diagnostic("CG005").WithLocation(0).WithArguments("Location", "TestRelationship", "System.Drawing.Point"),
-            VerifyCS.Diagnostic("CG005").WithLocation(1).WithArguments("MaybeLocation", "TestRelationship", "Nullable<System.Drawing.Point>"),
+            VerifyCS.Diagnostic("CG005").WithLocation(1).WithArguments("MaybeLocation", "TestRelationship", "System.Drawing.Point?"),
             VerifyCS.Diagnostic("CG005").WithLocation(2).WithArguments("Locations", "TestRelationship", "List<System.Drawing.Point>"),
         };
 

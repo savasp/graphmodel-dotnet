@@ -412,9 +412,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         {
             null => null,
             EntityInfo entityInfo => MaterializeDynamicComplexEntity(entityInfo),
-            EntityCollection collection => collection.Entities
-                .Select(MaterializeDynamicComplexEntity)
-                .ToList(),
+            EntityCollection collection => MaterializeDynamicComplexCollection(propertyName, collection),
             _ => throw new GraphException(
                 $"Dynamic complex property '{propertyName}' has unsupported serialized value type " +
                 $"'{value.GetType().Name}'."),
@@ -451,6 +449,40 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         }
 
         return dictionary;
+    }
+
+    private static List<Dictionary<string, object?>> MaterializeDynamicComplexCollection(
+        string propertyName,
+        EntityCollection collection)
+    {
+        var values = new List<Dictionary<string, object?>>(collection.Entities.Count);
+        var index = 0;
+        foreach (var entity in collection.Entities)
+        {
+            if (entity is null)
+            {
+                throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                    propertyName,
+                    collection.Type,
+                    index,
+                    actualType: null);
+            }
+
+            if (collection.Type != typeof(object) &&
+                !collection.Type.IsAssignableFrom(entity.ActualType))
+            {
+                throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                    propertyName,
+                    collection.Type,
+                    index,
+                    entity.ActualType);
+            }
+
+            values.Add(MaterializeDynamicComplexEntity(entity));
+            index++;
+        }
+
+        return values;
     }
 
     private void ProcessDynamicProperties(
@@ -554,14 +586,31 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             var complexValues = new List<EntityInfo>();
             var elementType = GetElementType(valueType);
 
+            var index = 0;
             foreach (var item in collection)
             {
-                if (item != null)
+                if (item is null)
                 {
-                    // Recursively serialize complex objects with cycle detection
-                    var itemEntityInfo = SerializeComplexObject(item, elementType, visited);
-                    complexValues.Add(itemEntityInfo);
+                    throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                        propertyName,
+                        elementType,
+                        index,
+                        actualType: null);
                 }
+
+                if (!elementType.IsAssignableFrom(item.GetType()))
+                {
+                    throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                        propertyName,
+                        elementType,
+                        index,
+                        item.GetType());
+                }
+
+                // Recursively serialize complex objects with cycle detection
+                var itemEntityInfo = SerializeComplexObject(item, elementType, visited);
+                complexValues.Add(itemEntityInfo);
+                index++;
             }
 
             complexProperties[propertyName] = new Property(
@@ -584,12 +633,29 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 var complexValues = new List<EntityInfo>();
                 var elementType = GetElementType(valueType);
 
+                var index = 0;
                 foreach (var item in (IEnumerable)propertyValue!)
                 {
-                    if (item is not null)
+                    if (item is null)
                     {
-                        complexValues.Add(SerializeDynamicDictionary(item, item.GetType(), propertyName, visited));
+                        throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                            propertyName,
+                            elementType,
+                            index,
+                            actualType: null);
                     }
+
+                    if (!elementType.IsAssignableFrom(item.GetType()))
+                    {
+                        throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                            propertyName,
+                            elementType,
+                            index,
+                            item.GetType());
+                    }
+
+                    complexValues.Add(SerializeDynamicDictionary(item, item.GetType(), propertyName, visited));
+                    index++;
                 }
 
                 complexProperties[propertyName] = new Property(
@@ -770,14 +836,31 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                     var complexValues = new List<EntityInfo>();
                     var elementType = GetElementType(propertyType);
 
+                    var index = 0;
                     foreach (var item in collection)
                     {
-                        if (item != null)
+                        if (item is null)
                         {
-                            // Recursively serialize complex objects with cycle detection
-                            var itemEntityInfo = SerializeComplexObject(item, elementType, visited);
-                            complexValues.Add(itemEntityInfo);
+                            throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                                propertyName,
+                                elementType,
+                                index,
+                                actualType: null);
                         }
+
+                        if (!elementType.IsAssignableFrom(item.GetType()))
+                        {
+                            throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                                propertyName,
+                                elementType,
+                                index,
+                                item.GetType());
+                        }
+
+                        // Recursively serialize complex objects with cycle detection
+                        var itemEntityInfo = SerializeComplexObject(item, elementType, visited);
+                        complexValues.Add(itemEntityInfo);
+                        index++;
                     }
 
                     complexProperties[propertyName] = new Property(

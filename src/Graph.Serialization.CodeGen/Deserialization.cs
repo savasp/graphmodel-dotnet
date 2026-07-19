@@ -5,7 +5,6 @@ namespace Cvoya.Graph.Serialization.CodeGen;
 
 using System.Text;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 
 
 internal static class Deserialization
@@ -311,7 +310,7 @@ internal static class Deserialization
 
             if (!elementType.IsNullable)
             {
-                var escapedLabel = EscapeForGeneratedInterpolatedString(propertyLabel);
+                var escapedLabel = Utils.EscapeForGeneratedInterpolatedString(propertyLabel);
                 sb.AppendLine($"{indentStr}            .Select((simpleValue, index) => simpleValue.Object is null");
                 sb.AppendLine($"{indentStr}                ? throw new GraphException($\"Collection property '{escapedLabel}' contains a null element at index {{index}}, but its target element type '{{typeof({elementType.TypeOfName})}}' is non-nullable.\")");
                 sb.AppendLine($"{indentStr}                : {GetSimpleValueConversionExpression(elementType, "simpleValue.Object")})");
@@ -324,19 +323,43 @@ internal static class Deserialization
         else
         {
             var entityCollectionName = $"{propRepVarName}EntityCollection";
+            var escapedLabel = Utils.EscapeForGeneratedInterpolatedString(propertyLabel);
+
+            // A deserialized element arrives boxed as `object`, so the type test names the
+            // underlying element type; `is Address? typed` is not a valid pattern. Only a single
+            // trailing '?' is ever present (TypeOfName already drops the annotation on nullable
+            // reference types, leaving Nullable<T>'s shorthand as the one case to strip).
+            var elementPatternType = elementType.TypeOfName.EndsWith("?", StringComparison.Ordinal)
+                ? elementType.TypeOfName.Substring(0, elementType.TypeOfName.Length - 1)
+                : elementType.TypeOfName;
+
+            // Widen back to the declared element type when it is the nullable form, so the
+            // materialized collection stays assignable to the declared property type.
+            var elementWidening = elementPatternType == elementType.DisplayName
+                ? string.Empty
+                : $"({elementType.DisplayName})";
+
             // Complex collection handling. Each element is resolved by its own EntityInfo.ActualType
             // (the same dispatch mechanism used for top-level Node/Relationship polymorphism), falling
             // back to the statically-declared element type only when no serializer is registered for
             // ActualType (e.g. legacy data serialized before ActualType was recorded per element).
+            //
+            // A null or wrongly-typed element throws at its original index rather than being filtered
+            // out: silently dropping it would shrink the collection and shift every later element,
+            // hiding the data defect behind a plausible-looking result.
             sb.AppendLine($"{indentStr}{variableName} = {propRepVarName} is null");
             sb.AppendLine($"{indentStr}    ? {missingValueExpression}");
             sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is EntityCollection {entityCollectionName}");
             sb.AppendLine($"{indentStr}        ? {entityCollectionName}.Entities");
-            sb.AppendLine($"{indentStr}            .Select(entityItem => (_serializerRegistry.GetSerializer(entityItem.ActualType)");
+            sb.AppendLine($"{indentStr}            .Select((entityItem, index) => (_serializerRegistry.GetSerializer(entityItem.ActualType)");
             sb.AppendLine($"{indentStr}                ?? _serializerRegistry.GetSerializer(typeof({elementType.TypeOfName}))");
             sb.AppendLine($"{indentStr}                ?? throw new InvalidOperationException($\"No serializer found for element type {{entityItem.ActualType}}\"))");
-            sb.AppendLine($"{indentStr}                .Deserialize(entityItem))");
-            sb.AppendLine($"{indentStr}            .OfType<{elementType.DisplayName}>()");
+            sb.AppendLine($"{indentStr}                .Deserialize(entityItem) switch");
+            sb.AppendLine($"{indentStr}                {{");
+            sb.AppendLine($"{indentStr}                    {elementPatternType} typedElement => {elementWidening}typedElement,");
+            sb.AppendLine($"{indentStr}                    null => throw new GraphException($\"Complex collection property '{escapedLabel}' contains a null element at index {{index}}, but its target element type '{{typeof({elementType.TypeOfName})}}' does not allow null elements.\"),");
+            sb.AppendLine($"{indentStr}                    var untypedElement => throw new GraphException($\"Complex collection property '{escapedLabel}' contains an element of type '{{untypedElement.GetType()}}' at index {{index}}, which is not assignable to its target element type '{{typeof({elementType.TypeOfName})}}'.\"),");
+            sb.AppendLine($"{indentStr}                }})");
         }
 
         // Materialize into a value assignable to the declared collection type. Sets become a
@@ -426,17 +449,6 @@ internal static class Deserialization
             ? $"throw new InvalidOperationException(\"Required collection property '{propertyLabel}' is missing or null\")"
             : $"default({collectionType.DisplayName})";
     }
-
-    /// <summary>
-    /// Escapes a consumer-provided string (e.g. a <c>[Property(Label = ...)]</c> value, which may
-    /// legally contain quotes, backslashes, or braces) for embedding inside a generated
-    /// interpolated string literal: string-literal escapes first, then doubled braces so the text
-    /// cannot terminate the literal or open an interpolation hole.
-    /// </summary>
-    private static string EscapeForGeneratedInterpolatedString(string value) =>
-        SymbolDisplay.FormatLiteral(value, quote: false)
-            .Replace("{", "{{")
-            .Replace("}", "}}");
 
     private static string GetTypeDefault(TypeReferenceModel type, out bool shouldThrow)
     {
