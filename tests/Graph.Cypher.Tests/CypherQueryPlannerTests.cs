@@ -514,6 +514,8 @@ public class CypherQueryPlannerTests
         var relationship = Assert.IsType<RelationshipPattern>(match.Patterns[0].Elements[1]);
         Assert.Equal("KNOWS", Assert.Single(relationship.Types));
         Assert.Equal(new Cvoya.Graph.Cypher.Ast.DepthRange(1, 3), relationship.Depth);
+        var projection = Assert.IsType<EntityProjectionClause>(statement.Clauses[^1]);
+        Assert.Equal(["src", "r"], projection.RowIdentityAliases);
         new CypherAstValidator().Run(statement);
     }
 
@@ -1310,7 +1312,7 @@ public class CypherQueryPlannerTests
             statement.Clauses,
             clause => Assert.IsType<MatchClause>(clause),
             clause => Assert.True(Assert.IsType<WithClause>(clause).Distinct),
-            clause => Assert.IsType<EntityProjectionClause>(clause));
+            clause => Assert.Empty(Assert.IsType<EntityProjectionClause>(clause).RowIdentityAliases));
         new CypherAstValidator().Run(statement);
     }
 

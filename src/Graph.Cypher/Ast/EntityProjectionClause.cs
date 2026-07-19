@@ -32,7 +32,8 @@ public sealed record EntityProjectionClause : ICypherClause
             loadSourceProperties,
             loadTargetProperties,
             includePathCoordinates: false,
-            ordering: [])
+            ordering: [],
+            rowIdentityAliases: [])
     {
     }
 
@@ -60,7 +61,8 @@ public sealed record EntityProjectionClause : ICypherClause
             loadSourceProperties,
             loadTargetProperties,
             includePathCoordinates,
-            ordering: [])
+            ordering: [],
+            rowIdentityAliases: [])
     {
     }
 
@@ -82,6 +84,39 @@ public sealed record EntityProjectionClause : ICypherClause
         bool loadTargetProperties,
         bool includePathCoordinates,
         IReadOnlyList<OrderByItem> ordering)
+        : this(
+            shape,
+            sourceAlias,
+            relationshipAlias,
+            targetAlias,
+            loadSourceProperties,
+            loadTargetProperties,
+            includePathCoordinates,
+            ordering,
+            rowIdentityAliases: [])
+    {
+    }
+
+    /// <summary>Initializes an entity wire projection.</summary>
+    /// <param name="shape">The projection shape.</param>
+    /// <param name="sourceAlias">The source node alias.</param>
+    /// <param name="relationshipAlias">The relationship alias for a path segment.</param>
+    /// <param name="targetAlias">The target node alias.</param>
+    /// <param name="loadSourceProperties">Whether declared complex properties are loaded from the source node.</param>
+    /// <param name="loadTargetProperties">Whether declared complex properties are loaded from the target node.</param>
+    /// <param name="includePathCoordinates">Whether the projection includes graph-path and hop indexes.</param>
+    /// <param name="ordering">The result ordering to restore after entity materialization.</param>
+    /// <param name="rowIdentityAliases">Additional aliases that distinguish input rows while node properties are loaded.</param>
+    public EntityProjectionClause(
+        EntityProjectionShape shape,
+        string sourceAlias,
+        string? relationshipAlias,
+        string? targetAlias,
+        bool loadSourceProperties,
+        bool loadTargetProperties,
+        bool includePathCoordinates,
+        IReadOnlyList<OrderByItem> ordering,
+        IReadOnlyList<string> rowIdentityAliases)
     {
         Shape = ArgumentValidation.DefinedEnum(shape, nameof(shape));
         SourceAlias = ArgumentValidation.RequiredName(sourceAlias, nameof(sourceAlias));
@@ -91,11 +126,26 @@ public sealed record EntityProjectionClause : ICypherClause
         LoadTargetProperties = loadTargetProperties;
         IncludePathCoordinates = includePathCoordinates;
         Ordering = ArgumentValidation.List(ordering, nameof(ordering));
+        RowIdentityAliases = ArgumentValidation.StringList(rowIdentityAliases, nameof(rowIdentityAliases));
 
         if (shape == EntityProjectionShape.PathSegment &&
             (RelationshipAlias is null || TargetAlias is null))
         {
             throw new ArgumentException("Path-segment projections require relationship and target aliases.", nameof(shape));
+        }
+
+        if (RowIdentityAliases.Count != RowIdentityAliases.Distinct(StringComparer.Ordinal).Count())
+        {
+            throw new ArgumentException("Row-identity aliases must be unique.", nameof(rowIdentityAliases));
+        }
+
+        if (RowIdentityAliases.Contains(SourceAlias, StringComparer.Ordinal) ||
+            RelationshipAlias is not null && RowIdentityAliases.Contains(RelationshipAlias, StringComparer.Ordinal) ||
+            TargetAlias is not null && RowIdentityAliases.Contains(TargetAlias, StringComparer.Ordinal))
+        {
+            throw new ArgumentException(
+                "Row-identity aliases must not repeat an entity projection alias.",
+                nameof(rowIdentityAliases));
         }
     }
 
@@ -122,4 +172,9 @@ public sealed record EntityProjectionClause : ICypherClause
 
     /// <summary>Gets the result ordering restored after entity materialization.</summary>
     public IReadOnlyList<OrderByItem> Ordering { get; }
+
+    /// <summary>
+    /// Gets additional aliases that distinguish input rows while node properties are loaded.
+    /// </summary>
+    public IReadOnlyList<string> RowIdentityAliases { get; }
 }

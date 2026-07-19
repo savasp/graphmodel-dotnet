@@ -71,7 +71,8 @@ internal sealed class AgeTemporalParameterArithmeticPass : ICypherPass
                 projection.IncludePathCoordinates,
                 projection.Ordering
                     .Select(item => new OrderByItem(Rewrite(item.Expression), item.Descending))
-                    .ToArray()),
+                    .ToArray(),
+                projection.RowIdentityAliases),
             _ => clause,
         };
 

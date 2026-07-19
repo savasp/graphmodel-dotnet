@@ -46,6 +46,37 @@ public sealed class AgeEntityProjectionPassTests
     }
 
     [Fact]
+    public void NodeHydrationCarriesInputRowIdentityThroughAggregation()
+    {
+        var statement = Statement(
+            new MatchClause(
+            [
+                new PathPattern(
+                [
+                    new NodePattern("src", []),
+                    new RelationshipPattern("r", null, CypherDirection.Outgoing, depth: null),
+                    new NodePattern("tgt", []),
+                ]),
+            ], optional: false),
+            new EntityProjectionClause(
+                EntityProjectionShape.Node,
+                "tgt",
+                relationshipAlias: null,
+                targetAlias: null,
+                loadSourceProperties: true,
+                loadTargetProperties: false,
+                includePathCoordinates: false,
+                ordering: [],
+                rowIdentityAliases: ["src", "r"]));
+
+        var rendered = renderer.Render(pass.Run(statement));
+
+        Assert.Contains("WITH tgt, src, r, CASE", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("WITH tgt, src, r, collect", rendered.Text, StringComparison.Ordinal);
+        Assert.Equal(["Node"], rendered.ProjectionColumns);
+    }
+
+    [Fact]
     public void LowersNamedOptionalPathAllAndReduceNodesDirectly()
     {
         var pathIndex = new VariableRef("i");

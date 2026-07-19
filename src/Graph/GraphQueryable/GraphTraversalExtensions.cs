@@ -325,6 +325,10 @@ public static class GraphTraversalExtensions
     /// <param name="minDepth">The minimum depth to traverse (must be at least 1).</param>
     /// <param name="maxDepth">The maximum depth to traverse (must be greater than or equal to <paramref name="minDepth"/>).</param>
     /// <returns>A queryable of graph paths representing the variable-length traversal.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="minDepth"/> is less than 1, or <paramref name="maxDepth"/> is less than
+    /// <paramref name="minDepth"/>.
+    /// </exception>
     public static IGraphQueryable<IGraphPath> TraversePaths<TRel, TEnd>(
         this IGraphQueryable<INode> source,
         int minDepth,

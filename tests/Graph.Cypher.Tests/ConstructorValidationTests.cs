@@ -124,6 +124,46 @@ public class ConstructorValidationTests
     }
 
     [Fact]
+    public void EntityProjectionClause_ValidatesAndCopiesRowIdentityAliases()
+    {
+        var aliases = new List<string> { "r" };
+        var projection = new EntityProjectionClause(
+            EntityProjectionShape.Node,
+            "tgt",
+            relationshipAlias: null,
+            targetAlias: null,
+            loadSourceProperties: true,
+            loadTargetProperties: false,
+            includePathCoordinates: false,
+            ordering: [],
+            rowIdentityAliases: aliases);
+
+        aliases.Add("other");
+
+        Assert.Equal(["r"], projection.RowIdentityAliases);
+        Assert.Throws<ArgumentException>(() => new EntityProjectionClause(
+            EntityProjectionShape.Node,
+            "tgt",
+            relationshipAlias: null,
+            targetAlias: null,
+            loadSourceProperties: true,
+            loadTargetProperties: false,
+            includePathCoordinates: false,
+            ordering: [],
+            rowIdentityAliases: ["r", "r"]));
+        Assert.Throws<ArgumentException>(() => new EntityProjectionClause(
+            EntityProjectionShape.Node,
+            "tgt",
+            relationshipAlias: null,
+            targetAlias: null,
+            loadSourceProperties: true,
+            loadTargetProperties: false,
+            includePathCoordinates: false,
+            ordering: [],
+            rowIdentityAliases: ["tgt"]));
+    }
+
+    [Fact]
     public void ExpressionConstructors_RejectNullOperands()
     {
         var ex = Assert.ThrowsAny<ArgumentException>(() => new PropertyAccess(null!, "name"));

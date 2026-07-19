@@ -126,6 +126,11 @@ public sealed class CypherAstValidator : ICypherPass
                         ValidateAlias(targetAlias, scope);
                     }
 
+                    foreach (var rowIdentityAlias in projection.RowIdentityAliases)
+                    {
+                        ValidateAlias(rowIdentityAlias, scope);
+                    }
+
                     foreach (var item in projection.Ordering)
                     {
                         ValidateExpression(item.Expression, scope, parameters);

@@ -624,6 +624,14 @@ public sealed class CypherRenderer : ICypherRenderContext
         }
     }
 
+    private static void AppendAliases(StringBuilder builder, IReadOnlyList<string> aliases)
+    {
+        foreach (var alias in aliases)
+        {
+            builder.Append(", ").Append(alias);
+        }
+    }
+
     private static void RenderProjectionResultStart(
         StringBuilder builder,
         IReadOnlyList<OrderByItem> ordering)
@@ -665,6 +673,7 @@ public sealed class CypherRenderer : ICypherRenderContext
             .Append(")-[rels*1..").Append(GraphDataModel.DefaultDepthAllowed).Append("]->(prop)\n")
             .Append("WHERE ALL(rel IN rels WHERE rel.").Append(dialect.ComplexPropertyRelationshipMarker).Append(" = true)\n")
             .Append("WITH ").Append(alias);
+        AppendAliases(builder, projection.RowIdentityAliases);
         AppendProjectionOrderAliases(builder, projection.Ordering);
         builder.Append(",\n")
             .Append("    CASE WHEN src_path IS NULL THEN [] ELSE [i IN range(0, size(rels) - 1) | {\n")
@@ -674,6 +683,7 @@ public sealed class CypherRenderer : ICypherRenderContext
             .Append("        Property: nodes(src_path)[i + 1]\n")
             .Append("    }] END AS src_property_path\n")
             .Append("WITH ").Append(alias);
+        AppendAliases(builder, projection.RowIdentityAliases);
         AppendProjectionOrderAliases(builder, projection.Ordering);
         builder.Append(", reduce(flat = [], path IN collect(src_property_path) | flat + path) AS src_properties\n");
         RenderProjectionResultStart(builder, projection.Ordering);

@@ -98,10 +98,37 @@ public class ZeroDepthTraversalTests
     }
 
     [Fact]
+    public void Traverse_InvertedDepthRange_ThrowsAtQueryConstruction()
+    {
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Root<Person>().Traverse<Knows, Company>(3, 2));
+
+        Assert.Equal("maxDepth", exception.ParamName);
+    }
+
+    [Fact]
+    public void TraversePaths_InvertedDepthRange_ThrowsAtQueryConstruction()
+    {
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Root<Person>().TraversePaths<Knows, Company>(3, 2));
+
+        Assert.Equal("maxDepth", exception.ParamName);
+    }
+
+    [Fact]
     public void TraverseWithOptions_DepthZero_ThrowsAtQueryConstruction()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             Root<Person>().Traverse<Knows, Company>(options => options.Depth(0)));
+    }
+
+    [Fact]
+    public void TraversePathsWithOptions_DepthZero_ThrowsAtQueryConstruction()
+    {
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Root<Person>().TraversePaths<Knows, Company>(options => options.Depth(0)));
+
+        Assert.Equal("maxDepth", exception.ParamName);
     }
 
     [Theory]

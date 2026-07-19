@@ -1601,7 +1601,11 @@ public sealed class CypherQueryPlanner
             {
                 var parameterIndex = join.ResultSelector.Parameters.IndexOf(parameter);
                 return parameterIndex == 1
-                    ? ProjectionPlan.Node("joined", join.ResultSelector.ReturnType, loadProperties: false)
+                    ? ProjectionPlan.Node(
+                        "joined",
+                        join.ResultSelector.ReturnType,
+                        loadProperties: false,
+                        rowIdentityAliases: NodeProjectionRowIdentityAliases(model, state, "joined"))
                     : ProjectionPlan.PathSegment("src", "r", "tgt", null, null, loadProperties: false);
             }
 
@@ -1623,7 +1627,11 @@ public sealed class CypherQueryPlanner
                     ProjectionPlan.PathSegment("src", "r", "tgt", null, null, loadProperties: true),
                 DynamicRoot { ElementType: { } type } when typeof(IRelationship).IsAssignableFrom(type) =>
                     ProjectionPlan.PathSegment("src", "r", "tgt", null, null, loadProperties: true),
-                _ => ProjectionPlan.Node(state.CurrentAlias, state.CurrentType, HasComplexProperties(state.CurrentType)),
+                _ => ProjectionPlan.Node(
+                    state.CurrentAlias,
+                    state.CurrentType,
+                    HasComplexProperties(state.CurrentType),
+                    NodeProjectionRowIdentityAliases(model, state, state.CurrentAlias)),
             };
         }
 
@@ -1660,7 +1668,11 @@ public sealed class CypherQueryPlanner
                 return component switch
                 {
                     nameof(IGraphPathSegment.EndNode) =>
-                        ProjectionPlan.Node(state.TargetAlias, member.Type, HasComplexProperties(member.Type)),
+                        ProjectionPlan.Node(
+                            state.TargetAlias,
+                            member.Type,
+                            HasComplexProperties(member.Type),
+                            NodeProjectionRowIdentityAliases(model, state, state.TargetAlias)),
                     nameof(IGraphPathSegment.Relationship) =>
                         ProjectionPlan.PathSegment(
                             state.CurrentTraversalSourceAlias,
@@ -1673,7 +1685,11 @@ public sealed class CypherQueryPlanner
                         ProjectionPlan.Node(
                             state.CurrentTraversalSourceAlias,
                             member.Type,
-                            HasComplexProperties(member.Type)),
+                            HasComplexProperties(member.Type),
+                            NodeProjectionRowIdentityAliases(
+                                model,
+                                state,
+                                state.CurrentTraversalSourceAlias)),
                     _ => throw new InvalidOperationException(),
                 };
             }
@@ -1681,6 +1697,30 @@ public sealed class CypherQueryPlanner
 
         var expression = lowerer.LowerLambda(selector, state.CurrentAlias);
         return ProjectionPlan.Scalar([new ReturnItem(expression, null)]);
+    }
+
+    private static List<string> NodeProjectionRowIdentityAliases(
+        GraphQueryModel model,
+        PlanningState state,
+        string projectedAlias)
+    {
+        var aliases = new List<string>();
+        if ((model.Join is not null || state.ExplicitTraversal.Count > 0) &&
+            !string.Equals(state.RootAlias, projectedAlias, StringComparison.Ordinal))
+        {
+            aliases.Add(state.RootAlias);
+        }
+
+        for (var index = 0; index < state.ExplicitTraversal.Count; index++)
+        {
+            var relationshipAlias = index == 0 ? "r" : $"r_{index + 1}";
+            if (!string.Equals(relationshipAlias, projectedAlias, StringComparison.Ordinal))
+            {
+                aliases.Add(relationshipAlias);
+            }
+        }
+
+        return aliases;
     }
 
     private static CypherExpression LowerProjectionItem(
@@ -2344,7 +2384,8 @@ public sealed class CypherQueryPlanner
             projection.LoadSourceProperties,
             projection.LoadTargetProperties,
             includePathCoordinates: false,
-            ordering: resultOrdering));
+            ordering: resultOrdering,
+            rowIdentityAliases: distinctApplied ? [] : projection.RowIdentityAliases));
     }
 
     private static void AddGraphPathProjection(
@@ -2469,20 +2510,28 @@ public sealed class CypherQueryPlanner
             } member && parameter.Type == typeof(IGraphPath))
         {
             var entity = lowerer.LowerLambda(selector, "p");
-            clauses.Add(new WithClause([new ReturnItem(entity, "__pathEntity")], distinct: false));
             // Start/End are declared INode, but the pattern label-constrains them to the path
             // shape's endpoint types — use those rather than the interface, which always reports
             // complex properties.
             var entityType = member.Member.Name == nameof(IGraphPath.Start)
                 ? model.PathShape!.SourceType
                 : model.PathShape!.TargetType;
+            var loadProperties = HasComplexProperties(entityType);
+            clauses.Add(new WithClause(
+                loadProperties
+                    ? [new ReturnItem(new VariableRef("p"), null), new ReturnItem(entity, "__pathEntity")]
+                    : [new ReturnItem(entity, "__pathEntity")],
+                distinct: false));
             clauses.Add(new EntityProjectionClause(
                 EntityProjectionShape.Node,
                 "__pathEntity",
                 relationshipAlias: null,
                 targetAlias: null,
-                loadSourceProperties: HasComplexProperties(entityType),
-                loadTargetProperties: false));
+                loadSourceProperties: loadProperties,
+                loadTargetProperties: false,
+                includePathCoordinates: false,
+                ordering: [],
+                rowIdentityAliases: loadProperties ? ["p"] : []));
             return;
         }
 
@@ -2615,10 +2664,23 @@ public sealed class CypherQueryPlanner
         string? TargetAlias,
         bool LoadSourceProperties,
         bool LoadTargetProperties,
+        IReadOnlyList<string> RowIdentityAliases,
         IReadOnlyList<ReturnItem>? Items)
     {
-        public static ProjectionPlan Node(string alias, Type? type, bool loadProperties) =>
-            new(EntityProjectionShape.Node, alias, null, null, loadProperties, false, null);
+        public static ProjectionPlan Node(
+            string alias,
+            Type? type,
+            bool loadProperties,
+            IReadOnlyList<string>? rowIdentityAliases = null) =>
+            new(
+                EntityProjectionShape.Node,
+                alias,
+                null,
+                null,
+                loadProperties,
+                false,
+                rowIdentityAliases ?? [],
+                null);
 
         public static ProjectionPlan PathSegment(
             string source,
@@ -2634,9 +2696,10 @@ public sealed class CypherQueryPlanner
                 target,
                 loadProperties && HasComplexProperties(sourceType),
                 loadProperties && HasComplexProperties(targetType),
+                [],
                 null);
 
         public static ProjectionPlan Scalar(IReadOnlyList<ReturnItem> items) =>
-            new(EntityProjectionShape.Node, null, null, null, false, false, items);
+            new(EntityProjectionShape.Node, null, null, null, false, false, [], items);
     }
 }

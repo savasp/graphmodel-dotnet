@@ -13,6 +13,10 @@ public sealed record DepthRange
     /// </summary>
     /// <param name="min">The minimum traversal depth. Must be at least 1: a traversal is one or more relationship hops.</param>
     /// <param name="max">The maximum traversal depth. Must be greater than or equal to <paramref name="min"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="min"/> is less than 1, or <paramref name="max"/> is less than
+    /// <paramref name="min"/>.
+    /// </exception>
     public DepthRange(int min, int max)
     {
         if (min < 1)
