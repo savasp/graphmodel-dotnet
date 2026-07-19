@@ -86,6 +86,39 @@ public class RootNodeLabelTests(Neo4jHarness harness) :
     }
 
     [Fact]
+    public async Task DynamicNode_CannotClaimReservedLabel()
+    {
+        var node = new DynamicNode(
+            [RootNodeLabel],
+            new Dictionary<string, object?> { ["Name"] = "caller-owned" });
+
+        var failure = await Assert.ThrowsAsync<GraphException>(async () =>
+            await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken));
+
+        Assert.Contains(RootNodeLabel, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("reserved for provider infrastructure", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PublicLabelQueries_DoNotMatchReservedLabel()
+    {
+        await Graph.CreateNodeAsync(
+            new DynamicNode(["PublicRootLabelTest"], new Dictionary<string, object?>()),
+            null,
+            TestContext.Current.CancellationToken);
+
+        var filtered = await Graph.DynamicNodes()
+            .OfLabel(RootNodeLabel)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var dynamicPredicate = await Graph.DynamicNodes()
+            .Where(node => node.HasLabel(RootNodeLabel))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(filtered);
+        Assert.Empty(dynamicPredicate);
+    }
+
+    [Fact]
     public async Task DuplicateId_ReportsTheContractNotTheInternalLabel()
     {
         // The database words a constraint breach in terms of the reserved label, which is an

@@ -11,6 +11,8 @@ namespace Cvoya.Graph.Neo4j.Translation.Tests;
 
 public class Neo4jDialectTests
 {
+    private const string RootNodeLabel = "__CvoyaRootNode";
+
     [Fact]
     public void DeclaresOnlyCapabilitiesWithUserVisibleSupport()
     {
@@ -57,5 +59,30 @@ public class Neo4jDialectTests
     public void FunctionMappings_PreserveNeo4jSyntax(string neutralName, string expected)
     {
         Assert.Equal(expected, Neo4jDialect.Instance.RenderFunctionName(neutralName));
+    }
+
+    [Fact]
+    public void RenderNodeLabels_RejectsTheReservedRootLabel()
+    {
+        var failure = Assert.Throws<GraphQueryTranslationException>(() =>
+            Neo4jDialect.Instance.RenderNodeLabels([RootNodeLabel]));
+
+        Assert.Contains("reserved for provider infrastructure", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RenderLabelTest_HidesTheReservedRootLabel()
+    {
+        var reservedOnly = Neo4jDialect.Instance.RenderLabelTest(
+            "n",
+            [RootNodeLabel],
+            value => $"'{value}'");
+        var mixed = Neo4jDialect.Instance.RenderLabelTest(
+            "n",
+            [RootNodeLabel, "Person"],
+            value => $"'{value}'");
+
+        Assert.Equal("false", reservedOnly);
+        Assert.Equal("'Person' IN labels(n)", mixed);
     }
 }

@@ -157,6 +157,35 @@ public interface INodeIdentityTests : IGraphTest
     }
 
     [Fact]
+    public async Task CreateDynamicRelationship_UniqueDynamicEndpoints_CreatesExactlyOneRelationship()
+    {
+        var source = new DynamicNode(
+            ["NodeIdentityDynamicSource"],
+            new Dictionary<string, object?> { ["Name"] = "Alice" });
+        var target = new DynamicNode(
+            ["NodeIdentityDynamicTarget"],
+            new Dictionary<string, object?> { ["Name"] = "Bob" });
+        await Graph.CreateNodeAsync(source, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(target, null, TestContext.Current.CancellationToken);
+
+        var relationship = new DynamicRelationship(
+            source.Id,
+            target.Id,
+            "NODE_IDENTITY_DYNAMIC_LINK",
+            new Dictionary<string, object?> { ["Note"] = "single" });
+        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+
+        var stored = await Graph.DynamicRelationships()
+            .Where(candidate => candidate.Id == relationship.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(stored);
+        Assert.Equal(source.Id, single.StartNodeId);
+        Assert.Equal(target.Id, single.EndNodeId);
+        Assert.Equal("NODE_IDENTITY_DYNAMIC_LINK", single.Type);
+    }
+
+    [Fact]
     public async Task RelationshipMayReuseNodeId()
     {
         // Node ids and relationship ids are separate namespaces: enforcing node id uniqueness must

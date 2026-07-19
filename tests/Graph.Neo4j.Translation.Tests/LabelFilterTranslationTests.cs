@@ -29,4 +29,16 @@ public sealed class LabelFilterTranslationTests : TranslationTestBase
 
         return VerifyTranslation(query);
     }
+
+    [Fact]
+    public void DynamicHasLabel_UsesThePublicLabelsProperty()
+    {
+        var query = Root.Nodes<DynamicNode>()
+            .Where(node => node.HasLabel("Manager"));
+
+        var translation = CypherTranslator.Translate(query);
+
+        Assert.Contains("$p0 IN src.Labels", translation, StringComparison.Ordinal);
+        Assert.DoesNotContain("labels(src)", translation, StringComparison.Ordinal);
+    }
 }

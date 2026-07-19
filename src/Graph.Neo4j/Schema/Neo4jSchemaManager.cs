@@ -70,6 +70,17 @@ internal class Neo4jSchemaManager
                 _logger.LogDebugNeo4jSchemaManager68(nodeLabelsCount, relationshipTypesCount);
             }
 
+            // Reject model labels that collide with provider infrastructure before reading or
+            // mutating the database schema. Dynamic labels are validated on each mutation; typed
+            // labels are known here from the registry and must fail before the shared constraint is
+            // mistaken for that model type's own schema.
+            var nodeLabels = (await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken)
+                .ConfigureAwait(false)).ToArray();
+            foreach (var nodeLabel in nodeLabels)
+            {
+                SerializationBridge.ValidateUserNodeLabel(nodeLabel);
+            }
+
             // Read the installed schema once so re-initialization over an existing equivalent
             // schema skips creation without a per-object conflict round trip.
             var existingSchema = await GetExistingSchemaSnapshotAsync(cancellationToken).ConfigureAwait(false);
@@ -80,7 +91,6 @@ internal class Neo4jSchemaManager
             await CreateRootNodeIdConstraintAsync(existingSchema, cancellationToken).ConfigureAwait(false);
 
             // Create constraints and indexes for all discovered node types
-            var nodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
             foreach (var nodeLabel in nodeLabels)
             {
                 await CreateNodeConstraintsAndIndexesAsync(nodeLabel, existingSchema, cancellationToken).ConfigureAwait(false);

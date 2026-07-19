@@ -297,6 +297,9 @@ require materializing the combined query first.
 `GraphLabelMatch.Any` to require at least one requested label, or `GraphLabelMatch.All` to require
 every requested label:
 
+"Stored labels" here means the caller-visible graph labels. Provider-owned infrastructure labels
+are reserved and never match these filters.
+
 ```csharp
 var reviewers = await graph.Nodes<Person>()
     .OfLabel("Manager")

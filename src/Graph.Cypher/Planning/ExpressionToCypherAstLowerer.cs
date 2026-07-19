@@ -592,7 +592,13 @@ internal sealed class ExpressionToCypherAstLowerer(
                     CypherUnaryOperator.IsNotNull,
                     new EscapedPropertyAccess(target, RequireConstantIdentifier(node.Arguments[1], node.Method.Name))),
             "HasLabel" when node.Arguments.Count == 2 =>
-                new AstBinaryExpression(CypherBinaryOperator.In, Lower(node.Arguments[1], aliases), Function("labels", target)),
+                // DynamicNode.Labels is the provider-populated public label set. Reading the stored
+                // property preserves normal LINQ semantics when a provider carries additional
+                // physical labels for infrastructure (for example Neo4j's root-node marker).
+                new AstBinaryExpression(
+                    CypherBinaryOperator.In,
+                    Lower(node.Arguments[1], aliases),
+                    new PropertyAccess(target, nameof(Graph.INode.Labels))),
             "HasType" when node.Arguments.Count == 2 =>
                 new AstBinaryExpression(CypherBinaryOperator.Equal, Function("type", target), Lower(node.Arguments[1], aliases)),
             _ => throw Unsupported(node, $"Dynamic entity method '{node.Method.Name}' is not supported."),

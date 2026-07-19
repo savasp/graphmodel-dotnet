@@ -71,6 +71,17 @@ the provider drops and recreates them during initialization instead of failing.
 `RecreateIndexesAsync` has the same concurrency guarantee. Concurrent callers may both complete
 when they request the same index definitions; incompatible definitions are not suppressed.
 
+### Root-node storage label
+
+Every root node written by this provider carries the physical `__CvoyaRootNode` label and the
+`unique_cvoya_root_node_id` constraint uses it to enforce graph-wide node-ID uniqueness atomically.
+The label is reserved for provider infrastructure: typed and dynamic models cannot claim it, and it
+is excluded from `INode.Labels`, label filters, type discovery, and primary-label selection.
+
+The marker remains visible to raw Neo4j tooling and Cypher such as `labels(n)` because it is part of
+the physical database schema. Applications that mix CVOYA graph with direct Neo4j access should
+treat it and its constraint as provider-owned objects.
+
 ## 📚 Documentation
 
 For comprehensive documentation, examples, and best practices:

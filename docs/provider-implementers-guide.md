@@ -95,7 +95,7 @@ Data written before a provider enforced this may still hold duplicates; such nod
 
 ### Labels And Types
 
-For typed nodes, store labels derived from `[Node]` or the CLR type fallback. For dynamic nodes, store `DynamicNode.Labels` exactly. Neo4j also stores the runtime `Labels` property on the node to support materialization.
+For typed nodes, store caller-visible labels derived from `[Node]` or the CLR type fallback. For dynamic nodes, preserve `DynamicNode.Labels` exactly as the caller-visible set. A provider may add a reserved physical label for infrastructure only when it rejects collisions with model labels and excludes the marker from `INode.Labels`, label predicates, type discovery, and primary-label selection. Neo4j follows that rule for `__CvoyaRootNode` and also stores the runtime `Labels` property on the node to support materialization.
 
 For typed relationships, store the relationship type from `[Relationship]` or the CLR type fallback. For dynamic relationships, store `DynamicRelationship.Type` exactly.
 

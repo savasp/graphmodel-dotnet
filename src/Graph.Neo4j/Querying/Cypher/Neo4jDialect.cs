@@ -5,6 +5,7 @@ using System.Text;
 using Cvoya.Graph.Cypher;
 using Cvoya.Graph.Cypher.Ast;
 using Cvoya.Graph.Neo4j.Entities;
+using Cvoya.Graph.Neo4j.Serialization;
 
 namespace Cvoya.Graph.Neo4j.Querying.Cypher;
 
@@ -99,6 +100,14 @@ public sealed class Neo4jDialect : ICypherDialect
     public string RenderNodeLabels(IReadOnlyList<string> labels)
     {
         ArgumentNullException.ThrowIfNull(labels);
+
+        if (labels.Any(SerializationBridge.IsReservedRootNodeLabel))
+        {
+            throw new GraphQueryTranslationException(
+                $"The Neo4j node label '{SerializationBridge.RootNodeLabel}' is reserved for provider infrastructure " +
+                "and cannot be used by a typed or dynamic node.");
+        }
+
         return string.Join('|', labels.Select(label => CypherIdentifier.EscapeIfNeeded(label, "node label")));
     }
 
@@ -125,7 +134,19 @@ public sealed class Neo4jDialect : ICypherDialect
         ArgumentNullException.ThrowIfNull(labels);
         ArgumentNullException.ThrowIfNull(renderLiteral);
 
-        var conditions = labels.Select(item => $"{renderLiteral(item)} IN labels({target})").ToArray();
+        // Label filters operate on the caller-visible label set. The reserved root marker is a
+        // physical Neo4j label, but asking for it through the public query surface must never reveal
+        // or match provider infrastructure.
+        var conditions = labels
+            .Where(item => !SerializationBridge.IsReservedRootNodeLabel(item))
+            .Select(item => $"{renderLiteral(item)} IN labels({target})")
+            .ToArray();
+
+        if (conditions.Length == 0)
+        {
+            return "false";
+        }
+
         return conditions.Length == 1 ? conditions[0] : $"({string.Join(" OR ", conditions)})";
     }
 

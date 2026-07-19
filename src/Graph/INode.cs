@@ -16,8 +16,8 @@ namespace Cvoya.Graph;
 public interface INode : IEntity
 {
     /// <summary>
-    /// Gets the labels for this node as they are stored in the graph database.
-    /// This is a runtime property that reflects the actual labels assigned to the node.
+    /// Gets the caller-visible graph labels for this node.
+    /// Provider-owned infrastructure labels are not included.
     /// </summary>
     /// <remarks>
     /// <para>

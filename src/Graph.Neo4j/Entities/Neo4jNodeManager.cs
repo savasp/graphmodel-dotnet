@@ -404,6 +404,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             foreach (var dynamicNodeLabel in dynamicNode.Labels)
             {
                 CypherIdentifier.Validate(dynamicNodeLabel, "node label");
+                SerializationBridge.ValidateUserNodeLabel(dynamicNodeLabel);
             }
 
             ValidateDynamicNodeProperties(dynamicNode);
@@ -411,6 +412,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         }
 
         var label = Labels.GetLabelFromType(node.GetType());
+        SerializationBridge.ValidateUserNodeLabel(label);
         var schema = context.SchemaManager.GetSchemaRegistry().GetNodeSchema(label);
 
         if (schema == null) return;

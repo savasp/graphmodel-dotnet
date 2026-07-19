@@ -39,6 +39,23 @@ internal static class SerializationBridge
     /// </remarks>
     internal const string RootNodeLabel = "__CvoyaRootNode";
 
+    /// <summary>Returns whether <paramref name="label"/> is reserved for root-node storage.</summary>
+    internal static bool IsReservedRootNodeLabel(string label) =>
+        string.Equals(label, RootNodeLabel, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Rejects a caller-visible node label that collides with the provider's root-node marker.
+    /// </summary>
+    internal static void ValidateUserNodeLabel(string label)
+    {
+        if (IsReservedRootNodeLabel(label))
+        {
+            throw new Graph.GraphException(
+                $"The Neo4j node label '{RootNodeLabel}' is reserved for provider infrastructure " +
+                "and cannot be used by a typed or dynamic node.");
+        }
+    }
+
     /// <summary>
     /// Converts a .NET value to a Neo4j-compatible value.
     /// </summary>

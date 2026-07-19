@@ -70,13 +70,14 @@ public sealed class ComplianceInventoryTests
     // +4 for #380/#444: a self-loop is traversed once per direction shape and yields one path
     // segment and one path, while parallel self-loops and opposite-direction relationships preserve
     // one result per physical relationship across node, segment-end, and path-end projections.
-    // +7 for #369: root-node ids are unique graph-wide - typed, dynamic, and mixed typed/dynamic
+    // +8 for #369: root-node ids are unique graph-wide - typed, dynamic, and mixed typed/dynamic
     // cross-label creates are rejected without disturbing the existing node, a subgraph endpoint
     // reusing an id under another label creates nothing, a unique endpoint pair stores exactly one
-    // relationship, node and relationship ids stay separate namespaces, and concurrent cross-label
-    // creates let exactly one commit. (IErrorHandlingTests keeps its count: the historical
+    // relationship, the same endpoint rule covers dynamic nodes and relationships, node and
+    // relationship ids stay separate namespaces, and concurrent cross-label creates let exactly
+    // one commit. (IErrorHandlingTests keeps its count: the historical
     // duplicate-id delete test is replaced by an id-only delete test.)
-    private const int ExpectedTotalTestMethods = 460;
+    private const int ExpectedTotalTestMethods = 461;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

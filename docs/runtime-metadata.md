@@ -9,7 +9,7 @@ This document explains the runtime metadata properties added to `INode` and `IRe
 
 The Graph Model library now includes runtime metadata properties on the core interfaces:
 
-- **`INode.Labels`**: Provides access to the node's labels as stored in the database
+- **`INode.Labels`**: Provides access to the node's caller-visible graph labels; provider-owned infrastructure labels are excluded
 - **`IRelationship.Type`**: Provides access to the relationship's type as stored in the database
 
 These properties enable polymorphic queries and filtering at runtime while complementing the compile-time type system.
@@ -22,8 +22,8 @@ These properties enable polymorphic queries and filtering at runtime while compl
 public interface INode : IEntity
 {
     /// <summary>
-    /// Gets the labels for this node as they are stored in the graph database.
-    /// This is a runtime property that reflects the actual labels assigned to the node.
+    /// Gets the caller-visible graph labels for this node.
+    /// Provider-owned infrastructure labels are not included.
     /// </summary>
     /// <remarks>
     /// This property is automatically populated by the graph provider when the node is
@@ -45,6 +45,9 @@ public interface INode : IEntity
 2. **Provider-Managed**: The graph provider populates this property during serialization/deserialization
 3. **Derived from Attributes**: Labels come from `NodeAttribute` or the type name if no attribute is present
 4. **Enables Runtime Queries**: Allows filtering by label without knowing the compile-time type
+
+Providers may use additional physical labels for storage invariants. Those labels are reserved by
+the provider and do not participate in `INode.Labels`, `HasLabel`, `OfLabel`, or `OfLabels`.
 
 ### Example Usage
 
