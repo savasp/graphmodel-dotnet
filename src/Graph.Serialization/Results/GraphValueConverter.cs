@@ -295,6 +295,21 @@ internal static class GraphValueConverter
             $"but its target element type '{elementType}' is non-nullable.");
     }
 
+    internal static GraphException CreateInvalidComplexCollectionElementException(
+        string propertyLabel,
+        Type elementType,
+        int index,
+        Type? actualType)
+    {
+        return actualType is null
+            ? new GraphException(
+                $"Complex collection property '{propertyLabel}' contains a null element at index {index}, " +
+                $"but its target element type '{elementType}' does not allow null elements.")
+            : new GraphException(
+                $"Complex collection property '{propertyLabel}' contains an element of type '{actualType}' at index {index}, " +
+                $"which is not assignable to its target element type '{elementType}'.");
+    }
+
     private sealed record ConversionContext(
         string Subject,
         string? ParameterName,

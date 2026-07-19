@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Analyzers;
 
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -37,7 +38,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         DiagnosticDescriptors.ConflictingNodeAndRelationshipAttributes,
         DiagnosticDescriptors.EntityTypeMustBeReferenceType,
         DiagnosticDescriptors.IneffectiveComplexPropertyAttribute,
-        DiagnosticDescriptors.OpenGenericEntityUnsupported);
+        DiagnosticDescriptors.OpenGenericEntityUnsupported,
+        DiagnosticDescriptors.NullableComplexCollectionElement);
 
     /// <summary>
     /// Initializes the analyzer and registers the symbol action for named types.
@@ -47,10 +49,16 @@ public class GraphAnalyzer : DiagnosticAnalyzer
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
-        context.RegisterSymbolAction(AnalyzeNamedType, SymbolKind.NamedType);
+        context.RegisterCompilationStartAction(startContext =>
+        {
+            var state = new AnalyzerCompilationState(startContext.Compilation);
+            startContext.RegisterSymbolAction(
+                symbolContext => AnalyzeNamedType(symbolContext, state),
+                SymbolKind.NamedType);
+        });
     }
 
-    private static void AnalyzeNamedType(SymbolAnalysisContext context)
+    private static void AnalyzeNamedType(SymbolAnalysisContext context, AnalyzerCompilationState state)
     {
         var namedTypeSymbol = (INamedTypeSymbol)context.Symbol;
 
@@ -148,6 +156,112 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         // CG010: Check circular references
         AnalyzeCircularReferences(context, namedTypeSymbol, helper);
+
+        // CG017: Check for nullable complex collection elements
+        AnalyzeNullableComplexCollectionElements(context, namedTypeSymbol, helper, state);
+    }
+
+    /// <summary>
+    /// CG017: Reports every <c>List&lt;Address?&gt;</c>-shaped property reachable from the entity,
+    /// including the ones declared on the complex types it uses, because generated serialization
+    /// walks the same graph. Each offending property is reported at its own declaration so the fix
+    /// lands where the type is declared, not where the entity happens to reference it.
+    /// </summary>
+    private static void AnalyzeNullableComplexCollectionElements(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol namedType,
+        AnalyzerHelper helper,
+        AnalyzerCompilationState state)
+    {
+        var pending = new Stack<INamedTypeSymbol>();
+        pending.Push(namedType);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (!state.TryAnalyze(current))
+                continue;
+
+            foreach (var derivedType in state.GetDirectDerivedTypes(current))
+            {
+                if (helper.IsComplexType(derivedType) &&
+                    !helper.IsGraphInterfaceType(derivedType))
+                {
+                    pending.Push(derivedType);
+                }
+            }
+
+            // Abstract complex types are not serializer targets. Their effective inherited members
+            // are analyzed through each reachable concrete subtype instead.
+            if (current.IsAbstract)
+                continue;
+
+            foreach (var property in GetSerializedProperties(current))
+            {
+                if (IsCompilerGeneratedProperty(property))
+                    continue;
+
+                if (helper.IsCollectionOfNullableComplexTypes(property.Type))
+                {
+                    var location = property.Locations.FirstOrDefault(candidate => candidate.IsInSource);
+                    if (location is not null && state.TryReport(location))
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.NullableComplexCollectionElement,
+                            location,
+                            property.Name,
+                            property.ContainingType.Name,
+                            GetShortTypeName(property.Type),
+                            GetShortTypeName(AnalyzerHelper.UnwrapNullableElementType(
+                                AnalyzerHelper.GetCollectionElementType(property.Type)!))));
+                    }
+                }
+
+                // Descend into complex property types (and complex collection element types) so a
+                // nullable element nested one level down is not missed.
+                var complexType = helper.IsCollectionOfComplexTypes(property.Type)
+                    ? AnalyzerHelper.GetCollectionElementType(property.Type)
+                    : property.Type;
+                complexType = complexType is null
+                    ? null
+                    : AnalyzerHelper.UnwrapNullableElementType(complexType);
+
+                if (complexType is INamedTypeSymbol complexNamedType &&
+                    helper.IsComplexType(complexType) &&
+                    !helper.IsGraphInterfaceType(complexType))
+                {
+                    pending.Push(complexNamedType);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Mirrors the generated serializer's most-derived-wins property walk. An ignored property still
+    /// hides a base property of the same name, because generated code does not fall back to the base
+    /// declaration after applying <c>[Property(Ignore = true)]</c> to the derived one.
+    /// </summary>
+    private static IEnumerable<IPropertySymbol> GetSerializedProperties(INamedTypeSymbol type)
+    {
+        var seenProperties = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            foreach (var property in current.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (property.IsStatic ||
+                    property.DeclaredAccessibility != Accessibility.Public ||
+                    property.GetMethod is null ||
+                    !seenProperties.Add(property.Name))
+                {
+                    continue;
+                }
+
+                if (!AnalyzerHelper.IsSerializedProperty(property))
+                    continue;
+
+                yield return property;
+            }
+        }
     }
 
     /// <summary>
@@ -544,6 +658,14 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             return $"{GetShortTypeName(type.WithNullableAnnotation(NullableAnnotation.NotAnnotated))}?";
         }
 
+        // Handle nullable value types before the general generic branch so Nullable<Address>
+        // renders as the C# declaration consumers need to write: Address?.
+        if (type is INamedTypeSymbol nullable &&
+            nullable.OriginalDefinition?.SpecialType == SpecialType.System_Nullable_T)
+        {
+            return $"{GetShortTypeName(nullable.TypeArguments[0])}?";
+        }
+
         // For collections, we need to get the simplified name
         if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
         {
@@ -572,12 +694,6 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             pointType.ContainingNamespace?.ToDisplayString() == "System.Drawing")
         {
             return "System.Drawing.Point";
-        }
-
-        // Handle nullable value types
-        if (type is INamedTypeSymbol nullable && nullable.OriginalDefinition?.SpecialType == SpecialType.System_Nullable_T)
-        {
-            return $"{GetShortTypeName(nullable.TypeArguments[0])}?";
         }
 
         // For simple types, just return the name
@@ -1552,6 +1668,74 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         // Can add other compiler-generated properties here if needed
         return false;
+    }
+
+    /// <summary>
+    /// Compilation-scoped CG017 state. Derived-type discovery is built once, and concurrent symbol
+    /// actions share both the visited-type set and the reported source locations so a reachable
+    /// declaration is analyzed and reported at most once.
+    /// </summary>
+    private sealed class AnalyzerCompilationState
+    {
+        private readonly Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> directDerivedTypes =
+            new(SymbolEqualityComparer.Default);
+        private readonly ConcurrentDictionary<ITypeSymbol, byte> analyzedTypes =
+            new(SymbolEqualityComparer.Default);
+        private readonly ConcurrentDictionary<(SyntaxTree Tree, int Start, int Length), byte> reportedLocations = new();
+
+        public AnalyzerCompilationState(Compilation compilation)
+        {
+            foreach (var type in GetAllNamedTypes(compilation.Assembly.GlobalNamespace))
+            {
+                if (type.BaseType is not { } baseType)
+                    continue;
+
+                if (!directDerivedTypes.TryGetValue(baseType, out var derivedTypes))
+                {
+                    derivedTypes = [];
+                    directDerivedTypes.Add(baseType, derivedTypes);
+                }
+
+                derivedTypes.Add(type);
+            }
+        }
+
+        public bool TryAnalyze(ITypeSymbol type) => analyzedTypes.TryAdd(type, 0);
+
+        public IEnumerable<INamedTypeSymbol> GetDirectDerivedTypes(INamedTypeSymbol type) =>
+            directDerivedTypes.TryGetValue(type, out var derivedTypes) ? derivedTypes : [];
+
+        public bool TryReport(Location location)
+        {
+            var tree = location.SourceTree;
+            return tree is not null &&
+                   reportedLocations.TryAdd((tree, location.SourceSpan.Start, location.SourceSpan.Length), 0);
+        }
+
+        private static IEnumerable<INamedTypeSymbol> GetAllNamedTypes(INamespaceSymbol namespaceSymbol)
+        {
+            foreach (var namespaceMember in namespaceSymbol.GetNamespaceMembers())
+            {
+                foreach (var type in GetAllNamedTypes(namespaceMember))
+                    yield return type;
+            }
+
+            foreach (var typeMember in namespaceSymbol.GetTypeMembers())
+            {
+                foreach (var type in GetTypeAndNestedTypes(typeMember))
+                    yield return type;
+            }
+        }
+
+        private static IEnumerable<INamedTypeSymbol> GetTypeAndNestedTypes(INamedTypeSymbol type)
+        {
+            yield return type;
+            foreach (var nestedType in type.GetTypeMembers())
+            {
+                foreach (var candidate in GetTypeAndNestedTypes(nestedType))
+                    yield return candidate;
+            }
+        }
     }
 
     private static bool IsFrameworkType(ITypeSymbol type)

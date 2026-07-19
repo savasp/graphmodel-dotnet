@@ -268,6 +268,61 @@ internal class AnalyzerHelper
     }
 
     /// <summary>
+    /// True when <paramref name="type"/> is a collection of complex elements whose element type is
+    /// declared nullable (<c>List&lt;Address?&gt;</c>, <c>Address?[]</c>). The provider-neutral wire
+    /// model stores such a collection as a sequence of serialized entities and has no representation
+    /// for an empty slot, so a null element cannot round-trip; CG017 rejects the declaration rather
+    /// than letting serialization silently drop the element and shift the ones after it.
+    /// </summary>
+    public bool IsCollectionOfNullableComplexTypes(ITypeSymbol type)
+    {
+        if (!IsCollectionOfComplexTypes(type))
+            return false;
+
+        var elementType = GetCollectionElementType(type);
+        return elementType is not null && IsNullableElementDeclaration(elementType);
+    }
+
+    /// <summary>
+    /// Returns the element type as it would have to be declared to be non-nullable: the underlying
+    /// type of a <c>Nullable&lt;T&gt;</c>, or the unannotated form of a nullable reference type.
+    /// Used to name the supported shape in the CG017 message.
+    /// </summary>
+    public static ITypeSymbol UnwrapNullableElementType(ITypeSymbol elementType)
+    {
+        var unwrapped = UnwrapNullableValueType(elementType);
+        return unwrapped.NullableAnnotation == NullableAnnotation.Annotated
+            ? unwrapped.WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+            : unwrapped;
+    }
+
+    /// <summary>
+    /// True when generated serialization includes <paramref name="property"/> in the effective
+    /// property set: a public instance property with a getter that is not explicitly ignored.
+    /// </summary>
+    public static bool IsSerializedProperty(IPropertySymbol property)
+    {
+        return !property.IsStatic &&
+               property.DeclaredAccessibility == Accessibility.Public &&
+               property.GetMethod is not null &&
+               !SerializationShouldIgnoreProperty(property);
+    }
+
+    private static bool IsNullableElementDeclaration(ITypeSymbol elementType)
+    {
+        // Nullable value type: List<SomeStruct?> is Nullable<SomeStruct> as the type argument.
+        if (elementType is INamedTypeSymbol { IsGenericType: true } namedType &&
+            namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+        {
+            return true;
+        }
+
+        // Nullable reference type, only when the declaration is in a nullable-aware context.
+        // NullableAnnotation.None (nullable disabled) is deliberately not treated as nullable.
+        return elementType.IsReferenceType && elementType.NullableAnnotation == NullableAnnotation.Annotated;
+    }
+
+    /// <summary>
     /// Whether a collection-shaped type is one the serialization source generator can construct so
     /// the deserialized value is assignable to the declared type: one-dimensional arrays, <c>List&lt;T&gt;</c> and
     /// list-compatible interfaces, and <c>HashSet&lt;T&gt;</c> and set-compatible interfaces.

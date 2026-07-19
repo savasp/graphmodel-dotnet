@@ -32,9 +32,13 @@ public record PropertySchema(
     /// <remarks>
     /// Generated schemas set this value from compiler nullability metadata. Hand-authored schemas
     /// default to reflection metadata so nullable reference annotations are not inferred from the
-    /// runtime element type alone.
+    /// runtime element type alone. Complex collections always return <see langword="false"/>
+    /// because their wire representation has no nullable slot; CG017 rejects nullable complex
+    /// element declarations before generation.
     /// </remarks>
-    public bool IsElementNullable { get; init; } = NullabilityDerivation.IsElementNullable(PropertyInfo, ElementType);
+    public bool IsElementNullable { get; init; } =
+        PropertyType == PropertyType.SimpleCollection &&
+        NullabilityDerivation.IsElementNullable(PropertyInfo, ElementType);
 }
 
 /// <summary>
