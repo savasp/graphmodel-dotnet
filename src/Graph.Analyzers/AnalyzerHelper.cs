@@ -296,6 +296,18 @@ internal class AnalyzerHelper
             : unwrapped;
     }
 
+    /// <summary>
+    /// True when generated serialization includes <paramref name="property"/> in the effective
+    /// property set: a public instance property with a getter that is not explicitly ignored.
+    /// </summary>
+    public static bool IsSerializedProperty(IPropertySymbol property)
+    {
+        return !property.IsStatic &&
+               property.DeclaredAccessibility == Accessibility.Public &&
+               property.GetMethod is not null &&
+               !SerializationShouldIgnoreProperty(property);
+    }
+
     private static bool IsNullableElementDeclaration(ITypeSymbol elementType)
     {
         // Nullable value type: List<SomeStruct?> is Nullable<SomeStruct> as the type argument.

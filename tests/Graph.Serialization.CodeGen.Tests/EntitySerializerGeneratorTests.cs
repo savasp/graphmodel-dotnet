@@ -330,6 +330,7 @@ public class EntitySerializerGeneratorTests
         [Node("Person")]
         public record Person : Node
         {
+            [Property(Label = "stored{addresses}")]
             public List<Address> Addresses { get; set; } = new();
 
             public Tag PrimaryTag { get; set; } = new();
@@ -359,7 +360,7 @@ public class EntitySerializerGeneratorTests
         var exception = Assert.Throws<GraphException>(() => serializer.Serialize(node));
 
         Assert.Equal(
-            "Complex collection property 'Addresses' contains a null element at index 1, " +
+            "Complex collection property 'stored{addresses}' contains a null element at index 1, " +
             $"but its target element type '{addressType}' does not allow null elements.",
             exception.Message);
     }
@@ -385,9 +386,9 @@ public class EntitySerializerGeneratorTests
             new Dictionary<string, Property>(),
             new Dictionary<string, Property>
             {
-                ["Addresses"] = new Property(
+                ["stored{addresses}"] = new Property(
                     nodeType.GetProperty("Addresses")!,
-                    "Addresses",
+                    "stored{addresses}",
                     Value: new EntityCollection(
                         addressType,
                         [
@@ -399,8 +400,44 @@ public class EntitySerializerGeneratorTests
         var exception = Assert.Throws<GraphException>(() => serializer.Deserialize(entity));
 
         Assert.Equal(
-            $"Complex collection property 'Addresses' contains an element of type '{tagType}' at index 1, " +
+            $"Complex collection property 'stored{{addresses}}' contains an element of type '{tagType}' at index 1, " +
             $"which is not assignable to its target element type '{addressType}'.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void NodeWithComplexCollection_RejectsNullDeserializerResultWithIndexedDiagnostic()
+    {
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(ComplexCollectionSource);
+        var nodeType = assembly.GetType("ComplexCollections.Person", throwOnError: true)!;
+        var addressType = assembly.GetType("ComplexCollections.Address", throwOnError: true)!;
+        var tagType = assembly.GetType("ComplexCollections.Tag", throwOnError: true)!;
+        var serializerType = assembly.GetType(
+            "ComplexCollections.Generated.PersonSerializer",
+            throwOnError: true)!;
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+        EntitySerializerRegistry.Instance.Register(tagType, new NullDeserializer(tagType));
+
+        var entity = new EntityInfo(
+            nodeType,
+            "Person",
+            ["Person"],
+            new Dictionary<string, Property>(),
+            new Dictionary<string, Property>
+            {
+                ["stored{addresses}"] = new Property(
+                    nodeType.GetProperty("Addresses")!,
+                    "stored{addresses}",
+                    Value: new EntityCollection(
+                        addressType,
+                        [NewComplexEntity(tagType, "Tag", "Name")])),
+            });
+
+        var exception = Assert.Throws<GraphException>(() => serializer.Deserialize(entity));
+
+        Assert.Equal(
+            "Complex collection property 'stored{addresses}' contains a null element at index 0, " +
+            $"but its target element type '{addressType}' does not allow null elements.",
             exception.Message);
     }
 
@@ -431,9 +468,11 @@ public class EntitySerializerGeneratorTests
         var roundTripped = serializer.Deserialize(serializer.Serialize(node));
 
         var actual = (System.Collections.IList)nodeType.GetProperty("Addresses")!.GetValue(roundTripped)!;
-        Assert.Equal(
-            new[] { "First", "Second", "Third" },
-            actual.Cast<object>().Select(address => streetProperty.GetValue(address)));
+        Assert.Collection(
+            actual.Cast<object>(),
+            address => Assert.Equal("First", streetProperty.GetValue(address)),
+            address => Assert.Equal("Second", streetProperty.GetValue(address)),
+            address => Assert.Equal("Third", streetProperty.GetValue(address)));
     }
 
     [Fact]
@@ -445,6 +484,8 @@ public class EntitySerializerGeneratorTests
             "ComplexCollections.Generated.PersonSerializer",
             throwOnError: true)!;
         var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+
+        Assert.False(serializer.GetSchema().ComplexProperties["stored{addresses}"].IsElementNullable);
 
         var roundTripped = serializer.Deserialize(serializer.Serialize(Activator.CreateInstance(nodeType)!));
 
@@ -465,6 +506,17 @@ public class EntitySerializerGeneratorTests
                     Value: new SimpleValue("value", typeof(string))),
             },
             new Dictionary<string, Property>());
+
+    private sealed class NullDeserializer(Type entityType) : IEntitySerializer
+    {
+        public Type EntityType => entityType;
+
+        public EntityInfo Serialize(object obj) => throw new NotSupportedException();
+
+        public object Deserialize(EntityInfo entity) => null!;
+
+        public EntitySchema GetSchema() => throw new NotSupportedException();
+    }
 
     [Fact]
     public void NodeWithNullableObliviousSimpleCollection_TreatsElementsAsNonNullable()

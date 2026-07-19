@@ -307,7 +307,7 @@ internal sealed class PersonSerializer : IEntitySerializer
                 IsNullable: false,
                 NestedSchema: TestNamespace.Generated.PhoneNumberSerializer.GetSchemaStatic(),
                 RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
-            ) { IsElementNullable = false };
+            );
         }
 
 

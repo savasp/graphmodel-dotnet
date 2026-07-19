@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Core.Tests;
 
+using System.Reflection;
 using Cvoya.Graph.Serialization;
 using Cvoya.Graph.Serialization.Results;
 
@@ -356,6 +357,78 @@ public class GraphResultMaterializerTests
         Assert.Equal(["Ada", "Grace"], result.Names);
     }
 
+    [Fact]
+    public void ComplexCollectionParameter_RejectsNullRegardlessOfDeclaredElementNullability()
+    {
+        var collection = new EntityCollection(typeof(MaterializedAddress), [null!]);
+
+        var exception = Assert.Throws<GraphException>(() =>
+            InvokeComplexCollectionMaterialization<NullableComplexCollectionProjection>(
+                collection,
+                "stored{addresses}"));
+
+        Assert.Equal(
+            "Complex collection property 'stored{addresses}' contains a null element at index 0, " +
+            $"but its target element type '{typeof(MaterializedAddress)}' does not allow null elements.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void ComplexCollectionParameter_RejectsMistypedElementAtOriginalIndex()
+    {
+        var collection = new EntityCollection(
+            typeof(MaterializedAddress),
+            [
+                ComplexEntity(typeof(HomeAddress)),
+                ComplexEntity(typeof(OtherComplexValue)),
+            ]);
+
+        var exception = Assert.Throws<GraphException>(() =>
+            InvokeComplexCollectionMaterialization<ComplexCollectionProjection>(
+                collection,
+                "stored{addresses}"));
+
+        Assert.Equal(
+            $"Complex collection property 'stored{{addresses}}' contains an element of type '{typeof(OtherComplexValue)}' at index 1, " +
+            $"which is not assignable to its target element type '{typeof(MaterializedAddress)}'.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void ComplexCollectionParameter_PreservesPolymorphicCountAndOrder()
+    {
+        var collection = new EntityCollection(
+            typeof(MaterializedAddress),
+            [
+                ComplexEntity(typeof(HomeAddress)),
+                ComplexEntity(typeof(WorkAddress)),
+            ]);
+
+        var result = Assert.IsType<List<MaterializedAddress>>(
+            InvokeComplexCollectionMaterialization<ComplexCollectionProjection>(
+                collection,
+                "stored{addresses}"));
+
+        Assert.Collection(
+            result,
+            item => Assert.IsType<HomeAddress>(item),
+            item => Assert.IsType<WorkAddress>(item));
+    }
+
+    [Fact]
+    public void ComplexCollectionSchema_DoesNotAdvertiseNullableElements()
+    {
+        var property = typeof(NullableComplexCollectionProjection)
+            .GetProperty(nameof(NullableComplexCollectionProjection.Addresses))!;
+        var schema = new PropertySchema(
+            property,
+            "stored{addresses}",
+            PropertyType.ComplexCollection,
+            typeof(MaterializedAddress));
+
+        Assert.False(schema.IsElementNullable);
+    }
+
     // Anonymous types cannot be named as a type argument, so the shape instance infers it.
     private Task<T> MaterializeShapeAsync<T>(T shape, params (string Key, GraphValue Value)[] fields) =>
         MaterializeAsync<T>(fields);
@@ -381,6 +454,33 @@ public class GraphResultMaterializerTests
         {
             ["Value"] = GraphValue.Scalar(value),
         });
+
+    private object InvokeComplexCollectionMaterialization<T>(
+        EntityCollection collection,
+        string propertyLabel)
+    {
+        var materializer = new GraphResultMaterializer(factory, loggerFactory: null);
+        var parameter = typeof(T).GetConstructors().Single().GetParameters().Single();
+        var method = typeof(GraphResultMaterializer).GetMethod(
+            "MaterializeEntityCollection",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        try
+        {
+            return method.Invoke(materializer, [collection, parameter, propertyLabel])!;
+        }
+        catch (TargetInvocationException exception) when (exception.InnerException is not null)
+        {
+            throw exception.InnerException;
+        }
+    }
+
+    private static EntityInfo ComplexEntity(Type actualType) => new(
+        actualType,
+        actualType.Name,
+        [],
+        new Dictionary<string, Property>(),
+        new Dictionary<string, Property>());
 
     private static bool ElementNullability<T>()
     {
@@ -419,7 +519,31 @@ public class GraphResultMaterializerTests
 
     private sealed record ArrayProjection(int[] Scores);
 
+    private sealed record ComplexCollectionProjection(List<MaterializedAddress> Addresses);
+
+    private sealed record NullableComplexCollectionProjection(List<MaterializedAddress?> Addresses);
+
     private sealed record BlobProjection(byte[] Data);
+
+    private class MaterializedAddress
+    {
+        public MaterializedAddress() { }
+    }
+
+    private sealed class HomeAddress : MaterializedAddress
+    {
+        public HomeAddress() { }
+    }
+
+    private sealed class WorkAddress : MaterializedAddress
+    {
+        public WorkAddress() { }
+    }
+
+    private sealed class OtherComplexValue
+    {
+        public OtherComplexValue() { }
+    }
 
     private sealed record GenericProjection<T>(List<T> Items);
 

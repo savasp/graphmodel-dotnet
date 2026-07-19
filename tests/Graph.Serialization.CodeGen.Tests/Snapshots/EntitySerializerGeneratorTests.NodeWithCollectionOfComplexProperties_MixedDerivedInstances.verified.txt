@@ -754,7 +754,7 @@ internal sealed class KennelSerializer : IEntitySerializer
                 IsNullable: false,
                 NestedSchema: TestNamespace.Generated.AnimalDescriptionSerializer.GetSchemaStatic(),
                 RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
-            ) { IsElementNullable = false };
+            );
         }
 
 

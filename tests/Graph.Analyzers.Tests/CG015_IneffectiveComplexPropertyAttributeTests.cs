@@ -14,7 +14,7 @@ public class CG015_IneffectiveComplexPropertyAttributeTests
     {
         { "string", "string.Empty", "String" },
         { "int", "0", "Int32" },
-        { "int?", "null", "Nullable<Int32>" },
+        { "int?", "null", "Int32?" },
         { "string[]", "[]", "String[]" },
         { "List<int>", "[]", "List<Int32>" },
     };

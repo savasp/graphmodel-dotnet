@@ -63,8 +63,8 @@ public class CG017_NullableComplexCollectionElementTests
     public async Task NodeWithNullableComplexStructElement_ProducesDiagnostic()
     {
         // A nullable value-type element is Nullable<Address>, a distinct shape from an annotated
-        // reference type, and equally unrepresentable in the wire model. The message spells it
-        // 'Nullable<Address>' because GetShortTypeName only abbreviates nullable reference types.
+        // reference type, and equally unrepresentable in the wire model. Render it using the C#
+        // declaration spelling so the diagnostic's replacement is directly actionable.
         const string test = """
             #nullable enable
             using System.Collections.Generic;
@@ -82,7 +82,7 @@ public class CG017_NullableComplexCollectionElementTests
             """;
 
         var expected = Error().WithLocation(0)
-            .WithArguments("Addresses", "Person", "List<Nullable<Address>>", "Address");
+            .WithArguments("Addresses", "Person", "List<Address?>", "Address");
 
         await VerifyAnalyzerAsync(test, expected);
     }
@@ -117,6 +117,155 @@ public class CG017_NullableComplexCollectionElementTests
             .WithArguments("Tags", "Address", "List<Tag?>", "Tag");
 
         await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task SharedDeepComplexType_ProducesOneDiagnosticAtOffendingDeclaration()
+    {
+        const string test = """
+            #nullable enable
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            public record Tag;
+
+            public record Address
+            {
+                public List<Tag?> {|#0:Tags|} { get; set; } = new();
+            }
+
+            public record Profile
+            {
+                public Address Address { get; set; } = new();
+            }
+
+            public record Person : Node
+            {
+                public Profile Profile { get; set; } = new();
+            }
+
+            public record Company : Node
+            {
+                public Profile Profile { get; set; } = new();
+            }
+            """;
+
+        var expected = Error().WithLocation(0)
+            .WithArguments("Tags", "Address", "List<Tag?>", "Tag");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task DerivedComplexTypeWithNullableElement_ProducesDiagnostic()
+    {
+        const string test = """
+            #nullable enable
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            public record Tag;
+            public class Animal { }
+            public abstract class Mammal : Animal { }
+
+            public class Dog : Mammal
+            {
+                public List<Tag?> {|#0:Tags|} { get; set; } = new();
+            }
+
+            public record Kennel : Node
+            {
+                public List<Animal> Animals { get; set; } = new();
+            }
+            """;
+
+        var expected = Error().WithLocation(0)
+            .WithArguments("Tags", "Dog", "List<Tag?>", "Tag");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task ValidDerivedComplexTypes_ProduceNoDiagnostic()
+    {
+        const string test = """
+            #nullable enable
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            public record Tag;
+            public class Animal { }
+
+            public class Dog : Animal
+            {
+                public List<Tag> Tags { get; set; } = new();
+            }
+
+            public record Kennel : Node
+            {
+                public List<Animal> Animals { get; set; } = new();
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NullableStructComplexProperty_IsUnwrappedBeforeNestedTraversal()
+    {
+        const string test = """
+            #nullable enable
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            public record Tag;
+
+            public struct Contact
+            {
+                public List<Tag?> {|#0:Tags|} { get; set; }
+            }
+
+            public record Person : Node
+            {
+                public Contact? Contact { get; set; }
+            }
+            """;
+
+        var expected = Error().WithLocation(0)
+            .WithArguments("Tags", "Contact", "List<Tag?>", "Tag");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task PropertiesExcludedFromGeneratedSerialization_ProduceNoDiagnostic()
+    {
+        const string test = """
+            #nullable enable
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            public record Tag;
+
+            public class DetailsBase
+            {
+                public List<Tag?> Tags { get; set; } = new();
+            }
+
+            public class Details : DetailsBase
+            {
+                public new List<Tag> Tags { get; set; } = new();
+
+                public static List<Tag?> StaticTags { get; set; } = new();
+            }
+
+            public record Person : Node
+            {
+                public Details Details { get; set; } = new();
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
     }
 
     [Fact]

@@ -312,7 +312,10 @@ public sealed class GraphResultMaterializer
                 {
                     SimpleValue simpleValue => ConvertToParameterType(simpleValue.Object, param),
                     EntityInfo complexEntityInfo => MaterializeSingleElement<object>(complexEntityInfo, param.ParameterType),
-                    EntityCollection entityCollection => MaterializeEntityCollection(entityCollection, param),
+                    EntityCollection entityCollection => MaterializeEntityCollection(
+                        entityCollection,
+                        param,
+                        matchingProperty.Label),
                     _ => GetMissingParameterValue(param)
                 };
 
@@ -382,20 +385,18 @@ public sealed class GraphResultMaterializer
     private static string ParameterName(ParameterInfo parameter) =>
         parameter.Name ?? $"param{parameter.Position}";
 
-    private static GraphException NullElementException(ParameterInfo parameter, Type elementType, int index) =>
-        GraphValueConverter.CreateNullElementException(
-            $"Constructor parameter '{ParameterName(parameter)}'",
-            elementType,
-            index);
-
     private static bool IsPathSegmentType(Type type) =>
         type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IGraphPathSegment<,,>);
 
-    private object? MaterializeEntityCollection(EntityCollection collection, ParameterInfo parameter)
+    private object? MaterializeEntityCollection(
+        EntityCollection collection,
+        ParameterInfo parameter,
+        string propertyLabel)
     {
         var targetType = parameter.ParameterType;
         var elementType = GraphResultTypeHelpers.GetTargetTypeIfCollection(targetType);
         var elements = new List<object?>(collection.Entities.Count);
+        var isComplexCollection = !GraphDataModel.IsSimple(elementType);
 
         bool? isElementNullable = null;
         var index = 0;
@@ -404,10 +405,34 @@ public sealed class GraphResultMaterializer
             var value = MaterializeSingleElement<object>(entity, elementType);
             if (value is null)
             {
+                if (isComplexCollection)
+                {
+                    throw GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                        propertyLabel,
+                        elementType,
+                        index,
+                        actualType: null);
+                }
+
                 isElementNullable ??= NullabilityDerivation.IsElementNullable(parameter, elementType);
                 if (isElementNullable is false)
                 {
-                    throw NullElementException(parameter, elementType, index);
+                    throw GraphValueConverter.CreateNullElementException(
+                        $"Constructor parameter '{ParameterName(parameter)}'",
+                        elementType,
+                        index);
+                }
+            }
+            else if (isComplexCollection)
+            {
+                var actualType = value.GetType();
+                if (!elementType.IsAssignableFrom(actualType))
+                {
+                    throw GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                        propertyLabel,
+                        elementType,
+                        index,
+                        actualType);
                 }
             }
 
