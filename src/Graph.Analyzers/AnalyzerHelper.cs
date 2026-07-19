@@ -213,11 +213,12 @@ internal class AnalyzerHelper
         if (type.TypeKind == TypeKind.Enum)
             return true;
 
-        // Check specific types by full name - matching Graph logic exactly
+        // Check specific types by full name - matching the runtime GraphDataModel.IsSimple and the
+        // source generator's simple-type list exactly. System.Drawing.Point is intentionally absent:
+        // only Cvoya.Graph.Point is supported end to end by runtime, codegen, and providers (#387).
         var fullName = type.ToDisplayString();
         return fullName switch
         {
-            "System.Drawing.Point" => true,
             "System.DateTime" => true,
             "System.DateTimeOffset" => true,
             "System.TimeSpan" => true,
