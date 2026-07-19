@@ -18,12 +18,12 @@ public sealed class AgeUniquenessLockKeyTests
     private const string Relationship = AgeUniquenessLockKey.RelationshipEntityKind;
 
     [Fact]
-    public void Compute_IsStable_ForTheSameIdentity()
+    public void Compute_IsStableAcrossProcessesAndArchitectures()
     {
-        // A per-process randomized hash would break enforcement across peers, so equality here is
-        // the load-bearing property - not merely a convenience.
+        // Pin the complete derivation, including byte order. Comparing two calls in one process would
+        // also pass for string.GetHashCode(), despite that method being randomized between processes.
         Assert.Equal(
-            AgeUniquenessLockKey.Compute(Graph, Node, "Person", "unique property 'Email'", ["a@b.c"]),
+            3247420127699772120L,
             AgeUniquenessLockKey.Compute(Graph, Node, "Person", "unique property 'Email'", ["a@b.c"]));
     }
 
@@ -97,6 +97,54 @@ public sealed class AgeUniquenessLockKeyTests
         Assert.NotEqual(
             AgeUniquenessLockKey.Compute(Graph, Node, "Person", "composite key", [null]),
             AgeUniquenessLockKey.Compute(Graph, Node, "Person", "composite key", [string.Empty]));
+    }
+
+    [Fact]
+    public void Compute_CanonicalizesValuesThatAgeComparesAsTheSameNumber()
+    {
+        var integer = AgeUniquenessLockKey.Compute(Graph, Node, "Person", "composite key", [1]);
+
+        Assert.Equal(integer, AgeUniquenessLockKey.Compute(Graph, Node, "Person", "composite key", [1L]));
+        Assert.Equal(integer, AgeUniquenessLockKey.Compute(Graph, Node, "Person", "composite key", [1.0f]));
+        Assert.Equal(integer, AgeUniquenessLockKey.Compute(Graph, Node, "Person", "composite key", [1.0d]));
+        Assert.Equal(integer, AgeUniquenessLockKey.Compute(Graph, Node, "Person", "composite key", [1.00m]));
+    }
+
+    [Fact]
+    public void Compute_CanonicalizesNestedMapOrderAndNumericTypes()
+    {
+        var first = new Dictionary<string, object?>
+        {
+            ["name"] = "Ada",
+            ["score"] = 1,
+        };
+        var second = new Dictionary<string, object?>
+        {
+            ["score"] = 1L,
+            ["name"] = "Ada",
+        };
+
+        Assert.Equal(
+            AgeUniquenessLockKey.Compute(Graph, Node, "Person", "composite key", [first]),
+            AgeUniquenessLockKey.Compute(Graph, Node, "Person", "composite key", [second]));
+    }
+
+    [Fact]
+    public void Compute_LengthFramesEmbeddedSeparatorCharacters()
+    {
+        Assert.NotEqual(
+            AgeUniquenessLockKey.Compute(
+                Graph,
+                Node,
+                "Person",
+                "composite key",
+                ["a\u001fstring", "b"]),
+            AgeUniquenessLockKey.Compute(
+                Graph,
+                Node,
+                "Person",
+                "composite key",
+                ["a", "string\u001fb"]));
     }
 
     [Fact]

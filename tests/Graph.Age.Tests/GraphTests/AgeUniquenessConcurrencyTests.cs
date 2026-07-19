@@ -45,6 +45,20 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         public string AccountNumber { get; set; } = string.Empty;
     }
 
+    [Node("ConcurrentNumericAccount")]
+    public record ConcurrentNumericAccount : Node
+    {
+        [Property(IsUnique = true)]
+        public int AccountNumber { get; set; }
+    }
+
+    [Node("ConcurrentMappedAccount")]
+    public record ConcurrentMappedAccount : Node
+    {
+        [Property(Label = "email_address", IsUnique = true)]
+        public string Email { get; set; } = string.Empty;
+    }
+
     [Relationship("CONCURRENT_UNIQUE_GRANT")]
     public record ConcurrentUniqueGrant : Relationship
     {
@@ -161,6 +175,65 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
     }
 
     [Fact]
+    public async Task ConcurrentRelationshipUpdates_ClaimingTheSameUniqueValue_LetExactlyOneCommit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await using (var seed = await this.Graph.GetTransactionAsync(ct))
+        {
+            await this.Graph.CreateNodeAsync(
+                new ConcurrentUniqueAccount { Id = "update-grant-source", Email = "update-source@example.com" }, seed, ct);
+            await this.Graph.CreateNodeAsync(
+                new ConcurrentUniqueAccount { Id = "update-grant-target-1", Email = "update-target1@example.com" }, seed, ct);
+            await this.Graph.CreateNodeAsync(
+                new ConcurrentUniqueAccount { Id = "update-grant-target-2", Email = "update-target2@example.com" }, seed, ct);
+            await this.Graph.CreateRelationshipAsync(
+                new ConcurrentUniqueGrant("update-grant-source", "update-grant-target-1")
+                {
+                    Id = "update-grant-1",
+                    GrantCode = "ORIGINAL-1",
+                },
+                seed,
+                ct);
+            await this.Graph.CreateRelationshipAsync(
+                new ConcurrentUniqueGrant("update-grant-source", "update-grant-target-2")
+                {
+                    Id = "update-grant-2",
+                    GrantCode = "ORIGINAL-2",
+                },
+                seed,
+                ct);
+            await seed.CommitAsync();
+        }
+
+        var relationships = new Queue<(string Id, string EndNodeId)>(
+            [("update-grant-1", "update-grant-target-1"), ("update-grant-2", "update-grant-target-2")]);
+        var failure = await StageContentionAsync(
+            (transaction, _) =>
+            {
+                var (id, endNodeId) = relationships.Dequeue();
+                return this.Graph.UpdateRelationshipAsync(
+                    new ConcurrentUniqueGrant("update-grant-source", endNodeId)
+                    {
+                        Id = id,
+                        GrantCode = "CLAIMED-GRANT",
+                    },
+                    transaction,
+                    ct);
+            },
+            ct);
+
+        Assert.Contains("unique property 'GrantCode'", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            await CountRelationshipsByPropertyAsync(
+                "CONCURRENT_UNIQUE_GRANT",
+                "GrantCode",
+                "CLAIMED-GRANT",
+                ct));
+    }
+
+    [Fact]
     public async Task ConcurrentDynamicNodeCreates_AgainstARegisteredSchema_LetExactlyOneCommit()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -180,6 +253,129 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
 
         Assert.Contains("unique property 'Email'", failure.Message, StringComparison.Ordinal);
         Assert.Equal(1, await CountAsync("ConcurrentUniqueAccount", ct));
+    }
+
+    [Fact]
+    public async Task ConcurrentTypedAndDynamicNumericCreates_WithAgeEquivalentValues_LetExactlyOneCommit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var failure = await StageContentionAsync(
+            (transaction, suffix) => suffix == "winner"
+                ? this.Graph.CreateNodeAsync(
+                    new ConcurrentNumericAccount { Id = "numeric-winner", AccountNumber = 1 },
+                    transaction,
+                    ct)
+                : this.Graph.CreateNodeAsync(
+                    new DynamicNode(
+                        "numeric-loser",
+                        ["ConcurrentNumericAccount"],
+                        new Dictionary<string, object?> { ["AccountNumber"] = 1L }),
+                    transaction,
+                    ct),
+            ct);
+
+        Assert.Contains("unique property 'AccountNumber'", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(1, await CountAsync("ConcurrentNumericAccount", ct));
+    }
+
+    [Fact]
+    public async Task ConcurrentTypedAndDynamicMappedCreates_WithDifferentLabelCasing_LetExactlyOneCommit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var failure = await StageContentionAsync(
+            (transaction, suffix) => suffix == "winner"
+                ? this.Graph.CreateNodeAsync(
+                    new ConcurrentMappedAccount { Id = "mapped-winner", Email = "mapped@example.com" },
+                    transaction,
+                    ct)
+                : this.Graph.CreateNodeAsync(
+                    new DynamicNode(
+                        "mapped-loser",
+                        ["concurrentmappedaccount"],
+                        new Dictionary<string, object?> { ["email_address"] = "mapped@example.com" }),
+                    transaction,
+                    ct),
+            ct);
+
+        Assert.Contains("unique property 'email_address'", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(1, await CountAsync("ConcurrentMappedAccount", ct));
+    }
+
+    [Fact]
+    public async Task ConcurrentTypedAndDynamicRelationshipCreates_WithDifferentTypeCasing_LetExactlyOneCommit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using (var seed = await this.Graph.GetTransactionAsync(ct))
+        {
+            await this.Graph.CreateNodeAsync(
+                new ConcurrentUniqueAccount { Id = "dynamic-grant-source", Email = "dynamic-source@example.com" }, seed, ct);
+            await this.Graph.CreateNodeAsync(
+                new ConcurrentUniqueAccount { Id = "dynamic-grant-target", Email = "dynamic-target@example.com" }, seed, ct);
+            await seed.CommitAsync();
+        }
+
+        var failure = await StageContentionAsync(
+            (transaction, suffix) => suffix == "winner"
+                ? this.Graph.CreateRelationshipAsync(
+                    new ConcurrentUniqueGrant("dynamic-grant-source", "dynamic-grant-target")
+                    {
+                        Id = "dynamic-grant-winner",
+                        GrantCode = "DYNAMIC-GRANT",
+                    },
+                    transaction,
+                    ct)
+                : this.Graph.CreateRelationshipAsync(
+                    new DynamicRelationship(
+                        "dynamic-grant-source",
+                        "dynamic-grant-target",
+                        "concurrent_unique_grant",
+                        new Dictionary<string, object?> { ["GrantCode"] = "DYNAMIC-GRANT" })
+                    {
+                        Id = "dynamic-grant-loser",
+                    },
+                    transaction,
+                    ct),
+            ct);
+
+        Assert.Contains("unique property 'GrantCode'", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(1, await CountRelationshipsAsync("CONCURRENT_UNIQUE_GRANT", ct));
+    }
+
+    [Fact]
+    public async Task ConcurrentSubgraphCreates_WithTheSameUniqueEndpointValue_LetExactlyOneCommit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var failure = await StageContentionAsync(
+            (transaction, suffix) =>
+            {
+                var source = new ConcurrentUniqueAccount
+                {
+                    Id = $"subgraph-source-{suffix}",
+                    Email = "subgraph-source@example.com",
+                };
+                var target = new ConcurrentUniqueAccount
+                {
+                    Id = $"subgraph-target-{suffix}",
+                    Email = $"subgraph-target-{suffix}@example.com",
+                };
+                var relationship = new ConcurrentUniqueGrant(source.Id, target.Id)
+                {
+                    Id = $"subgraph-grant-{suffix}",
+                    GrantCode = $"SUBGRAPH-{suffix}",
+                };
+                return this.Graph.CreateAsync(source, relationship, target, null, transaction, ct);
+            },
+            ct);
+
+        Assert.Contains("unique property 'Email'", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            await CountByPropertyAsync(
+                "ConcurrentUniqueAccount",
+                "Email",
+                "subgraph-source@example.com",
+                ct));
+        Assert.Equal(1, await CountRelationshipsAsync("CONCURRENT_UNIQUE_GRANT", ct));
     }
 
     [Fact]
@@ -380,6 +576,22 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
             "MATCH ()-[r]->() WHERE $type IN coalesce(r.inheritance_labels, []) RETURN count(r) AS c",
             new { type },
+            cancellationToken);
+        var count = (await result.SingleAsync(cancellationToken))["c"].As<int>();
+        await transaction.RollbackAsync();
+        return count;
+    }
+
+    private async Task<int> CountRelationshipsByPropertyAsync(
+        string type,
+        string property,
+        string value,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await this.Graph.GetTransactionAsync(cancellationToken);
+        var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
+            $"MATCH ()-[r]->() WHERE $type IN coalesce(r.inheritance_labels, []) AND r.{property} = $value RETURN count(r) AS c",
+            new { type, value },
             cancellationToken);
         var count = (await result.SingleAsync(cancellationToken))["c"].As<int>();
         await transaction.RollbackAsync();

@@ -3,6 +3,8 @@
 
 namespace Cvoya.Graph.Age.Entities;
 
+using System.Buffers.Binary;
+using System.Collections;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -27,13 +29,6 @@ using System.Text;
 /// </remarks>
 internal static class AgeUniquenessLockKey
 {
-    /// <summary>
-    /// Separates identity components. ASCII unit separator, matching
-    /// <see cref="AgeUniquenessCheck.BuildConstraintKey"/>, so no component boundary can be forged
-    /// by a label or value that contains the separator in printable form.
-    /// </summary>
-    private const char ComponentSeparator = '\u001f';
-
     /// <summary>Identifies a node-entity constraint in <see cref="Compute"/>'s entity-kind component.</summary>
     internal const string NodeEntityKind = "node";
 
@@ -54,16 +49,10 @@ internal static class AgeUniquenessLockKey
         string constraint,
         IReadOnlyList<object?> values)
     {
-        var identity = new StringBuilder()
-            .Append(graphName).Append(ComponentSeparator)
-            .Append(entityKind).Append(ComponentSeparator)
-            .Append(label).Append(ComponentSeparator)
-            .Append(constraint);
-
-        foreach (var value in values)
-        {
-            identity.Append(ComponentSeparator).Append(Render(value));
-        }
+        var identity = new StringBuilder();
+        AppendText(identity, 'g', graphName);
+        AppendText(identity, 'e', entityKind);
+        identity.Append(BuildConstraintIdentity(label, constraint, values));
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(identity.ToString()));
 
@@ -71,20 +60,150 @@ internal static class AgeUniquenessLockKey
         // hash bytes are read as one. Truncating 256 bits to 64 admits collisions, which cost only
         // spurious serialization between unrelated constraints - never a missed lock - because the
         // probe still decides correctness.
-        return BitConverter.ToInt64(hash, 0);
+        return BinaryPrimitives.ReadInt64BigEndian(hash);
     }
 
     /// <summary>
-    /// Renders one checked value so equal values always produce equal text regardless of the
-    /// current culture. The type name is included so <c>1</c> and <c>"1"</c> hash differently, and
-    /// a null value is distinguished from the empty string.
+    /// Builds the canonical identity shared by advisory locking and same-batch collision detection.
+    /// Values are framed so embedded separator characters cannot forge component boundaries, maps
+    /// are key-ordered, and numeric CLR types that AGE compares as the same number share an identity.
     /// </summary>
-    private static string Render(object? value) => value switch
+    internal static string BuildConstraintIdentity(
+        string label,
+        string constraint,
+        IReadOnlyList<object?> values)
     {
-        null => "null",
-        string text => $"string{ComponentSeparator}{text}",
-        IFormattable formattable =>
-            $"{value.GetType().FullName}{ComponentSeparator}{formattable.ToString(null, CultureInfo.InvariantCulture)}",
-        _ => $"{value.GetType().FullName}{ComponentSeparator}{value}",
-    };
+        var identity = new StringBuilder();
+        AppendText(identity, 'l', label);
+        AppendText(identity, 'c', constraint);
+        AppendCount(identity, 'v', values.Count);
+        foreach (var value in values)
+        {
+            AppendValue(identity, value);
+        }
+
+        return identity.ToString();
+    }
+
+    private static void AppendValue(StringBuilder identity, object? value)
+    {
+        switch (value)
+        {
+            case null:
+                identity.Append('n');
+                return;
+            case string text:
+                AppendText(identity, 's', text);
+                return;
+            case char character:
+                // System.Text.Json sends a char to AGE as a one-character string.
+                AppendText(identity, 's', character.ToString());
+                return;
+            case bool boolean:
+                identity.Append(boolean ? "b1" : "b0");
+                return;
+            case sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal:
+                AppendText(identity, 'd', CanonicalizeNumber(value));
+                return;
+            case IDictionary dictionary:
+                AppendDictionary(identity, dictionary);
+                return;
+            case IEnumerable sequence:
+                var items = sequence.Cast<object?>().ToArray();
+                AppendCount(identity, 'a', items.Length);
+                foreach (var item in items)
+                {
+                    AppendValue(identity, item);
+                }
+
+                return;
+            default:
+                AppendText(identity, 's', Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty);
+                return;
+        }
+    }
+
+    private static void AppendDictionary(StringBuilder identity, IDictionary dictionary)
+    {
+        var entries = new List<(string Key, object? Value)>(dictionary.Count);
+        foreach (DictionaryEntry entry in dictionary)
+        {
+            entries.Add((
+                Convert.ToString(entry.Key, CultureInfo.InvariantCulture) ?? string.Empty,
+                entry.Value));
+        }
+
+        entries.Sort((left, right) => StringComparer.Ordinal.Compare(left.Key, right.Key));
+        AppendCount(identity, 'm', entries.Count);
+        foreach (var (key, entryValue) in entries)
+        {
+            AppendText(identity, 'k', key);
+            AppendValue(identity, entryValue);
+        }
+    }
+
+    private static string CanonicalizeNumber(object value)
+    {
+        var text = value switch
+        {
+            float single when float.IsNaN(single) => "NaN",
+            float single when float.IsPositiveInfinity(single) => "Infinity",
+            float single when float.IsNegativeInfinity(single) => "-Infinity",
+            float single => single.ToString("R", CultureInfo.InvariantCulture),
+            double number when double.IsNaN(number) => "NaN",
+            double number when double.IsPositiveInfinity(number) => "Infinity",
+            double number when double.IsNegativeInfinity(number) => "-Infinity",
+            double number => number.ToString("R", CultureInfo.InvariantCulture),
+            decimal number => number.ToString("G29", CultureInfo.InvariantCulture),
+            _ => Convert.ToString(value, CultureInfo.InvariantCulture)!,
+        };
+
+        if (text is "NaN" or "Infinity" or "-Infinity")
+        {
+            return text;
+        }
+
+        var negative = text[0] == '-';
+        var unsigned = negative || text[0] == '+' ? text[1..] : text;
+        var exponentIndex = unsigned.IndexOfAny(['e', 'E']);
+        var exponent = exponentIndex < 0
+            ? 0
+            : int.Parse(unsigned[(exponentIndex + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        var significand = exponentIndex < 0 ? unsigned : unsigned[..exponentIndex];
+        var decimalIndex = significand.IndexOf('.');
+        if (decimalIndex >= 0)
+        {
+            exponent -= significand.Length - decimalIndex - 1;
+            significand = significand.Remove(decimalIndex, 1);
+        }
+
+        significand = significand.TrimStart('0');
+        if (significand.Length == 0)
+        {
+            return "0";
+        }
+
+        while (significand.EndsWith('0'))
+        {
+            significand = significand[..^1];
+            exponent++;
+        }
+
+        return $"{(negative ? "-" : string.Empty)}{significand}e{exponent.ToString(CultureInfo.InvariantCulture)}";
+    }
+
+    private static void AppendText(StringBuilder identity, char tag, string value)
+    {
+        identity.Append(tag)
+            .Append(value.Length.ToString(CultureInfo.InvariantCulture))
+            .Append(':')
+            .Append(value);
+    }
+
+    private static void AppendCount(StringBuilder identity, char tag, int count)
+    {
+        identity.Append(tag)
+            .Append(count.ToString(CultureInfo.InvariantCulture))
+            .Append(':');
+    }
 }

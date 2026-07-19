@@ -22,5 +22,5 @@ internal sealed record AgeUniquenessCheck(
     /// entity is written.
     /// </summary>
     internal static string BuildConstraintKey(string label, string constraint, IReadOnlyList<object?> values) =>
-        $"{label}\u001f{constraint}\u001f{System.Text.Json.JsonSerializer.Serialize(values)}";
+        AgeUniquenessLockKey.BuildConstraintIdentity(label, constraint, values);
 }

@@ -492,17 +492,18 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         where TRelationship : class, Graph.IRelationship
     {
         var dynamicRelationship = relationship as DynamicRelationship;
-        var type = dynamicRelationship?.Type ?? Labels.GetLabelFromType(relationship.GetType());
+        var requestedType = dynamicRelationship?.Type ?? Labels.GetLabelFromType(relationship.GetType());
         var readValue = dynamicRelationship is null
             ? (Func<PropertySchemaInfo, object?>)(property => property.PropertyInfo.GetValue(relationship))
             : property => dynamicRelationship.Properties.GetValueOrDefault(property.Name);
 
-        var schema = context.SchemaManager.GetSchemaRegistry().GetRelationshipSchema(type);
+        var schema = context.SchemaManager.GetSchemaRegistry().GetRelationshipSchema(requestedType);
         if (schema is null)
         {
             return [];
         }
 
+        var type = schema.Label;
         var checks = new List<AgeUniquenessCheck>();
         var keyProperties = schema.GetKeyProperties().ToArray();
         if (keyProperties.Length > 0)
@@ -528,7 +529,8 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             };
             var predicates = new List<string>
             {
-                "$relationshipType IN coalesce(r.inheritance_labels, [])",
+                "size([age_type IN coalesce(r.inheritance_labels, []) " +
+                    "WHERE toLower(age_type) = toLower($relationshipType)]) > 0",
             };
             if (excludeId is not null)
             {

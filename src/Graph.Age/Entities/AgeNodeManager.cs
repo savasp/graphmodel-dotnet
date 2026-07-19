@@ -456,28 +456,29 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         if (node is DynamicNode dynamicNode)
         {
             return dynamicNode.Labels
-                .SelectMany(dynamicLabel => BuildChecksForSchema(
-                    dynamicLabel,
+                .Select(dynamicLabel => context.SchemaManager.GetSchemaRegistry().GetNodeSchema(dynamicLabel))
+                .OfType<EntitySchemaInfo>()
+                .DistinctBy(schema => schema.Label, StringComparer.OrdinalIgnoreCase)
+                .SelectMany(schema => BuildChecksForSchema(
+                    schema,
                     property => dynamicNode.Properties.GetValueOrDefault(property.Name),
                     excludeId))
                 .ToArray();
         }
 
         var label = Labels.GetLabelFromType(node.GetType());
-        return BuildChecksForSchema(label, property => property.PropertyInfo.GetValue(node), excludeId);
+        var schema = context.SchemaManager.GetSchemaRegistry().GetNodeSchema(label);
+        return schema is null
+            ? []
+            : BuildChecksForSchema(schema, property => property.PropertyInfo.GetValue(node), excludeId);
     }
 
     private List<AgeUniquenessCheck> BuildChecksForSchema(
-        string label,
+        EntitySchemaInfo schema,
         Func<PropertySchemaInfo, object?> readValue,
         string? excludeId)
     {
-        var schema = context.SchemaManager.GetSchemaRegistry().GetNodeSchema(label);
-        if (schema is null)
-        {
-            return [];
-        }
-
+        var label = schema.Label;
         var checks = new List<AgeUniquenessCheck>();
         var keyProperties = schema.GetKeyProperties().ToArray();
         if (keyProperties.Length > 0)
@@ -503,7 +504,8 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             };
             var predicates = new List<string>
             {
-                "$entityLabel IN coalesce(n.inheritance_labels, [])",
+                "size([age_label IN coalesce(n.inheritance_labels, []) " +
+                    "WHERE toLower(age_label) = toLower($entityLabel)]) > 0",
             };
             if (excludeId is not null)
             {
