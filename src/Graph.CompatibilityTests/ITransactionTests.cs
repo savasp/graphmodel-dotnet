@@ -296,4 +296,147 @@ public interface ITransactionTests : IGraphTest
         await Assert.ThrowsAsync<GraphException>(
             () => transaction.RollbackAsync());
     }
+
+    // A transaction is owned by the graph/store that created it. Passing it to another store of
+    // the SAME provider must be rejected by reference identity - before any schema work, query
+    // execution, or mutation - and must leave the caller-owned transaction untouched (#366).
+
+    [Fact]
+    public async Task TransactionFromAnotherStoreOfSameProvider_IsRejectedByReadsAndQueries()
+    {
+        var person = new Person { FirstName = "CrossStore", LastName = "Read" };
+        var related = new Person { FirstName = "CrossStore", LastName = "Related" };
+        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(related, null, TestContext.Current.CancellationToken);
+
+        var relationship = new Knows(person.Id, related.Id);
+        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+
+        var otherGraph = await Harness.GetGraphAsync(StoreIsolation.IndependentStore, TestContext.Current.CancellationToken);
+
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
+
+        await AssertForeignTransactionRejectedAsync(
+            () => otherGraph.GetNodeAsync<Person>(person.Id, transaction, TestContext.Current.CancellationToken));
+        await AssertForeignTransactionRejectedAsync(
+            () => otherGraph.GetRelationshipAsync<Knows>(relationship.Id, transaction, TestContext.Current.CancellationToken));
+
+        // Query roots reject at construction, before a provider can perform schema work or execute
+        // the query. Cover every distinct public root; generic/non-generic search overloads share
+        // implementation today but remain separate contract surfaces.
+        AssertForeignTransactionRejected(() => otherGraph.Nodes<Person>(transaction));
+        AssertForeignTransactionRejected(() => otherGraph.Relationships<Knows>(transaction));
+        AssertForeignTransactionRejected(() => otherGraph.DynamicNodes(transaction));
+        AssertForeignTransactionRejected(() => otherGraph.DynamicRelationships(transaction));
+        AssertForeignTransactionRejected(() => otherGraph.Search("CrossStore", transaction));
+        AssertForeignTransactionRejected(() => otherGraph.SearchNodes("CrossStore", transaction));
+        AssertForeignTransactionRejected(() => otherGraph.SearchRelationships("CrossStore", transaction));
+        AssertForeignTransactionRejected(() => otherGraph.SearchNodes<Person>("CrossStore", transaction));
+        AssertForeignTransactionRejected(() => otherGraph.SearchRelationships<Knows>("CrossStore", transaction));
+
+        // The rejected caller-owned transaction is untouched: still active and usable for reads
+        // on the graph that created it, all the way through commit. Activity is asserted by using
+        // the transaction - the public IGraphTransaction surface has no state to inspect, and a
+        // rolled-back or disposed transaction would fail these calls.
+        var readable = await Graph.GetNodeAsync<Person>(person.Id, transaction, TestContext.Current.CancellationToken);
+        Assert.Equal("Read", readable.LastName);
+        await transaction.CommitAsync();
+    }
+
+    [Fact]
+    public async Task TransactionFromAnotherStoreOfSameProvider_IsRejectedByEveryCrudOperation()
+    {
+        var existing = new Person { FirstName = "CrossStore", LastName = "Baseline" };
+        var relationshipSource = new Person { FirstName = "CrossStore", LastName = "RelationshipSource" };
+        var relationshipTarget = new Person { FirstName = "CrossStore", LastName = "RelationshipTarget" };
+        await Graph.CreateNodeAsync(existing, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(relationshipSource, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(relationshipTarget, null, TestContext.Current.CancellationToken);
+
+        var originalSince = new DateTime(2025, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var existingRelationship = new Knows(relationshipSource.Id, relationshipTarget.Id) { Since = originalSince };
+        await Graph.CreateRelationshipAsync(existingRelationship, null, TestContext.Current.CancellationToken);
+
+        var otherGraph = await Harness.GetGraphAsync(StoreIsolation.IndependentStore, TestContext.Current.CancellationToken);
+
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
+
+        var intruder = new Person { FirstName = "CrossStore", LastName = "Intruder" };
+        var foreignRelationship = new Friend(relationshipSource.Id, relationshipTarget.Id);
+        var subgraphSource = new Person { FirstName = "CrossStore", LastName = "SubgraphSource" };
+        var subgraphTarget = new Person { FirstName = "CrossStore", LastName = "SubgraphTarget" };
+
+        await AssertForeignTransactionRejectedAsync(
+            () => otherGraph.CreateNodeAsync(intruder, transaction, TestContext.Current.CancellationToken));
+        await AssertForeignTransactionRejectedAsync(
+            () => otherGraph.CreateRelationshipAsync(foreignRelationship, transaction, TestContext.Current.CancellationToken));
+        await AssertForeignTransactionRejectedAsync(
+            () => otherGraph.CreateAsync(
+                subgraphSource,
+                new Knows(subgraphSource.Id, subgraphTarget.Id),
+                subgraphTarget,
+                null,
+                transaction,
+                TestContext.Current.CancellationToken));
+        await AssertForeignTransactionRejectedAsync(
+            () => otherGraph.UpdateNodeAsync(existing with { LastName = "Mutated" }, transaction, TestContext.Current.CancellationToken));
+        await AssertForeignTransactionRejectedAsync(
+            () => otherGraph.UpdateRelationshipAsync(
+                existingRelationship with { Since = originalSince.AddDays(1) },
+                transaction,
+                TestContext.Current.CancellationToken));
+        await AssertForeignTransactionRejectedAsync(
+            () => otherGraph.DeleteNodeAsync(existing.Id, false, transaction, TestContext.Current.CancellationToken));
+        await AssertForeignTransactionRejectedAsync(
+            () => otherGraph.DeleteRelationshipAsync(existingRelationship.Id, transaction, TestContext.Current.CancellationToken));
+
+        // Nothing executed against the transaction's own store: attempted entities are absent even
+        // when reading through the transaction, and pre-existing entities are intact.
+        await Assert.ThrowsAsync<EntityNotFoundException>(
+            () => Graph.GetNodeAsync<Person>(intruder.Id, transaction, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<EntityNotFoundException>(
+            () => Graph.GetRelationshipAsync<Friend>(foreignRelationship.Id, transaction, TestContext.Current.CancellationToken));
+        var unchanged = await Graph.GetNodeAsync<Person>(existing.Id, transaction, TestContext.Current.CancellationToken);
+        Assert.Equal("Baseline", unchanged.LastName);
+        var unchangedRelationship = await Graph.GetRelationshipAsync<Knows>(
+            existingRelationship.Id,
+            transaction,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(originalSince, unchangedRelationship.Since);
+
+        // Nothing landed in the other graph either. A harness may back both graphs with the same
+        // database - this asserts the rejected write reached no store at all, not that the two are
+        // isolated from each other.
+        await Assert.ThrowsAsync<EntityNotFoundException>(
+            () => otherGraph.GetNodeAsync<Person>(intruder.Id, null, TestContext.Current.CancellationToken));
+
+        // The rejected caller-owned transaction remains fully usable with its owner graph: it
+        // still accepts a write and commits it.
+        var lateArrival = new Person { FirstName = "CrossStore", LastName = "Committed" };
+        await Graph.CreateNodeAsync(lateArrival, transaction, TestContext.Current.CancellationToken);
+        await transaction.CommitAsync();
+
+        var persisted = await Graph.GetNodeAsync<Person>(lateArrival.Id, null, TestContext.Current.CancellationToken);
+        Assert.Equal("Committed", persisted.LastName);
+        var baseline = await Graph.GetNodeAsync<Person>(existing.Id, null, TestContext.Current.CancellationToken);
+        Assert.Equal("Baseline", baseline.LastName);
+    }
+
+    private static void AssertForeignTransactionRejected(Action operation)
+    {
+        var exception = Assert.Throws<GraphException>(operation);
+        AssertOwnershipMessage(exception);
+    }
+
+    private static async Task AssertForeignTransactionRejectedAsync(Func<Task> operation)
+    {
+        var exception = await Assert.ThrowsAsync<GraphException>(operation);
+        AssertOwnershipMessage(exception);
+    }
+
+    private static void AssertOwnershipMessage(GraphException exception)
+    {
+        Assert.Contains("transaction", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("store", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

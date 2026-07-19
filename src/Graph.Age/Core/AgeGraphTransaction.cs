@@ -29,6 +29,13 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
 
     public bool IsActive => transaction is not null && !committed && !rolledBack;
 
+    /// <summary>
+    /// Gets whether this transaction was created by the given graph context. Ownership is
+    /// reference identity: a transaction from a different store or graph instance is foreign even
+    /// when connection settings match.
+    /// </summary>
+    internal bool BelongsTo(AgeGraphContext candidate) => ReferenceEquals(context, candidate);
+
     internal bool IsReadOnly { get; }
 
     internal NpgsqlConnection Connection => connection

@@ -47,6 +47,11 @@ public class TestInfrastructureFixture : IAsyncLifetime
     private string? cachedDatabaseName;
     private Neo4jGraphStore? cachedStore;
 
+    // Additional stores handed out for StoreIsolation.IndependentStore. They share the leased
+    // database but must coexist with the cached store rather than replace it, so they are tracked
+    // separately and disposed at fixture disposal.
+    private readonly List<Neo4jGraphStore> independentStores = [];
+
     static TestInfrastructureFixture()
     {
         testInfrastructure = HasConfiguredNeo4j()
@@ -79,6 +84,15 @@ public class TestInfrastructureFixture : IAsyncLifetime
     public async ValueTask DisposeAsync()
     {
         logger.LogDebugTestInfrastructureFixture65();
+
+        // Independent stores share the leased database, so close their drivers before the lease is
+        // released and the database is cleaned for the next test class.
+        foreach (var store in independentStores)
+        {
+            await store.DisposeAsync();
+        }
+
+        independentStores.Clear();
 
         // Release the database back to the pool so other test classes can use it
         if (cachedDatabaseName != null && databasePool != null)
@@ -131,6 +145,40 @@ public class TestInfrastructureFixture : IAsyncLifetime
         }
 
         return cachedStore!.Graph;
+    }
+
+    /// <summary>
+    /// Acquires an additional graph backed by a separate store instance over the database this
+    /// fixture already leased, leaving every previously handed-out graph untouched. Backs
+    /// <see cref="CompatibilityTests.StoreIsolation.IndependentStore"/>, which cross-store misuse
+    /// tests use to hold two live Neo4j stores at once.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately reuses the leased database instead of renting a second one. Those tests assert
+    /// on store identity, and pointing both stores at the same database proves ownership is decided
+    /// by instance identity rather than by matching connection settings. It also keeps the test
+    /// class's footprint at one pooled database: renting a second one per class and holding it for
+    /// the class's lifetime starves the pool once classes run in parallel, which times out database
+    /// acquisition suite-wide.
+    /// </remarks>
+    public IGraph GetIndependentGraph()
+    {
+        if (cachedDatabaseName == null)
+        {
+            throw new InvalidOperationException(
+                "An independent graph requires a database; call GetGraph first.");
+        }
+
+        var store = new Neo4jGraphStore(
+            testInfrastructure!.ConnectionString,
+            testInfrastructure.Username,
+            testInfrastructure.Password,
+            cachedDatabaseName,
+            null,
+            loggerFactory);
+
+        independentStores.Add(store);
+        return store.Graph;
     }
 
     private async Task EnsureDatabasePoolAsync()

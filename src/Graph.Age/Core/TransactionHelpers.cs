@@ -131,6 +131,12 @@ internal static class TransactionHelpers
                 "The given transaction is not a valid AGE transaction. Use AgeGraphStore.Graph.GetTransactionAsync() to create it.");
         }
 
+        if (!graphTransaction.BelongsTo(graphContext))
+        {
+            throw new GraphException(
+                "The given transaction was created by a different AGE graph store. A transaction can only be used with the graph that created it.");
+        }
+
         return graphTransaction;
     }
 }
