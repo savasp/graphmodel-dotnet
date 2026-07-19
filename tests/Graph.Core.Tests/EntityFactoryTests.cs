@@ -655,6 +655,68 @@ public class EntityFactoryTests
     }
 
     [Fact]
+    public void DynamicNode_WithDerivedComplexCollectionElement_PreservesRuntimeTypeAndProperties()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-derived-complex",
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["locations"] = new List<FactoryLocation>
+                {
+                    new FactoryOffice("Seattle", 14),
+                },
+            });
+
+        var entity = factory.Serialize(node);
+
+        var collection = Assert.IsType<EntityCollection>(entity.ComplexProperties["locations"].Value);
+        Assert.Equal(typeof(FactoryLocation), collection.Type);
+        var storedOffice = Assert.Single(collection.Entities);
+        Assert.Equal(typeof(FactoryOffice), storedOffice.ActualType);
+        Assert.Equal(14, Assert.IsType<SimpleValue>(storedOffice.SimpleProperties[nameof(FactoryOffice.Floor)].Value).Object);
+
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
+        var locations = Assert.IsType<List<Dictionary<string, object?>>>(roundTripped.Properties["locations"]);
+        var office = Assert.Single(locations);
+        Assert.Equal("Seattle", office[nameof(FactoryLocation.Name)]);
+        Assert.Equal(14, office[nameof(FactoryOffice.Floor)]);
+    }
+
+    [Fact]
+    public void DynamicNode_WithDerivedComplexCollectionNestedInPoco_PreservesRuntimeTypeAndProperties()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-nested-derived-complex",
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["directory"] = new FactoryLocationDirectory
+                {
+                    Locations = [new FactoryOffice("Seattle", 14)],
+                },
+            });
+
+        var entity = factory.Serialize(node);
+
+        var directory = Assert.IsType<EntityInfo>(entity.ComplexProperties["directory"].Value);
+        var collection = Assert.IsType<EntityCollection>(directory.ComplexProperties["stored_locations"].Value);
+        Assert.Equal(typeof(FactoryLocation), collection.Type);
+        var storedOffice = Assert.Single(collection.Entities);
+        Assert.Equal(typeof(FactoryOffice), storedOffice.ActualType);
+        Assert.Equal(14, Assert.IsType<SimpleValue>(storedOffice.SimpleProperties[nameof(FactoryOffice.Floor)].Value).Object);
+
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
+        var roundTrippedDirectory = Assert.IsType<Dictionary<string, object?>>(roundTripped.Properties["directory"]);
+        var locations = Assert.IsType<List<Dictionary<string, object?>>>(roundTrippedDirectory["stored_locations"]);
+        var office = Assert.Single(locations);
+        Assert.Equal("Seattle", office[nameof(FactoryLocation.Name)]);
+        Assert.Equal(14, office[nameof(FactoryOffice.Floor)]);
+    }
+
+    [Fact]
     public void DynamicNode_WithSelfReferentialDictionary_ThrowsGraphException()
     {
         var factory = new EntityFactory();
@@ -753,6 +815,16 @@ public class EntityFactoryTests
     {
         [Property(Label = "stored_offices")]
         public List<FactoryAddress?> Offices { get; init; } = [];
+    }
+
+    private record FactoryLocation(string Name);
+
+    private sealed record FactoryOffice(string Name, int Floor) : FactoryLocation(Name);
+
+    private sealed record FactoryLocationDirectory
+    {
+        [Property(Label = "stored_locations")]
+        public List<FactoryLocation> Locations { get; init; } = [];
     }
 
     private sealed record LabeledContact

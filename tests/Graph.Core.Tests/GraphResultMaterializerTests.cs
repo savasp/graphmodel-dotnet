@@ -429,6 +429,67 @@ public class GraphResultMaterializerTests
         Assert.False(schema.IsElementNullable);
     }
 
+    [Fact]
+    public void ComplexCollectionSchema_RejectsExplicitNullableElementOverride()
+    {
+        var property = typeof(NullableComplexCollectionProjection)
+            .GetProperty(nameof(NullableComplexCollectionProjection.Addresses))!;
+        var schema = new PropertySchema(
+            property,
+            "stored{addresses}",
+            PropertyType.ComplexCollection,
+            typeof(MaterializedAddress))
+        {
+            IsElementNullable = true,
+        };
+
+        Assert.False(schema.IsElementNullable);
+    }
+
+    [Fact]
+    public void ComplexCollectionSchema_RejectsNullableElementStateCopiedFromSimpleCollection()
+    {
+        var simpleProperty = typeof(NameCollectionProjection)
+            .GetProperty(nameof(NameCollectionProjection.Names))!;
+        var complexProperty = typeof(NullableComplexCollectionProjection)
+            .GetProperty(nameof(NullableComplexCollectionProjection.Addresses))!;
+        var simpleSchema = new PropertySchema(
+            simpleProperty,
+            simpleProperty.Name,
+            PropertyType.SimpleCollection,
+            typeof(string))
+        {
+            IsElementNullable = true,
+        };
+
+        var schema = simpleSchema with
+        {
+            PropertyInfo = complexProperty,
+            PropertyName = "stored{addresses}",
+            PropertyType = PropertyType.ComplexCollection,
+            ElementType = typeof(MaterializedAddress),
+        };
+
+        Assert.False(schema.IsElementNullable);
+    }
+
+    [Fact]
+    public void SimpleCollectionSchema_PreservesExplicitNullableElementOverride()
+    {
+        var property = typeof(NameCollectionProjection)
+            .GetProperty(nameof(NameCollectionProjection.Names))!;
+        var schema = new PropertySchema(
+            property,
+            property.Name,
+            PropertyType.SimpleCollection,
+            typeof(string))
+        {
+            IsElementNullable = true,
+        };
+
+        Assert.True(schema.IsElementNullable);
+    }
+
     // Anonymous types cannot be named as a type argument, so the shape instance infers it.
     private Task<T> MaterializeShapeAsync<T>(T shape, params (string Key, GraphValue Value)[] fields) =>
         MaterializeAsync<T>(fields);

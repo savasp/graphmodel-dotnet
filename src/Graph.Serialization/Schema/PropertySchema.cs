@@ -26,6 +26,10 @@ public record PropertySchema(
     string? RelationshipType = null
 )
 {
+    private bool _isElementNullable =
+        PropertyType == PropertyType.SimpleCollection &&
+        NullabilityDerivation.IsElementNullable(PropertyInfo, ElementType);
+
     /// <summary>
     /// Gets whether collection elements may be null according to the declared property schema.
     /// </summary>
@@ -36,9 +40,11 @@ public record PropertySchema(
     /// because their wire representation has no nullable slot; CG017 rejects nullable complex
     /// element declarations before generation.
     /// </remarks>
-    public bool IsElementNullable { get; init; } =
-        PropertyType == PropertyType.SimpleCollection &&
-        NullabilityDerivation.IsElementNullable(PropertyInfo, ElementType);
+    public bool IsElementNullable
+    {
+        get => PropertyType == PropertyType.SimpleCollection && _isElementNullable;
+        init => _isElementNullable = PropertyType == PropertyType.SimpleCollection && value;
+    }
 }
 
 /// <summary>
