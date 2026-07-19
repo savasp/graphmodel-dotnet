@@ -47,10 +47,10 @@ public class TestInfrastructureFixture : IAsyncLifetime
     private string? cachedDatabaseName;
     private Neo4jGraphStore? cachedStore;
 
-    // Additional stores handed out for StoreIsolation.IndependentStore. They must coexist with the
-    // cached store rather than replace it, so they are tracked separately and released at fixture
-    // disposal.
-    private readonly List<(string DatabaseName, Neo4jGraphStore Store)> independentStores = [];
+    // Additional stores handed out for StoreIsolation.IndependentStore. They share the leased
+    // database but must coexist with the cached store rather than replace it, so they are tracked
+    // separately and disposed at fixture disposal.
+    private readonly List<Neo4jGraphStore> independentStores = [];
 
     static TestInfrastructureFixture()
     {
@@ -85,6 +85,15 @@ public class TestInfrastructureFixture : IAsyncLifetime
     {
         logger.LogDebugTestInfrastructureFixture65();
 
+        // Independent stores share the leased database, so close their drivers before the lease is
+        // released and the database is cleaned for the next test class.
+        foreach (var store in independentStores)
+        {
+            await store.DisposeAsync();
+        }
+
+        independentStores.Clear();
+
         // Release the database back to the pool so other test classes can use it
         if (cachedDatabaseName != null && databasePool != null)
         {
@@ -97,17 +106,6 @@ public class TestInfrastructureFixture : IAsyncLifetime
             await databasePool.ReleaseDatabaseAsync(cachedDatabaseName);
             cachedDatabaseName = null;
         }
-
-        foreach (var (databaseName, store) in independentStores)
-        {
-            await store.DisposeAsync();
-            if (databasePool != null)
-            {
-                await databasePool.ReleaseDatabaseAsync(databaseName);
-            }
-        }
-
-        independentStores.Clear();
 
         GC.SuppressFinalize(this);
     }
@@ -150,30 +148,36 @@ public class TestInfrastructureFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Acquires an additional graph over its own database and its own store instance, leaving every
-    /// previously handed-out graph untouched. Backs
+    /// Acquires an additional graph backed by a separate store instance over the database this
+    /// fixture already leased, leaving every previously handed-out graph untouched. Backs
     /// <see cref="CompatibilityTests.StoreIsolation.IndependentStore"/>, which cross-store misuse
     /// tests use to hold two live Neo4j stores at once.
     /// </summary>
+    /// <remarks>
+    /// Deliberately reuses the leased database instead of renting a second one. Those tests assert
+    /// on store identity, and pointing both stores at the same database proves ownership is decided
+    /// by instance identity rather than by matching connection settings. It also keeps the test
+    /// class's footprint at one pooled database: renting a second one per class and holding it for
+    /// the class's lifetime starves the pool once classes run in parallel, which times out database
+    /// acquisition suite-wide.
+    /// </remarks>
     public async Task<IGraph> GetIndependentGraph()
     {
-        await EnsureDatabasePoolAsync();
-
-        if (databasePool == null)
+        if (cachedDatabaseName == null)
         {
-            throw new InvalidOperationException("Database pool not initialized");
+            throw new InvalidOperationException(
+                "An independent graph requires a database; call GetGraph first.");
         }
 
-        var databaseName = await databasePool.RequestDatabaseAsync();
         var store = new Neo4jGraphStore(
             testInfrastructure!.ConnectionString,
             testInfrastructure.Username,
             testInfrastructure.Password,
-            databaseName,
+            cachedDatabaseName,
             null,
             loggerFactory);
 
-        independentStores.Add((databaseName, store));
+        independentStores.Add(store);
         return store.Graph;
     }
 

@@ -22,10 +22,17 @@ public enum StoreIsolation
     FreshStore,
 
     /// <summary>
-    /// Provision an additional, empty store that coexists with every store already handed to the
-    /// running test: the result must be a distinct store instance, and previously returned stores
-    /// must stay untouched - not reset, replaced, or disposed. Cross-store misuse contracts use
-    /// this to hold two live stores of the same provider at once.
+    /// Provision an additional store that coexists with every store already handed to the running
+    /// test: the result must be a <em>distinct store instance</em>, and previously returned stores
+    /// must stay untouched - not reset, replaced, or disposed.
     /// </summary>
+    /// <remarks>
+    /// Unlike the other levels this says nothing about the data the store sees. Cross-store misuse
+    /// contracts use it to hold two live stores of one provider at once, and they test store
+    /// <em>identity</em>, so a harness may back the second store with the same database as the
+    /// first - and pointing both at the same backing store is the stronger test, since it proves
+    /// ownership is not decided by matching connection settings. Prefer whichever is cheaper: do
+    /// not provision new infrastructure for this.
+    /// </remarks>
     IndependentStore
 }

@@ -363,7 +363,9 @@ public interface ITransactionTests : IGraphTest
         var unchanged = await Graph.GetNodeAsync<Person>(existing.Id, transaction, TestContext.Current.CancellationToken);
         Assert.Equal("Baseline", unchanged.LastName);
 
-        // Nothing landed in the other store either.
+        // Nothing landed in the other graph either. A harness may back both graphs with the same
+        // database - this asserts the rejected write reached no store at all, not that the two are
+        // isolated from each other.
         await Assert.ThrowsAsync<EntityNotFoundException>(
             () => otherGraph.GetNodeAsync<Person>(intruder.Id, null, TestContext.Current.CancellationToken));
 
