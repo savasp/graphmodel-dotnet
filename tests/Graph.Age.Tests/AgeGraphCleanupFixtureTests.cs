@@ -117,6 +117,10 @@ public sealed class AgeGraphCleanupFixtureTests
         var aggregate = Assert.IsType<AggregateException>(cleanupFailure);
         Assert.Contains(firstGraph, aggregate.ToString(), StringComparison.Ordinal);
         Assert.Contains(secondGraph, aggregate.ToString(), StringComparison.Ordinal);
-        Assert.Equal([firstGraph, secondGraph], attempted);
+        // Cleanup drops graphs in ordinal name order, which for GUID-suffixed names is
+        // unrelated to creation order.
+        string[] expectedAttempts = [firstGraph, secondGraph];
+        Array.Sort(expectedAttempts, StringComparer.Ordinal);
+        Assert.Equal(expectedAttempts, attempted);
     }
 }
