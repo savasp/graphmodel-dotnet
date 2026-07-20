@@ -117,8 +117,10 @@ that component must also be independently unique.
 Keys are scoped to the mapped node label or relationship type in one configured graph store. They
 must be non-nullable, graph-storable scalar values; collections, complex values, ignored properties,
 and unsupported property types are rejected at runtime even when the analyzer package is not
-installed. `IsKey` implies `IsRequired` and `IsIndexed`, but does not set the explicit `IsUnique`
-schema flag.
+installed. With the analyzer installed, invalid key declarations and ignored-property schema
+conflicts are also reported at build time as `CG018` (a key on a property type that is unsupported
+regardless of key configuration keeps its existing property-type diagnostic). `IsKey` implies
+`IsRequired` and `IsIndexed`, but does not set the explicit `IsUnique` schema flag.
 
 A domain key is not provider-native graph element identity, is not an implicit endpoint or mutation
 target, and is not automatically immutable. Key values may change through an operation that can

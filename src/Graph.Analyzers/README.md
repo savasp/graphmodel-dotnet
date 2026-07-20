@@ -57,6 +57,7 @@ public class User : INode
 | **CG015** | [ComplexProperty] has no effect on the configured property              | Warning  |
 | **CG016** | Open generic graph entities are not supported                           | Error    |
 | **CG017** | Nullable complex collection elements are not supported                  | Error    |
+| **CG018** | Invalid graph key or ignored property declaration                       | Error    |
 
 ## 🔧 Configuration
 
@@ -165,6 +166,30 @@ type or reach it through deeper nesting. It also inspects concrete derived compl
 the current compilation, because those types can occur in a base-typed collection at runtime.
 Derived types supplied only by a referenced assembly cannot be diagnosed at their declaration; the
 runtime fail-closed checks still reject their null or mistyped elements.
+
+### CG018: Invalid Graph Key or Ignored Property Declaration
+
+```csharp
+// ❌ Bad - keys must be non-nullable graph-storable scalars
+[Property(IsKey = true)]
+public string? CustomerNumber { get; set; }
+
+// ❌ Bad - ignored properties cannot request schema behavior
+[Property(Ignore = true, IsUnique = true)]
+public string ImportMarker { get; set; } = string.Empty;
+
+// ✅ Good - multiple scalar declarations form a composite key
+[Property(IsKey = true)]
+public string Tenant { get; set; } = string.Empty;
+
+[Property(IsKey = true)]
+public long AccountNumber { get; set; }
+```
+
+Key declarations are opt-in. A keyless entity is valid, and a property named `Id` is ordinary mapped
+data unless it explicitly sets `IsKey = true`. CG018 uses the same graph-storable scalar
+classification as runtime schema validation. Existing property-type rules remain the single report
+for types that are unsupported regardless of key configuration.
 
 ## 📚 Documentation
 
