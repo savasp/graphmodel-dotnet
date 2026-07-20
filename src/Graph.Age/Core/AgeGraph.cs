@@ -123,11 +123,13 @@ internal class AgeGraph : IGraph
     public async Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : class, Graph.IRelationship
     {
-        var query = Relationships<R>(transaction)
-            .Where(r => r.Id == id);
+        var query = Nodes<Graph.INode>(transaction)
+            .PathSegments<Graph.INode, R, Graph.INode>(GraphTraversalDirection.Both)
+            .Where(segment => segment.Relationship.Id == id);
 
-        return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
+        var segment = await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new EntityNotFoundException($"Relationship with ID {id} not found");
+        return LegacyRelationshipEndpoints.Populate<R>(segment);
     }
 
     /// <summary>
@@ -599,11 +601,13 @@ internal class AgeGraph : IGraph
     /// <inheritdoc />
     public async Task<DynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
     {
-        var query = DynamicRelationships(transaction)
-            .Where(r => r.Id == id);
+        var query = Nodes<Graph.INode>(transaction)
+            .PathSegments<Graph.INode, DynamicRelationship, Graph.INode>(GraphTraversalDirection.Both)
+            .Where(segment => segment.Relationship.Id == id);
 
-        return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
+        var segment = await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new EntityNotFoundException($"Dynamic relationship with ID {id} not found");
+        return LegacyRelationshipEndpoints.Populate<DynamicRelationship>(segment);
     }
 
     /// <inheritdoc />

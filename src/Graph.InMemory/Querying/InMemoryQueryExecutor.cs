@@ -346,7 +346,11 @@ internal sealed class InMemoryQueryExecutor(
         };
     }
 
-    private sealed record StepTrace(INode Start, IRelationship LastRelationship, INode End);
+    private sealed record StepTrace(
+        INode Start,
+        IRelationship LastRelationship,
+        INode End,
+        RelationshipDirection Direction);
 
     private IEnumerable<Row> RootRows(QueryRoot root)
     {
@@ -565,13 +569,20 @@ internal sealed class InMemoryQueryExecutor(
             var lastRelationship = (IRelationship)_reader.MaterializeRelationship(
                 path[^1].Relationship,
                 step.RelationshipClrType ?? typeof(IRelationship));
+            var lastHopStart = path.Count == 1
+                ? sourceNode
+                : _reader.MaterializeNode<INode>(path[^2].Target, _state);
+            var segmentDirection = GetPathSegmentDirection(
+                path[^1].Relationship,
+                lastHopStart,
+                targetEntity);
 
             var newRow = row.Clone();
             newRow.Bindings[targetAlias] = targetEntity;
             newRow.Bindings["r"] = lastRelationship;
             newRow.Current = targetEntity;
             newRow.NativeIdentity = finalRecord.Key;
-            newRow.Traces.Add(new StepTrace(sourceNode, lastRelationship, targetEntity));
+            newRow.Traces.Add(new StepTrace(sourceNode, lastRelationship, targetEntity, segmentDirection));
             newRow.Sources[targetEntity] = finalRecord.Properties;
             newRow.Sources[lastRelationship] = path[^1].Relationship.Properties;
 
@@ -640,7 +651,11 @@ internal sealed class InMemoryQueryExecutor(
             var relationship = (IRelationship)_reader.MaterializeRelationship(
                 hop.Relationship,
                 step.RelationshipClrType ?? typeof(IRelationship));
-            segments.Add(new InMemoryPathHopSegment(current, relationship, end));
+            segments.Add(new InMemoryPathHopSegment(
+                current,
+                relationship,
+                end,
+                GetPathSegmentDirection(hop.Relationship, current, end)));
             current = end;
         }
 
@@ -648,6 +663,50 @@ internal sealed class InMemoryQueryExecutor(
     }
 
     private sealed record Hop(RelationshipRecord Relationship, NodeRecord Target);
+
+    private RelationshipDirection GetPathSegmentDirection(
+        RelationshipRecord relationship,
+        INode start,
+        INode end)
+    {
+        var startRecord = NodeRecordsById(start.Id)
+            .FirstOrDefault(record => start is DynamicNode || record.ActualType == start.GetType());
+        var endRecord = NodeRecordsById(end.Id)
+            .FirstOrDefault(record => end is DynamicNode || record.ActualType == end.GetType());
+
+        if (startRecord is not null && endRecord is not null &&
+            relationship.StartKey is { } logicalStartKey && relationship.EndKey is { } logicalEndKey)
+        {
+            var physicalStartKey = relationship.Direction == RelationshipDirection.Outgoing
+                ? logicalStartKey
+                : logicalEndKey;
+            var physicalEndKey = relationship.Direction == RelationshipDirection.Outgoing
+                ? logicalEndKey
+                : logicalStartKey;
+
+            if (physicalStartKey == startRecord.Key && physicalEndKey == endRecord.Key)
+            {
+                return RelationshipDirection.Outgoing;
+            }
+
+            if (physicalStartKey == endRecord.Key && physicalEndKey == startRecord.Key)
+            {
+                return RelationshipDirection.Incoming;
+            }
+        }
+
+        if (relationship.PhysicalSourceId == start.Id && relationship.PhysicalTargetId == end.Id)
+        {
+            return RelationshipDirection.Outgoing;
+        }
+
+        if (relationship.PhysicalSourceId == end.Id && relationship.PhysicalTargetId == start.Id)
+        {
+            return RelationshipDirection.Incoming;
+        }
+
+        throw new GraphException("Relationship endpoints do not match the materialized path segment.");
+    }
 
     private IEnumerable<List<Hop>> ExpandPaths(string sourceId, TraversalStep step, int maxDepth)
     {
@@ -1171,10 +1230,19 @@ internal sealed class InMemoryQueryExecutor(
         {
             var arguments = segmentType.GetGenericArguments();
             var concrete = typeof(InMemoryPathSegment<,,>).MakeGenericType(arguments);
-            return Activator.CreateInstance(concrete, step.Start, step.LastRelationship, step.End)!;
+            return Activator.CreateInstance(
+                concrete,
+                step.Start,
+                step.LastRelationship,
+                step.End,
+                step.Direction)!;
         }
 
-        return new InMemoryPathHopSegment(step.Start, step.LastRelationship, step.End);
+        return new InMemoryPathHopSegment(
+            step.Start,
+            step.LastRelationship,
+            step.End,
+            step.Direction);
     }
 
     private bool EvaluatePredicate(LambdaExpression predicate, object? input)

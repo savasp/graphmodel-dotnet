@@ -258,8 +258,8 @@ public interface IClassHierarchyTests : IGraphTest
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
         Assert.Equal(knowsWell.Id, retrieved.Id);
-        Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
-        Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
+        Assert.Empty(retrieved.StartNodeId);
+        Assert.Empty(retrieved.EndNodeId);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }

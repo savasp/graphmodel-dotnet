@@ -24,4 +24,15 @@ public interface IGraphPathSegment
     /// Gets the relationship connecting the start and end nodes.
     /// </summary>
     IRelationship Relationship { get; }
+
+    /// <summary>
+    /// Gets the physical orientation of the relationship relative to this segment's endpoints.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="RelationshipDirection.Outgoing"/> means the physical edge runs from
+    /// <see cref="StartNode"/> to <see cref="EndNode"/>; <see cref="RelationshipDirection.Incoming"/>
+    /// means it runs from <see cref="EndNode"/> to <see cref="StartNode"/>. A self-loop is reported
+    /// as <see cref="RelationshipDirection.Outgoing"/> deterministically.
+    /// </remarks>
+    RelationshipDirection Direction { get; }
 }

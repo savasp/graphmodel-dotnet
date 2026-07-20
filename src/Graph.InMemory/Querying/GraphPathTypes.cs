@@ -8,7 +8,11 @@ namespace Cvoya.Graph.InMemory.Querying;
 /// Intermediate hops in a variable-length path are not statically typed per-hop, so
 /// <see cref="IGraphPath.Segments"/> is expressed in terms of the non-generic base.
 /// </summary>
-internal sealed record InMemoryPathHopSegment(INode StartNode, IRelationship Relationship, INode EndNode)
+internal sealed record InMemoryPathHopSegment(
+    INode StartNode,
+    IRelationship Relationship,
+    INode EndNode,
+    RelationshipDirection Direction)
     : IGraphPathSegment;
 
 /// <summary>
@@ -25,7 +29,8 @@ internal sealed record InMemoryGraphPath(INode Start, INode End, IReadOnlyList<I
 internal sealed record InMemoryPathSegment<TSource, TRel, TTarget>(
     TSource StartNode,
     TRel Relationship,
-    TTarget EndNode) : IGraphPathSegment<TSource, TRel, TTarget>
+    TTarget EndNode,
+    RelationshipDirection Direction) : IGraphPathSegment<TSource, TRel, TTarget>
     where TSource : class, INode
     where TRel : class, IRelationship
     where TTarget : class, INode

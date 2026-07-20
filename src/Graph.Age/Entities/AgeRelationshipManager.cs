@@ -26,6 +26,11 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         ?? NullLogger<AgeRelationshipManager>.Instance;
     private readonly EntityFactory _serializer = new();
 
+    private static RelationshipDirection LegacyDirection(Graph.IRelationship relationship) =>
+        relationship is Graph.Relationship { Direction: var direction }
+            ? direction
+            : RelationshipDirection.Outgoing;
+
     private static readonly string[] _ignoredProperties =
     [
         nameof(Graph.IRelationship.StartNodeId),
@@ -74,7 +79,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 entity,
                 relationship.StartNodeId,
                 relationship.EndNodeId,
-                relationship.Direction,
+                LegacyDirection(relationship),
                 transaction.Runner,
                 cancellationToken).ConfigureAwait(false);
 
@@ -108,6 +113,8 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
 
         try
         {
+            var direction = LegacyDirection(relationship);
+
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
             GraphDataModel.EnsureComplexPropertyDepth(relationship);
@@ -129,7 +136,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             var updated = await UpdateRelationshipPropertiesAsync(
                 relationship.Id,
                 entity,
-                relationship.Direction,
+                direction,
                 transaction.Runner,
                 cancellationToken).ConfigureAwait(false);
 
@@ -143,7 +150,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             {
                 throw new GraphException(
                     "Direction cannot be changed on update; delete and recreate the relationship. " +
-                    $"Stored direction is {updated.StoredDirection}; incoming direction is {relationship.Direction}.");
+                    $"Stored direction is {updated.StoredDirection}; incoming direction is {direction}.");
             }
 
             // Validate property constraints after confirming the target row exists. If validation

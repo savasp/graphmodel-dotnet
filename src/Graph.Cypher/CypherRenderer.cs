@@ -519,6 +519,7 @@ public sealed class CypherRenderer : ICypherRenderContext
                 .Select(item => item.Alias ?? RenderExpression(item.Expression))
                 .ToArray(),
             EntityProjectionClause { Shape: EntityProjectionShape.Node } => ["Node"],
+            EntityProjectionClause { Shape: EntityProjectionShape.Relationship } => ["Relationship"],
             EntityProjectionClause { IncludePathCoordinates: true } => ["pathIndex", "hopIndex", "PathSegment"],
             EntityProjectionClause => ["PathSegment"],
             SetOperationClause setOperation => GetProjectionColumns(
@@ -544,6 +545,14 @@ public sealed class CypherRenderer : ICypherRenderContext
             }
 
             RenderNodePropertyLoad(builder, projection);
+            return;
+        }
+
+        if (projection.Shape == EntityProjectionShape.Relationship)
+        {
+            RenderProjectionResultStart(builder, projection.Ordering);
+            builder.Append(projection.SourceAlias).Append(" AS Relationship");
+            CompleteProjectionResult(builder, projection.Ordering, "Relationship");
             return;
         }
 

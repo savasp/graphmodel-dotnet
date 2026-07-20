@@ -120,7 +120,7 @@ public sealed class GraphResultMaterializer
             var startNode = (Graph.INode)MaterializeSingleElement<object>(hop.StartNode, graphPathTypes.Source)!;
             var relationship = (Graph.IRelationship)MaterializeSingleElement<object>(hop.Relationship, graphPathTypes.Relationship)!;
             var endNode = (Graph.INode)MaterializeSingleElement<object>(hop.EndNode, graphPathTypes.Target)!;
-            segments.Add(new GraphPathHopSegment(startNode, relationship, endNode));
+            segments.Add(new GraphPathHopSegment(startNode, relationship, endNode, hop.Direction));
         }
 
         if (segments.Count == 0)
@@ -221,13 +221,18 @@ public sealed class GraphResultMaterializer
         var startNode = MaterializeSingleElement<object>(startNodeEntityInfo, genericArgs[0]);
         var relationship = MaterializeSingleElement<object>(relationshipEntityInfo, genericArgs[1]);
         var endNode = MaterializeSingleElement<object>(endNodeEntityInfo, genericArgs[2]);
+        var direction = entityInfo.SimpleProperties.TryGetValue(nameof(IGraphPathSegment.Direction), out var property) &&
+            property.Value is SimpleValue value
+                ? (RelationshipDirection)(ConvertValueToTargetType(value.Object, typeof(RelationshipDirection))
+                    ?? RelationshipDirection.Outgoing)
+                : throw new GraphException("Path segment projection did not include physical direction.");
 
         // Find and invoke the constructor
         var constructor = concreteType.GetConstructors()
-            .FirstOrDefault(c => c.GetParameters().Length == 3)
-            ?? throw new InvalidOperationException($"No 3-parameter constructor found for {concreteType.Name}");
+            .FirstOrDefault(c => c.GetParameters().Length == 4)
+            ?? throw new InvalidOperationException($"No 4-parameter constructor found for {concreteType.Name}");
 
-        return constructor.Invoke([startNode, relationship, endNode]);
+        return constructor.Invoke([startNode, relationship, endNode, direction]);
     }
 
     private static EntityInfo? GetComplexProperty(EntityInfo entityInfo, string propertyName)

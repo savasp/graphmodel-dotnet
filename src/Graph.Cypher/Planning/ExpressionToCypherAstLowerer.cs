@@ -124,20 +124,6 @@ internal sealed class ExpressionToCypherAstLowerer(
             return pathMember;
         }
 
-        if (node.Expression is ParameterExpression relationshipParameter &&
-            typeof(IRelationship).IsAssignableFrom(relationshipParameter.Type))
-        {
-            if (node.Member.Name == nameof(IRelationship.StartNodeId))
-            {
-                return Property("src", nameof(IEntity.Id));
-            }
-
-            if (node.Member.Name == nameof(IRelationship.EndNodeId))
-            {
-                return Property("tgt", nameof(IEntity.Id));
-            }
-        }
-
         if (TryLowerTemporalMember(node.Member.DeclaringType, node.Member.Name, Lower(node.Expression, aliases), out temporal))
         {
             return temporal;
@@ -985,10 +971,19 @@ internal sealed class ExpressionToCypherAstLowerer(
             nameof(IGraphPathSegment.StartNode) => new VariableRef(pathSegmentSourceAlias),
             nameof(IGraphPathSegment.Relationship) => new VariableRef("r"),
             nameof(IGraphPathSegment.EndNode) => new VariableRef("tgt"),
+            nameof(IGraphPathSegment.Direction) => PathSegmentDirection(),
             _ => new PropertyAccess(new VariableRef(ResolveAlias(parameter, aliases)), node.Member.Name),
         };
         return true;
     }
+
+    private CaseExpression PathSegmentDirection() => new(
+        new AstBinaryExpression(
+            CypherBinaryOperator.Equal,
+            new NativeElementIdentity(Function("startNode", new VariableRef("r"))),
+            new NativeElementIdentity(new VariableRef(pathSegmentSourceAlias))),
+        new Literal((int)RelationshipDirection.Outgoing),
+        new Literal((int)RelationshipDirection.Incoming));
 
     private bool TryMapGraphPathMember(
         MemberExpression node,

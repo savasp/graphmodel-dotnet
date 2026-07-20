@@ -197,27 +197,23 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateRelationshipAsync(knows1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
 
-        // Fetch all people and relationships
-        var people = await this.Graph.Nodes<Person>()
-            .ToListAsync(TestContext.Current.CancellationToken);
-        var relationships = await this.Graph.Relationships<Knows>()
-            .ToListAsync(TestContext.Current.CancellationToken);
-
         // Find all people Bob knows (outgoing)
-        var bobsFriends = relationships.Where(r => r.StartNodeId == bob.Id)
-                              .Select(r => people.FirstOrDefault(p => p.Id == r.EndNodeId))
-                              .Where(p => p != null)
-                              .ToList();
+        var bobsFriends = await this.Graph.Nodes<Person>()
+            .Where(person => person.Id == bob.Id)
+            .PathSegments<Person, Knows, Person>()
+            .Select(segment => segment.EndNode)
+            .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(bobsFriends);
-        Assert.Equal("Charlie", bobsFriends[0]!.FirstName);
+        Assert.Equal("Charlie", bobsFriends[0].FirstName);
 
         // Find all people who know Bob (incoming)
-        var knowsBob = relationships.Where(r => r.EndNodeId == bob.Id)
-                           .Select(r => people.FirstOrDefault(p => p.Id == r.StartNodeId))
-                           .Where(p => p != null)
-                           .ToList();
+        var knowsBob = await this.Graph.Nodes<Person>()
+            .Where(person => person.Id == bob.Id)
+            .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Incoming)
+            .Select(segment => segment.EndNode)
+            .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(knowsBob);
-        Assert.Equal(alice.Id, knowsBob[0]!.Id);
+        Assert.Equal(alice.Id, knowsBob[0].Id);
     }
 
     [Fact]
@@ -231,14 +227,12 @@ public interface IAdvancedQueryTests : IGraphTest
         var knows = new Knows(alice, bob) { Since = DateTime.UtcNow };
         await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
 
-        var people = await this.Graph.Nodes<Person>().ToListAsync(TestContext.Current.CancellationToken);
-        var rels = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
-
-        // Join: Find all (person, friend) pairs
-        var pairs = (from p in people
-                     join k in rels on p.Id equals k.StartNodeId
-                     join f in people on k.EndNodeId equals f.Id
-                     select new { Person = p, Friend = f }).ToList();
+        // Project the endpoints from a segment; a bare relationship intentionally has no endpoints.
+        var pairs = await this.Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .PathSegments<Person, Knows, Person>()
+            .Select(segment => new { Person = segment.StartNode, Friend = segment.EndNode })
+            .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(pairs);
         Assert.Equal("Alice", pairs[0].Person.FirstName);
         Assert.Equal("Bob", pairs[0].Friend.FirstName);
@@ -317,13 +311,13 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
 
         var rels = await this.Graph.Relationships<Knows>(null)
-            .Where(r => r.StartNodeId == alice.Id)
+            .Where(r => r.Id == knows.Id)
             .Select(r => r.Since).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
 
         rels = await this.Graph.Relationships<Knows>()
-            .Where(r => alice.Id == r.StartNodeId)
+            .Where(r => knows.Id == r.Id)
             .Select(r => r.Since).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
@@ -1142,29 +1136,28 @@ public interface IAdvancedQueryTests : IGraphTest
 
         // Act & Assert: Test navigation at different levels
 
-        // Test 1: Simple relationship query - who does Alice know?
-        var aliceKnows = await this.Graph.Relationships<Knows>()
-            .Where(k => k.StartNodeId == alice.Id)
+        // Test 1: Endpoint navigation comes from a segment, not a bare relationship.
+        var aliceKnows = await this.Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .PathSegments<Person, Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(aliceKnows);
-        Assert.Equal(bob.Id, aliceKnows[0].EndNodeId);
-
-        // Test 2: Get all people and relationships
-        var allPeople = this.Graph.Nodes<Person>();
-        var allKnows = this.Graph.Relationships<Knows>();
+        Assert.Equal(bob.Id, aliceKnows[0].EndNode.Id);
 
         // Find Bob's friends
-        var bobsFriends = await allKnows
-            .Where(k => k.StartNodeId == bob.Id)
-            .Join(allPeople, k => k.EndNodeId, p => p.Id, (k, p) => p)
+        var bobsFriends = await this.Graph.Nodes<Person>()
+            .Where(person => person.Id == bob.Id)
+            .PathSegments<Person, Knows, Person>()
+            .Select(segment => segment.EndNode)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(bobsFriends);
         Assert.Equal("Charlie", bobsFriends[0].FirstName);
 
-        var relationshipStartPeople = await allKnows
-            .Join(allPeople, k => k.StartNodeId, p => p.Id, (k, p) => p)
+        var relationshipStartPeople = await this.Graph.Nodes<Person>()
+            .PathSegments<Person, Knows, Person>()
+            .Select(segment => segment.StartNode)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(3, relationshipStartPeople.Count);
@@ -1179,18 +1172,20 @@ public interface IAdvancedQueryTests : IGraphTest
         // For now, implement this test using simple graph traversal instead
 
         // Get Alice's direct friends first
-        var aliceDirectFriends = await allKnows
-            .Where(k => k.StartNodeId == alice.Id)
-            .Join(allPeople, k => k.EndNodeId, p => p.Id, (k, p) => p)
+        var aliceDirectFriends = await this.Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .PathSegments<Person, Knows, Person>()
+            .Select(segment => segment.EndNode)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Then get the friends of those friends
         var friendOfFriendIds = new List<string>();
         foreach (var friend in aliceDirectFriends)
         {
-            var friendsFriends = await allKnows
-                .Where(k => k.StartNodeId == friend.Id)
-                .Join(allPeople, k => k.EndNodeId, p => p.Id, (k, p) => p)
+            var friendsFriends = await this.Graph.Nodes<Person>()
+                .Where(person => person.Id == friend.Id)
+                .PathSegments<Person, Knows, Person>()
+                .Select(segment => segment.EndNode)
                 .ToListAsync(TestContext.Current.CancellationToken);
 
             friendOfFriendIds.AddRange(friendsFriends.Select(f => f.Id));
@@ -1204,7 +1199,9 @@ public interface IAdvancedQueryTests : IGraphTest
 
         Assert.Single(alicesFriendsOfFriends);
         // Verify Charlie is the friend of friend by getting the person
-        charlie = await allPeople.Where(p => p.Id == alicesFriendsOfFriends[0]).FirstOrDefaultAsync(TestContext.Current.CancellationToken);
+        charlie = await this.Graph.Nodes<Person>()
+            .Where(p => p.Id == alicesFriendsOfFriends[0])
+            .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(charlie);
         Assert.Equal("Charlie", charlie.FirstName);
     }
@@ -1245,13 +1242,14 @@ public interface IAdvancedQueryTests : IGraphTest
 
         foreach (var relationship in allKnowsRelationships)
         {
-            Assert.NotNull(relationship.StartNodeId);
-            Assert.NotNull(relationship.EndNodeId);
+            Assert.Empty(relationship.StartNodeId);
+            Assert.Empty(relationship.EndNodeId);
         }
 
-        // Check if we can find relationships by source ID
-        var aliceRelationships = await this.Graph.Relationships<Knows>()
-            .Where(k => k.StartNodeId == alice.Id)
+        // Check the relationships from Alice through endpoint-bearing segments.
+        var aliceRelationships = await this.Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .PathSegments<Person, Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, aliceRelationships.Count); // This should also pass
 
@@ -1333,15 +1331,17 @@ public interface IAdvancedQueryTests : IGraphTest
         // Execute separate queries and combine in memory
         var people = await this.Graph.Nodes<Person>()
             .ToDictionaryAsync(p => p.Id, TestContext.Current.CancellationToken);
-        var relationships = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
+        var segments = await this.Graph.Nodes<Person>()
+            .PathSegments<Person, Knows, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         // Build a connection map
-        var connectionMap = relationships
-            .GroupBy(r => r.StartNodeId)
+        var connectionMap = segments
+            .GroupBy(segment => segment.StartNode.Id)
             .Select(g => new
             {
                 PersonName = people[g.Key].FirstName,
-                Connections = g.Select(r => people[r.EndNodeId].FirstName).ToList()
+                Connections = g.Select(segment => people[segment.EndNode.Id].FirstName).ToList()
             })
             .ToList();
 

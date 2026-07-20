@@ -84,7 +84,13 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
 
         AppendEndpoint(builder, parameters, "s", sourceEntity, createMissingEndpoints, source.Id);
         AppendEndpoint(builder, parameters, "t", targetEntity, createMissingEndpoints, target.Id);
-        AppendEdge(builder, parameters, relationshipEntity, relationship.Direction);
+        AppendEdge(
+            builder,
+            parameters,
+            relationshipEntity,
+            relationship is Graph.Relationship { Direction: var direction }
+                ? direction
+                : RelationshipDirection.Outgoing);
 
         return new SubgraphStatement(builder.ToString(), parameters);
     }

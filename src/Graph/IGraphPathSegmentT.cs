@@ -28,4 +28,9 @@ public interface IGraphPathSegment<TSource, TRel, TTarget> : IGraphPathSegment
     /// Gets the strongly-typed relationship connecting the nodes.
     /// </summary>
     new TRel Relationship { get; }
+
+    /// <summary>
+    /// Gets the physical orientation of the relationship relative to the strongly-typed segment endpoints.
+    /// </summary>
+    new RelationshipDirection Direction { get; }
 }

@@ -6,13 +6,13 @@ using Cvoya.Graph.Cypher.Internal;
 namespace Cvoya.Graph.Cypher.Ast;
 
 /// <summary>
-/// Represents the provider-neutral wire projection used to materialize a node or path segment.
+/// Represents the provider-neutral wire projection used to materialize a node, relationship, or path segment.
 /// </summary>
 public sealed record EntityProjectionClause : ICypherClause
 {
     /// <summary>Initializes an entity wire projection.</summary>
     /// <param name="shape">The projection shape.</param>
-    /// <param name="sourceAlias">The source node alias.</param>
+    /// <param name="sourceAlias">The projected entity alias, or the source node alias for a path segment.</param>
     /// <param name="relationshipAlias">The relationship alias for a path segment.</param>
     /// <param name="targetAlias">The target node alias for a path segment.</param>
     /// <param name="loadSourceProperties">Whether declared complex properties are loaded from the source node.</param>
@@ -39,7 +39,7 @@ public sealed record EntityProjectionClause : ICypherClause
 
     /// <summary>Initializes an entity wire projection.</summary>
     /// <param name="shape">The projection shape.</param>
-    /// <param name="sourceAlias">The source node alias.</param>
+    /// <param name="sourceAlias">The projected entity alias, or the source node alias for a path segment.</param>
     /// <param name="relationshipAlias">The relationship alias for a path segment.</param>
     /// <param name="targetAlias">The target node alias for a path segment.</param>
     /// <param name="loadSourceProperties">Whether declared complex properties are loaded from the source node.</param>
@@ -68,7 +68,7 @@ public sealed record EntityProjectionClause : ICypherClause
 
     /// <summary>Initializes an entity wire projection.</summary>
     /// <param name="shape">The projection shape.</param>
-    /// <param name="sourceAlias">The source node alias.</param>
+    /// <param name="sourceAlias">The projected entity alias, or the source node alias for a path segment.</param>
     /// <param name="relationshipAlias">The relationship alias for a path segment.</param>
     /// <param name="targetAlias">The target node alias.</param>
     /// <param name="loadSourceProperties">Whether declared complex properties are loaded from the source node.</param>
@@ -99,7 +99,7 @@ public sealed record EntityProjectionClause : ICypherClause
 
     /// <summary>Initializes an entity wire projection.</summary>
     /// <param name="shape">The projection shape.</param>
-    /// <param name="sourceAlias">The source node alias.</param>
+    /// <param name="sourceAlias">The projected entity alias, or the source node alias for a path segment.</param>
     /// <param name="relationshipAlias">The relationship alias for a path segment.</param>
     /// <param name="targetAlias">The target node alias.</param>
     /// <param name="loadSourceProperties">Whether declared complex properties are loaded from the source node.</param>
@@ -152,7 +152,7 @@ public sealed record EntityProjectionClause : ICypherClause
     /// <summary>Gets the projection shape.</summary>
     public EntityProjectionShape Shape { get; }
 
-    /// <summary>Gets the source node alias.</summary>
+    /// <summary>Gets the projected entity alias, or the source node alias for a path segment.</summary>
     public string SourceAlias { get; }
 
     /// <summary>Gets the relationship alias for a path segment.</summary>

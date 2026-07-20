@@ -4,17 +4,18 @@
 namespace Cvoya.Graph;
 
 /// <summary>
-/// Defines the physical storage direction of a relationship relative to its start and end node IDs.
+/// Defines physical relationship orientation relative to an ordered pair of endpoint operands.
+/// For a path segment, the operands are its start and end nodes.
 /// </summary>
 public enum RelationshipDirection
 {
     /// <summary>
-    /// The stored relationship points from <c>StartNodeId</c> to <c>EndNodeId</c>.
+    /// The stored relationship points from the first endpoint to the second endpoint.
     /// </summary>
     Outgoing,
 
     /// <summary>
-    /// The stored relationship points from <c>EndNodeId</c> to <c>StartNodeId</c>.
+    /// The stored relationship points from the second endpoint to the first endpoint.
     /// </summary>
     Incoming
 }

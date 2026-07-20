@@ -20,8 +20,8 @@ public static class GraphDegreeExtensions
     /// <see cref="GraphTraversalDirection.Outgoing"/> counts physical edges leaving the node,
     /// <see cref="GraphTraversalDirection.Incoming"/> counts physical edges arriving at the node, and
     /// <see cref="GraphTraversalDirection.Both"/> counts incident relationships in either direction.
-    /// A relationship stored with <see cref="RelationshipDirection.Incoming"/> reverses its logical
-    /// start/end orientation for this purpose, consistently with graph traversal.
+    /// Direction is determined from the physical edge itself, consistently with graph traversal and
+    /// <see cref="IGraphPathSegment.Direction"/>.
     /// </param>
     /// <returns>The number of matching relationships.</returns>
     /// <remarks>

@@ -59,6 +59,35 @@ public class CypherRendererTests
     }
 
     [Fact]
+    public void Render_RelationshipProjectionReturnsOnlyRelationshipVariable()
+    {
+        var statement = new CypherStatement(
+            [
+                new MatchClause(
+                    [new PathPattern([
+                        new NodePattern("src", []),
+                        new RelationshipPattern("r", CypherDirection.Outgoing, depth: null, types: ["KNOWS"]),
+                        new NodePattern("tgt", []),
+                    ])],
+                    optional: false),
+                new EntityProjectionClause(
+                    EntityProjectionShape.Relationship,
+                    "r",
+                    relationshipAlias: null,
+                    targetAlias: null,
+                    loadSourceProperties: false,
+                    loadTargetProperties: false),
+            ],
+            new Dictionary<string, object?>());
+
+        var result = renderer.Render(statement);
+
+        Assert.EndsWith("RETURN r AS Relationship", result.Text, StringComparison.Ordinal);
+        Assert.Equal(["Relationship"], result.ProjectionColumns);
+        Assert.DoesNotContain("PathSegment", result.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Render_NodeHydrationCarriesInputRowIdentityThroughAggregation()
     {
         var statement = new CypherStatement(

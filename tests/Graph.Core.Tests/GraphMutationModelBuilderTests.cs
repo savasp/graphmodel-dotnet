@@ -346,8 +346,6 @@ public sealed class GraphMutationModelBuilderTests
 
         string IRelationship.Type => string.Empty;
 
-        RelationshipDirection IRelationship.Direction { get; init; }
-
         string IRelationship.StartNodeId { get; init; } = string.Empty;
 
         string IRelationship.EndNodeId { get; init; } = string.Empty;

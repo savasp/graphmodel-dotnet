@@ -1,7 +1,7 @@
 == Cypher ==
 MATCH (joined:Person)
 MATCH (src)-[r:KNOWS]->(tgt)
-WHERE tgt.Id = joined.Id
+WHERE r.EndNodeId = joined.Id
 RETURN {
                 Node: joined,
                 ComplexProperties: []

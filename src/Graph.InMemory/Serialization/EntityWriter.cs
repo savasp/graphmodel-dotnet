@@ -60,7 +60,9 @@ internal static class EntityWriter
             entity.Label,
             relationship.StartNodeId,
             relationship.EndNodeId,
-            relationship.Direction,
+            relationship is Relationship { Direction: var direction }
+                ? direction
+                : RelationshipDirection.Outgoing,
             entity.ActualType,
             SnapshotSimpleProperties(entity, labels: null),
             IsComplexProperty: false,

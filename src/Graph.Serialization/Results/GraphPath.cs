@@ -10,7 +10,11 @@ namespace Cvoya.Graph.Serialization.Results;
 /// relationship types when labels overlap), so <see cref="IGraphPath.Segments"/> is expressed in
 /// terms of the non-generic <see cref="IGraphPathSegment"/> base.
 /// </summary>
-internal sealed record GraphPathHopSegment(INode StartNode, IRelationship Relationship, INode EndNode) : IGraphPathSegment;
+internal sealed record GraphPathHopSegment(
+    INode StartNode,
+    IRelationship Relationship,
+    INode EndNode,
+    RelationshipDirection Direction) : IGraphPathSegment;
 
 /// <summary>
 /// Concrete <see cref="IGraphPath"/> implementation materialized from a <c>TraversePaths</c> query.

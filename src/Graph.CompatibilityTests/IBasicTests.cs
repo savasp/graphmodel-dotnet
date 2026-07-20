@@ -207,7 +207,7 @@ public interface IBasicTests : IGraphTest
     }
 
     [Fact]
-    public async Task BareRelationshipProjection_IncomingEdge_HasLogicalEndpointIds()
+    public async Task BareRelationshipProjection_IncomingEdge_DoesNotReconstructEndpoints()
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
@@ -224,21 +224,21 @@ public interface IBasicTests : IGraphTest
 
         await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
 
-        // Exercises the relationship-valued anonymous projection path:
-        // CypherResultProcessor.CreateEntityInfoFromProjection(... value is relationship-shaped map ...).
+        // Exercises the relationship-valued anonymous projection path. Endpoint and orientation
+        // information is deliberately available only from a path segment.
         var projection = await this.Graph.Relationships<Knows>()
             .Where(r => r.Id == knows.Id)
             .Select(r => new { Relationship = r })
             .FirstAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(knows.Id, projection.Relationship.Id);
-        Assert.Equal(p1.Id, projection.Relationship.StartNodeId);
-        Assert.Equal(p2.Id, projection.Relationship.EndNodeId);
-        Assert.Equal(RelationshipDirection.Incoming, projection.Relationship.Direction);
+        Assert.Empty(projection.Relationship.StartNodeId);
+        Assert.Empty(projection.Relationship.EndNodeId);
+        Assert.Equal(knows.Since, projection.Relationship.Since);
     }
 
     [Fact]
-    public async Task BareRelationshipProjection_OutgoingEdge_HasLogicalEndpointIds()
+    public async Task BareRelationshipRoot_DoesNotReconstructEndpoints()
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
@@ -257,17 +257,16 @@ public interface IBasicTests : IGraphTest
 
         var projection = await this.Graph.Relationships<Knows>()
             .Where(r => r.Id == knows.Id)
-            .Select(r => new { Relationship = r })
             .FirstAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(knows.Id, projection.Relationship.Id);
-        Assert.Equal(p1.Id, projection.Relationship.StartNodeId);
-        Assert.Equal(p2.Id, projection.Relationship.EndNodeId);
-        Assert.Equal(RelationshipDirection.Outgoing, projection.Relationship.Direction);
+        Assert.Equal(knows.Id, projection.Id);
+        Assert.Empty(projection.StartNodeId);
+        Assert.Empty(projection.EndNodeId);
+        Assert.Equal(knows.Since, projection.Since);
     }
 
     [Fact]
-    public async Task BareRelationshipProjection_MixedIncomingEdge_HasLogicalEndpointIds()
+    public async Task BareRelationshipProjection_MixedShape_PreservesModeledPropertiesOnly()
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
@@ -292,9 +291,9 @@ public interface IBasicTests : IGraphTest
 
         Assert.Equal(since, projection.Since);
         Assert.Equal(knows.Id, projection.Relationship.Id);
-        Assert.Equal(p1.Id, projection.Relationship.StartNodeId);
-        Assert.Equal(p2.Id, projection.Relationship.EndNodeId);
-        Assert.Equal(RelationshipDirection.Incoming, projection.Relationship.Direction);
+        Assert.Empty(projection.Relationship.StartNodeId);
+        Assert.Empty(projection.Relationship.EndNodeId);
+        Assert.Equal(since, projection.Relationship.Since);
     }
 
     [Fact]
@@ -362,8 +361,9 @@ public interface IBasicTests : IGraphTest
         var knows2 = new Knows { StartNodeId = p2.Id, EndNodeId = p3.Id, Since = DateTime.UtcNow };
         await this.Graph.CreateRelationshipAsync(knows1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
+        var relationshipIds = new[] { knows1.Id, knows2.Id };
         var rels = await this.Graph.Relationships<Knows>()
-            .Where(r => r.StartNodeId == p1.Id || r.StartNodeId == p2.Id)
+            .Where(r => relationshipIds.Contains(r.Id))
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, rels.Count);
         Assert.Contains(rels, r => r.Id == knows1.Id);

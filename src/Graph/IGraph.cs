@@ -152,7 +152,7 @@ public interface IGraph
     /// <para>
     /// The whole subgraph (both endpoint nodes, all of their complex-property value-node subtrees,
     /// and the edge) is created as one transactional unit: if any part fails, nothing is created.
-    /// The relationship's <see cref="IRelationship.Direction"/> is honored for the stored edge.
+    /// The transitional relationship model's <see cref="Relationship.Direction"/> is honored for the stored edge.
     /// </para>
     /// <para>
     /// <paramref name="relationship"/>'s <see cref="IRelationship.StartNodeId"/> and
