@@ -123,6 +123,11 @@ internal class AnalyzerHelper
 
     private static bool IsUnsupportedFrameworkType(ITypeSymbol type)
     {
+        type = UnwrapNullableValueType(type);
+
+        if (type.SpecialType is SpecialType.System_IntPtr or SpecialType.System_UIntPtr)
+            return true;
+
         // Check specific unsupported framework types by name and namespace
         var fullName = type.ToDisplayString();
 

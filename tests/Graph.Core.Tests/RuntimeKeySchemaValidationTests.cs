@@ -53,6 +53,50 @@ public sealed class RuntimeKeySchemaValidationTests
     }
 
     [Theory]
+    [InlineData("IntPtr")]
+    [InlineData("UIntPtr")]
+    [InlineData("IntPtr?")]
+    [InlineData("UIntPtr?")]
+    [InlineData("nint[]")]
+    [InlineData("List<nuint?>")]
+    public void CreateEntitySchemaInfo_NativeSizedIntegerProperty_Throws(string propertyType)
+    {
+        var source = $$"""
+            #nullable enable
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            [Node("RuntimeNativeIntegerNode")]
+            public sealed record RuntimeNativeIntegerNode : Node
+            {
+                public {{propertyType}} DomainKey { get; init; }
+            }
+            """;
+
+        AssertInvalidSchema(source, "RuntimeNativeIntegerNode", "native-sized integer", "IntPtr", "UIntPtr");
+    }
+
+    [Theory]
+    [InlineData("nint")]
+    [InlineData("nuint")]
+    public void CreateEntitySchemaInfo_NativeSizedIntegerKey_Throws(string propertyType)
+    {
+        var source = $$"""
+            using Cvoya.Graph;
+
+            [Node("RuntimeNativeIntegerKeyNode")]
+            public sealed record RuntimeNativeIntegerKeyNode : Node
+            {
+                [Property(IsKey = true)]
+                public {{propertyType}} DomainKey { get; init; }
+            }
+            """;
+
+        AssertInvalidSchema(source, "RuntimeNativeIntegerKeyNode", "native-sized integer", "IntPtr", "UIntPtr");
+    }
+
+    [Theory]
     [InlineData("IsKey = true", "IsKey")]
     [InlineData("IsUnique = true", "IsUnique")]
     [InlineData("IsIndexed = true", "IsIndexed")]

@@ -143,6 +143,9 @@ Supported property types:
   declaration round-trips as a `HashSet<T>`; every other shape as a `List<T>` (or an array). Other
   concrete collection types (for example `Queue<T>`, `SortedSet<T>`, `ObservableCollection<T>`) are
   not supported and are reported by CG004/CG005.
+
+Native-sized integers (`IntPtr`/`UIntPtr`, including the `nint`/`nuint` aliases) are not supported as
+ordinary properties, key values, nullable values, or collection elements.
 - Relationship collections may contain only simple element types; complex values and collections of
   complex values are supported on nodes only.
 - Spatial types (with provider support): `Cvoya.Graph.Point`

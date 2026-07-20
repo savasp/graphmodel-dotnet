@@ -269,6 +269,26 @@ public class CollectionShapeRoundTripTests
         AssertGeneratorProducesNoSources(frameworkLookalike);
     }
 
+    [Fact]
+    public void NativeSizedIntegerProperties_DoNotEmitSerializers()
+    {
+        const string source = """
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            [Node("Invalid")]
+            public sealed record InvalidNode : Node
+            {
+                public IntPtr Pointer { get; set; }
+                public UIntPtr? OptionalPointer { get; set; }
+                public List<nint> Pointers { get; set; } = new();
+            }
+            """;
+
+        AssertGeneratorProducesNoSources(source);
+    }
+
     private static IEntitySerializer CreateSerializer(System.Reflection.Assembly assembly, string serializerTypeName)
     {
         var serializerType = assembly.GetType(serializerTypeName, throwOnError: true)!;

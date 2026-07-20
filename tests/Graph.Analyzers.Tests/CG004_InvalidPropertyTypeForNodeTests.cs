@@ -488,6 +488,32 @@ public class CG004_InvalidPropertyTypeForNodeTests
     }
 
     [Fact]
+    public async Task NodeWithNativeSizedIntegerTypes_ProducesDiagnostics()
+    {
+        var test = """
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            public class TestNode : Node
+            {
+                public IntPtr {|#0:Pointer|} { get; set; }
+                public UIntPtr? {|#1:OptionalPointer|} { get; set; }
+                public List<nint> {|#2:Pointers|} { get; set; } = new();
+            }
+            """;
+
+        var expected = new[]
+        {
+            VerifyCS.Diagnostic("CG004").WithLocation(0).WithArguments("Pointer", "TestNode", "IntPtr"),
+            VerifyCS.Diagnostic("CG004").WithLocation(1).WithArguments("OptionalPointer", "TestNode", "UIntPtr?"),
+            VerifyCS.Diagnostic("CG004").WithLocation(2).WithArguments("Pointers", "TestNode", "List<IntPtr>"),
+        };
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task NodeWithMultipleInvalidProperties_ProducesMultipleDiagnostics()
     {
         var test = """
