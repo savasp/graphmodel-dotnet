@@ -7,7 +7,7 @@ using Cvoya.Graph.CompatibilityTests;
 using Npgsql;
 using Npgsql.Age;
 
-public sealed class AgeSubgraphBatchTests
+public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
 {
     private static readonly string ConnectionString = Environment.GetEnvironmentVariable("AGE_CONNECTION_STRING")
         ?? "Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres";
@@ -19,13 +19,16 @@ public sealed class AgeSubgraphBatchTests
     {
         var batchExecutions = 0;
         await using var dataSource = CreateDataSource();
-        await using var store = new AgeGraphStore(
+        await using var store = await graphCleanup.CreateStoreAsync(
             dataSource,
-            NewGraphName(),
-            schemaRegistry: null,
-            loggerFactory: null,
-            () => Interlocked.Increment(ref batchExecutions));
-        await store.CreateGraphIfNotExistsAsync(TestContext.Current.CancellationToken);
+            "cvoya_subgraph_batch",
+            TestContext.Current.CancellationToken,
+            (source, graphName) => new AgeGraphStore(
+                source,
+                graphName,
+                schemaRegistry: null,
+                loggerFactory: null,
+                () => Interlocked.Increment(ref batchExecutions)));
 
         // Warm lazy schema initialization and the measured graph path before resetting the seam.
         await CreateNestedSubgraphAsync(store.Graph, createMissingEndpoints);
@@ -52,8 +55,10 @@ public sealed class AgeSubgraphBatchTests
     public async Task CreateAsync_LaterBatchValidationFailure_RollsBackEveryWrite(bool callerOwnsTransaction)
     {
         await using var dataSource = CreateDataSource();
-        await using var store = new AgeGraphStore(dataSource, NewGraphName());
-        await store.CreateGraphIfNotExistsAsync(TestContext.Current.CancellationToken);
+        await using var store = await graphCleanup.CreateStoreAsync(
+            dataSource,
+            "cvoya_subgraph_batch",
+            TestContext.Current.CancellationToken);
         var graph = store.Graph;
         var cancellationToken = TestContext.Current.CancellationToken;
 
@@ -113,8 +118,10 @@ public sealed class AgeSubgraphBatchTests
     public async Task CreateAsync_CreateOnly_SameEndpointIds_ThrowsAndCreatesNothing()
     {
         await using var dataSource = CreateDataSource();
-        await using var store = new AgeGraphStore(dataSource, NewGraphName());
-        await store.CreateGraphIfNotExistsAsync(TestContext.Current.CancellationToken);
+        await using var store = await graphCleanup.CreateStoreAsync(
+            dataSource,
+            "cvoya_subgraph_batch",
+            TestContext.Current.CancellationToken);
         var node = new Person { FirstName = "Self" };
         var relationship = new Knows(node, node);
 
@@ -136,8 +143,10 @@ public sealed class AgeSubgraphBatchTests
     public async Task CreateAsync_CreateMissingEndpoints_SupportsSelfRelationship()
     {
         await using var dataSource = CreateDataSource();
-        await using var store = new AgeGraphStore(dataSource, NewGraphName());
-        await store.CreateGraphIfNotExistsAsync(TestContext.Current.CancellationToken);
+        await using var store = await graphCleanup.CreateStoreAsync(
+            dataSource,
+            "cvoya_subgraph_batch",
+            TestContext.Current.CancellationToken);
         var node = new Person { FirstName = "Self" };
         var relationship = new Knows(node, node);
 
@@ -204,6 +213,4 @@ public sealed class AgeSubgraphBatchTests
         builder.UseAge();
         return builder.Build();
     }
-
-    private static string NewGraphName() => $"cvoya_subgraph_batch_{Guid.NewGuid():N}";
 }

@@ -11,7 +11,7 @@ using Npgsql;
 using Npgsql.Age;
 
 /// <summary>The compatibility-suite harness for Apache AGE.</summary>
-public sealed class AgeHarness : IGraphProviderTestHarness
+public sealed class AgeHarness(AgeGraphCleanupFixture graphCleanup) : IGraphProviderTestHarness
 {
     private readonly List<AgeGraphStore> stores = [];
     private readonly string connectionString = Environment.GetEnvironmentVariable("AGE_CONNECTION_STRING")
@@ -29,8 +29,10 @@ public sealed class AgeHarness : IGraphProviderTestHarness
             var builder = new NpgsqlDataSourceBuilder(connectionString);
             builder.UseAge();
             dataSource = builder.Build();
-            await using var store = new AgeGraphStore(dataSource, NewGraphName());
-            await store.CreateGraphIfNotExistsAsync(TestContext.Current.CancellationToken);
+            await using var store = await graphCleanup.CreateStoreAsync(
+                dataSource,
+                "cvoya_tck",
+                TestContext.Current.CancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -65,14 +67,14 @@ public sealed class AgeHarness : IGraphProviderTestHarness
         // Every isolation level gets its own AGE graph and its own store instance, so previously
         // returned graphs are never reset or replaced and StoreIsolation.IndependentStore needs no
         // separate path.
-        var graphName = NewGraphName();
-        var store = new AgeGraphStore(
-            dataSource ?? throw new GraphProviderUnavailableException("The AGE test data source was not initialized."),
-            graphName);
+        AgeGraphStore? store = null;
         var registered = false;
         try
         {
-            await store.CreateGraphIfNotExistsAsync(cancellationToken);
+            store = await graphCleanup.CreateStoreAsync(
+                dataSource ?? throw new GraphProviderUnavailableException("The AGE test data source was not initialized."),
+                "cvoya_tck",
+                cancellationToken);
             stores.Add(store);
             registered = true;
             return store.Graph;
@@ -88,7 +90,7 @@ public sealed class AgeHarness : IGraphProviderTestHarness
             // Dispose on every failure path (including cancellation, which the narrowed catch
             // above deliberately doesn't wrap); a successfully registered store is cleaned up by
             // DisposeAsync instead.
-            if (!registered)
+            if (store is not null && !registered)
             {
                 await store.DisposeAsync();
             }
@@ -126,6 +128,4 @@ public sealed class AgeHarness : IGraphProviderTestHarness
 
     public bool IsExpectedConcurrentUpdateException(Exception exception) =>
         exception.GetBaseException() is PostgresException { SqlState: "40001" or "40P01" };
-
-    private static string NewGraphName() => $"cvoya_tck_{Guid.NewGuid():N}";
 }
