@@ -286,6 +286,28 @@ public class CG018_InvalidPropertySchemaDeclarationTests
     }
 
     [Fact]
+    public async Task NonConflictingSchemaFlags_ProduceNoDiagnostic()
+    {
+        const string test = """
+            using Cvoya.Graph;
+
+            public record Customer : Node
+            {
+                [Property(Ignore = true)]
+                public string ImportMarker { get; set; } = string.Empty;
+
+                [Property(IsUnique = true)]
+                public string Email { get; set; } = string.Empty;
+
+                [Property(IsIndexed = true, IsRequired = true)]
+                public string Region { get; set; } = string.Empty;
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task ValidInheritedKey_ProducesNoDiagnostic()
     {
         const string test = """

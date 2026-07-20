@@ -331,6 +331,7 @@ TransientException: Deadlock detected
 | **CG015** | [ComplexProperty] has no effect on the configured property | Warning |
 | **CG016** | Open generic graph entities are not supported | Error |
 | **CG017** | Nullable complex collection elements are not supported | Error |
+| **CG018** | Invalid graph key or ignored property declaration | Error |
 
 **Solutions:**
 See the [Analyzers README](https://github.com/cvoya-com/graph/blob/main/src/Graph.Analyzers/README.md) for detailed examples of each warning and how to fix them.
