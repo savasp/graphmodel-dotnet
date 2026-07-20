@@ -11,16 +11,23 @@ def check(condition, message)
   raise message unless condition
 end
 
+# Workflow files contain UTF-8 step names, so never depend on the ambient locale.
+def read_workflow_source(path)
+  File.read(path, encoding: Encoding::UTF_8)
+end
+
 def load_workflow(path)
-  YAML.safe_load(File.read(path), aliases: true)
+  YAML.safe_load(read_workflow_source(path), aliases: true)
 end
 
 def step_named(job, name)
-  job.fetch("steps").find { |step| step["name"] == name }
+  step = job.fetch("steps").find { |candidate| candidate["name"] == name }
+  raise "workflow step named #{name.inspect} is missing" unless step
+  step
 end
 
 docs = load_workflow(DOCS_WORKFLOW_PATH)
-docs_source = File.read(DOCS_WORKFLOW_PATH)
+docs_source = read_workflow_source(DOCS_WORKFLOW_PATH)
 docs_triggers = docs.fetch(true)
 docs_job = docs.fetch("jobs").fetch("validate-documentation")
 
