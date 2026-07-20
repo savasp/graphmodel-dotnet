@@ -38,17 +38,6 @@
           }
         ]
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$(git -C \"${CLAUDE_PROJECT_DIR:-.}\" rev-parse --show-toplevel)\"/.claude/hooks/verify-build.sh"
-          }
-        ]
-      }
     ]
   }
 }

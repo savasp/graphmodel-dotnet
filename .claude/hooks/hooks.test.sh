@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Self-test for the PreToolUse/PostToolUse hooks. Run from the repo root:
+# Self-test for the PreToolUse hook and the pre-push gate. Run from the repo root:
 #   bash .claude/hooks/hooks.test.sh
 set -u
 cd "$(dirname "$0")/../.." || exit 1
@@ -31,9 +31,12 @@ check "allows file merely containing VERSION" 0 "{\"tool_input\":{\"file_path\":
 check "allows nested Directory.Build.props"   0 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/src/Directory.Build.props\"}}" "$P"
 check "allows empty input"                    0 "{}" "$P"
 
-V=.claude/hooks/verify-build.sh
-check "verify-build ignores non-.cs files"    0 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/README.md\"}}" "$V"
-check "verify-build ignores empty input"      0 "{}" "$V"
+# The pre-push gate skips work when every pushed ref is a deletion (all-zero
+# local oid); a real update instead execs eng/ci/ci-local.sh, so only the
+# deletion-skip path is exercised here (running the gate needs the toolchain).
+H=.githooks/pre-push
+Z=0000000000000000000000000000000000000000
+check "pre-push skips a pure branch deletion"  0 "(delete) $Z refs/heads/deleted-branch a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" "$H"
 
 echo "----"
 echo "$pass passed, $fail failed"

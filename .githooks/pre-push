@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# pre-push gate: run the fast local CI checks (eng/ci/ci-local.sh) before a push.
+#
+# Catches the obvious failures (build, format) before they reach the PR / merge
+# queue. The full test matrix (unit + Neo4j + Apache AGE) runs in CI regardless.
+#
+# Enable once per clone (and per worktree) with: eng/install-hooks.sh
+# Bypass in an emergency with:  git push --no-verify
+
+set -uo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+gate="$repo_root/eng/ci/ci-local.sh"
+
+# A pure branch deletion has nothing to build, yet still fires pre-push. Git feeds
+# one line per ref on stdin — "<local ref> <local oid> <remote ref> <remote oid>" —
+# and a deletion's local oid is all-zero. Skip the gate when every pushed ref is a
+# deletion. Empty stdin (no ref lines) falls through and runs the gate.
+only_deletes=1 saw_ref=0
+while read -r _lref loid _rref _roid; do
+  saw_ref=1
+  case "$loid" in *[!0]*) only_deletes=0 ;; esac
+done
+if [ "$saw_ref" = 1 ] && [ "$only_deletes" = 1 ]; then
+  echo "pre-push: all pushed refs are deletions — nothing to build; skipping gate."
+  exit 0
+fi
+
+if [ ! -x "$gate" ]; then
+  echo "pre-push: $gate missing or not executable; skipping gate." >&2
+  exit 0
+fi
+
+echo "pre-push: running fast local CI gate (bypass with --no-verify)…"
+exec "$gate"
