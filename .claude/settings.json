@@ -10,8 +10,21 @@
       "Bash(./scripts/run-tests.sh*)",
       "Bash(./scripts/containers/start-neo4j.sh*)",
       "Bash(./scripts/containers/start-age.sh*)",
-      "Bash(git:*)",
-      "Bash(gh:*)",
+      "Bash(git fetch*)",
+      "Bash(git branch*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git rev-parse*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr checks*)",
+      "Bash(gh issue view*)",
+      "Bash(gh issue list*)",
+      "Bash(gh run view*)",
+      "Bash(gh run list*)",
+      "Bash(gh repo view*)",
       "Bash(ls:*)",
       "Bash(mkdir:*)",
       "Bash(cat:*)",
@@ -34,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git -C \"${CLAUDE_PROJECT_DIR:-.}\" rev-parse --show-toplevel)\"/.claude/hooks/protect-files.sh"
+            "command": "\"$(git -C \"${CLAUDE_PROJECT_DIR:-.}\" rev-parse --show-toplevel)\"/eng/agent-hooks/protect-files.sh"
           }
         ]
       }
