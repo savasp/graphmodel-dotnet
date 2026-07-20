@@ -77,6 +77,10 @@ Voyage uses.
    - Creates a CVOYA-branded GitHub Release for the tag, prepending the product,
      publisher, download, and package-ID migration information to GitHub's
      auto-generated notes.
+   - Builds the complete documentation site from that same tagged commit, records
+     the release tag, tag-derived version, and commit in `/release.json`, and
+     deploys the resulting immutable artifact only after package publication and
+     GitHub Release creation succeed.
 
 4. **`release.sh` then verifies the release is real.** A green workflow only
    means `dotnet nuget push` was accepted — nuget.org indexes asynchronously, and
@@ -97,6 +101,40 @@ publishing only ever happens from an actual `v*` tag push.
 
 With no tag to read, a dispatched run versions itself from the `VERSION` file's
 development default.
+
+### Documentation publication
+
+Pull requests and main-branch pushes run `.github/workflows/docs.yml` with
+`contents: read` permission. That workflow builds both the Jekyll conceptual
+site and DocFX API reference, assembles the production-shaped site, and checks
+internal links in the Jekyll-owned tree while DocFX treats API-reference warnings
+as errors. It has no `pages: write` or `id-token: write` permission and contains
+no deployment action, so ordinary documentation validation cannot publish.
+
+A tag-triggered `release.yml` run calls that same workflow after the package
+artifact job succeeds. It checks out the exact `github.sha` used by the package
+jobs, verifies the checkout, adds deterministic `/release.json` provenance, and
+uploads a uniquely named Pages artifact. The final `deploy-docs` job waits for
+both that artifact and the successful GitHub Release job. It is the only job
+with `pages: write` and `id-token: write`, and the only job that targets the
+`github-pages` environment. Failed or cancelled package publication and manual
+dry runs therefore cannot update the site.
+
+Repository administrators must configure Pages to use **GitHub Actions** as its
+source and protect the `github-pages` environment so only tags matching `v*`
+may deploy. `@savasp`, the repository and workflow owner recorded in
+`.github/CODEOWNERS`, owns that environment policy and release recovery.
+
+To recover from a transient documentation build or Pages failure, open the
+existing tag-triggered Release run and use **Re-run failed jobs**. Do not move or
+recreate the tag and do not start `release.yml` with **Run workflow**, because
+manual dispatch is intentionally only a package-pipeline dry run. A failed
+documentation build can be retried without republishing packages, and a failed
+deployment reuses the already-uploaded immutable artifact. Re-running the full
+tag run is also safe: the artifact name is unique per run attempt, while Jekyll's
+generated time and every file timestamp are pinned to the tagged commit, making
+the site output reproducible. If a newer release has already deployed, recover
+by cutting a new release rather than republishing an older site's artifact.
 
 ### Promoting a prerelease to Latest
 

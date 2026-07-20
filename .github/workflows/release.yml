@@ -487,6 +487,23 @@ jobs:
           path: ./artifacts/
           retention-days: 30
 
+  build-docs:
+    name: Build release documentation
+    needs:
+      - resolve-version
+      - pack
+    # Manual dispatch remains a package-pipeline dry run. Only a validated tag
+    # can produce the Pages artifact that the deployment job accepts.
+    if: ${{ github.event_name == 'push' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/docs.yml
+    with:
+      release_tag: ${{ github.ref_name }}
+      release_version: ${{ needs.resolve-version.outputs.version }}
+      release_commit: ${{ github.sha }}
+      upload_pages_artifact: true
+
   publish:
     name: Publish to NuGet
     runs-on: ubuntu-latest
@@ -595,3 +612,32 @@ jobs:
             fi
             gh "${args[@]}"
           fi
+
+  deploy-docs:
+    name: Deploy release documentation
+    runs-on: ubuntu-latest
+    needs:
+      - build-docs
+      - github-release
+    # The GitHub Release is downstream of package publication. Requiring both
+    # it and the tagged Pages artifact prevents a failed or cancelled release,
+    # including workflow_dispatch dry runs, from changing the public site.
+    if: ${{ github.event_name == 'push' }}
+    timeout-minutes: 10
+    concurrency:
+      group: github-pages-production
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        with:
+          artifact_name: ${{ needs.build-docs.outputs.pages_artifact_name }}

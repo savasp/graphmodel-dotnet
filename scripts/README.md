@@ -22,7 +22,8 @@ This directory contains utility scripts for the CVOYA graph project.
 Releases are tag-authoritative — the tag is the version, and `release.sh` is the
 only supported way to cut one. It pushes the tag, watches
 `.github/workflows/release.yml` (build, test, pack, attest, publish to NuGet,
-create the GitHub Release), then verifies every package resolves on nuget.org.
+create the GitHub Release, and deploy the tagged documentation), then verifies
+every package resolves on nuget.org.
 
 ```bash
 # Preview the computed tag without pushing anything

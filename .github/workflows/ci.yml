@@ -93,6 +93,7 @@ jobs:
         shell: bash
         run: |
           bash eng/agent-hooks/hooks.test.sh
+          ruby scripts/docs-deployment.test.rb
           bash scripts/release.test.sh
 
   validation:
