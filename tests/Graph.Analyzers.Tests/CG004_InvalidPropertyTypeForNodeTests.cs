@@ -514,6 +514,64 @@ public class CG004_InvalidPropertyTypeForNodeTests
     }
 
     [Fact]
+    public async Task NodeWithComplexTypeContainingNativeSizedInteger_ProducesDiagnostics()
+    {
+        var test = """
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            public class NativeHandleHolder
+            {
+                public IntPtr Handle { get; set; }
+            }
+
+            public class PointerListHolder
+            {
+                public List<nuint> Pointers { get; set; } = new();
+            }
+
+            public class TestNode : Node
+            {
+                public NativeHandleHolder {|#0:Holder|} { get; set; } = new();
+                public List<PointerListHolder> {|#1:Holders|} { get; set; } = new();
+            }
+            """;
+
+        var expected = new[]
+        {
+            VerifyCS.Diagnostic("CG004").WithLocation(0).WithArguments("Holder", "TestNode", "NativeHandleHolder"),
+            VerifyCS.Diagnostic("CG004").WithLocation(1).WithArguments("Holders", "TestNode", "List<PointerListHolder>"),
+        };
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithComplexTypeContainingIgnoredNativeSizedInteger_ProducesNoDiagnostics()
+    {
+        var test = """
+            using System;
+            using Cvoya.Graph;
+
+            public class NativeHandleHolder
+            {
+                [Property(Ignore = true)]
+                public IntPtr Handle { get; set; }
+
+                public string Name { get; set; } = string.Empty;
+            }
+
+            public class TestNode : Node
+            {
+                public NativeHandleHolder Holder { get; set; } = new();
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
     public async Task NodeWithMultipleInvalidProperties_ProducesMultipleDiagnostics()
     {
         var test = """

@@ -534,25 +534,53 @@ public class SchemaRegistry : IDisposable
 
     private static Type? FindNativeSizedInteger(Type type)
     {
+        return FindNativeSizedInteger(type, []);
+    }
+
+    private static Type? FindNativeSizedInteger(Type type, HashSet<Type> visited)
+    {
         var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
         if (underlyingType == typeof(IntPtr) || underlyingType == typeof(UIntPtr))
         {
             return underlyingType;
         }
 
-        if (underlyingType == typeof(string) ||
-            !typeof(System.Collections.IEnumerable).IsAssignableFrom(underlyingType))
+        if (GraphDataModel.IsSimple(underlyingType) || !visited.Add(underlyingType))
         {
             return null;
         }
 
-        var elementType = underlyingType.IsArray
-            ? underlyingType.GetElementType()
-            : underlyingType.IsGenericType
-                ? underlyingType.GetGenericArguments().FirstOrDefault()
-                : null;
+        if (typeof(System.Collections.IEnumerable).IsAssignableFrom(underlyingType))
+        {
+            var elementType = underlyingType.IsArray
+                ? underlyingType.GetElementType()
+                : underlyingType.IsGenericType
+                    ? underlyingType.GetGenericArguments().FirstOrDefault()
+                    : null;
 
-        return elementType is null ? null : FindNativeSizedInteger(elementType);
+            return elementType is null ? null : FindNativeSizedInteger(elementType, visited);
+        }
+
+        // Any other shape serializes as a complex value whose effective property set is walked the
+        // same way here as by serialization (public instance getters, no indexers, not ignored): a
+        // native-sized integer nested in a complex value is equally unstorable, and the generator
+        // already refuses to emit serializers for it.
+        foreach (var property in underlyingType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.GetMethod is null ||
+                property.GetIndexParameters().Length > 0 ||
+                property.GetCustomAttribute<PropertyAttribute>()?.Ignore == true)
+            {
+                continue;
+            }
+
+            if (FindNativeSizedInteger(property.PropertyType, visited) is { } nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private static string GetLabelFromType(Type type)

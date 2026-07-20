@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.Analyzers;
 
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 
 /// <summary>
@@ -123,10 +124,10 @@ internal class AnalyzerHelper
 
     private static bool IsUnsupportedFrameworkType(ITypeSymbol type)
     {
-        type = UnwrapNullableValueType(type);
-
-        if (type.SpecialType is SpecialType.System_IntPtr or SpecialType.System_UIntPtr)
+        if (IsNativeSizedInteger(type))
             return true;
+
+        type = UnwrapNullableValueType(type);
 
         // Check specific unsupported framework types by name and namespace
         var fullName = type.ToDisplayString();
@@ -571,6 +572,21 @@ internal class AnalyzerHelper
                 !SerializationShouldIgnoreProperty(property));
         foreach (var property in properties)
         {
+            // Native-sized integers would otherwise classify as valid empty complex structs and the
+            // generator would silently drop the entity's serializers. Indexers are exempt because
+            // serialization never includes them.
+            if (!property.IsIndexer &&
+                (IsNativeSizedInteger(property.Type) ||
+                 (IsCollectionType(property.Type) &&
+                  GetCollectionElementType(property.Type) is { } nativeElement &&
+                  IsNativeSizedInteger(nativeElement))))
+            {
+                return new ComplexTypeValidationResult(
+                    false,
+                    $"Property {property.Name} uses an unsupported native-sized integer type",
+                    false);
+            }
+
             // Check if property is a graph interface type
             if (IsGraphInterfaceType(property.Type))
             {
@@ -668,8 +684,32 @@ internal class AnalyzerHelper
             candidate.AttributeClass?.Name == "PropertyAttribute" &&
             candidate.AttributeClass.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph");
 
-        return attribute?.NamedArguments.Any(argument =>
-            argument.Key == "Ignore" && argument.Value.Value is true) == true;
+        if (attribute is null)
+            return false;
+
+        if (attribute.NamedArguments.Any(argument =>
+            argument.Key == "Ignore" && argument.Value.Value is true))
+        {
+            return true;
+        }
+
+        // Some analyzer-test compilations expose referenced attributes without populated
+        // NamedArguments. The application syntax remains authoritative for an explicit literal.
+        if (attribute.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax syntax)
+        {
+            var argument = syntax.ArgumentList?.Arguments.FirstOrDefault(candidate =>
+                candidate.NameEquals?.Name.Identifier.ValueText == "Ignore");
+            return argument?.Expression is LiteralExpressionSyntax literal &&
+                literal.Token.Value is true;
+        }
+
+        return false;
+    }
+
+    private static bool IsNativeSizedInteger(ITypeSymbol type)
+    {
+        return UnwrapNullableValueType(type).SpecialType
+            is SpecialType.System_IntPtr or SpecialType.System_UIntPtr;
     }
 
     private static ITypeSymbol UnwrapNullableValueType(ITypeSymbol type)
