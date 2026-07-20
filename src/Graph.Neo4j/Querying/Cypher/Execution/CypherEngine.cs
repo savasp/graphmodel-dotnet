@@ -7,12 +7,19 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Cvoya.Graph.Neo4j.Core;
+using Cvoya.Graph.Neo4j.Entities;
 using Cvoya.Graph.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Neo4j.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Cypher;
+using Cvoya.Graph.Cypher.Ast;
+using Cvoya.Graph.Cypher.Planning;
+using Cvoya.Graph.Querying;
+using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Serialization;
 using Cvoya.Graph.Serialization.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using global::Neo4j.Driver;
 
 
 internal sealed class CypherEngine
@@ -48,6 +55,131 @@ internal sealed class CypherEngine
         _materializer = new GraphResultMaterializer(entityFactory, loggerFactory);
         _loggerFactory = loggerFactory;
 
+    }
+
+    internal static void ValidateMutation(GraphMutationModel mutation)
+    {
+        _ = new CypherQueryPlanner(Neo4jDialect.Instance).Plan(mutation.Selection);
+        if (mutation.Kind == GraphMutationKind.Update ||
+            mutation.Selection.ElementKind == GraphElementKind.Relationship)
+        {
+            _ = new CypherMutationPlanner(Neo4jDialect.Instance).Plan(mutation, []);
+        }
+    }
+
+    internal async Task<IReadOnlyList<SelectedGraphElement>> SelectNativeAsync(
+        GraphElementSelectionModel selection,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var statement = new CypherQueryPlanner(Neo4jDialect.Instance).Plan(selection);
+        var records = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
+        return records.Select(record => new SelectedGraphElement(
+            selection.ElementKind,
+            record["__nativeId"].As<string>())).ToArray();
+    }
+
+    internal async Task<int> ApplyMutationAsync(
+        GraphMutationModel mutation,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var selected = await SelectNativeAsync(mutation.Selection, transaction, cancellationToken)
+            .ConfigureAwait(false);
+        if (selected.Count == 0)
+        {
+            return 0;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var nativeIdentities = selected.Select(item => item.NativeIdentity).ToArray();
+        if (mutation.Kind == GraphMutationKind.Delete &&
+            mutation.Selection.ElementKind == GraphElementKind.Node)
+        {
+            await DeleteNodesAsync(
+                nativeIdentities.Cast<string>().ToArray(),
+                mutation.CascadeDelete,
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            var statement = new CypherMutationPlanner(Neo4jDialect.Instance)
+                .Plan(mutation, nativeIdentities);
+            _ = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
+        }
+
+        return selected.Count;
+    }
+
+    private async Task DeleteNodesAsync(
+        IReadOnlyList<string> nativeIdentities,
+        bool cascadeDelete,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, object?>
+        {
+            ["targetIds"] = nativeIdentities,
+        };
+        if (!cascadeDelete)
+        {
+            var preflight = $"""
+                MATCH (target)
+                WHERE elementId(target) IN $targetIds
+                OPTIONAL MATCH (target)-[relationship]-()
+                WHERE coalesce(relationship.{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = false
+                RETURN count(relationship) AS relationshipCount
+                """;
+            var records = await _executor.ExecuteAsync(
+                preflight,
+                parameters,
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+            var relationshipCount = records.Single()["relationshipCount"].As<long>();
+            if (relationshipCount > 0)
+            {
+                throw new GraphException(
+                    $"Cannot delete the selected nodes because the frozen target set has {relationshipCount} incident user relationship(s). " +
+                    "Delete those relationships first or use cascade delete.");
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var delete = $"""
+            MATCH (target)
+            WHERE elementId(target) IN $targetIds
+            OPTIONAL MATCH propertyPath = (target)-[propertyRelationships*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
+            WHERE ALL(relationship IN propertyRelationships WHERE relationship.{ComplexPropertyStorage.RelationshipMarkerProperty} = true)
+            WITH target, [node IN collect(DISTINCT propertyNode) WHERE node IS NOT NULL] AS propertyNodes
+            FOREACH (propertyNode IN propertyNodes | DETACH DELETE propertyNode)
+            DETACH DELETE target
+            RETURN count(*) AS affectedCount
+            """;
+        _ = await _executor.ExecuteAsync(
+            delete,
+            parameters,
+            transaction,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<List<global::Neo4j.Driver.IRecord>> ExecuteStatementAsync(
+        CypherStatement statement,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var rendered = new CypherRenderer(Neo4jDialect.Instance).Render(statement);
+        var parameters = CypherQueryVisitor.RewriteFullTextSearchParameters(statement, rendered.Parameters);
+        var parameterBuilder = new CypherParameterBuilder(_entityFactory, _loggerFactory);
+        var converted = parameters.ToDictionary(
+            pair => pair.Key,
+            pair => parameterBuilder.BuildParameterValue(pair.Value),
+            StringComparer.Ordinal);
+        return await _executor.ExecuteAsync(
+            rendered.Text,
+            converted,
+            transaction,
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<T?> ExecuteAsync<T>(

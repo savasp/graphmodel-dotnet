@@ -6,12 +6,15 @@ namespace Cvoya.Graph.Neo4j.Querying.Linq.Providers;
 using System.Linq.Expressions;
 using Cvoya.Graph.Neo4j.Core;
 using Cvoya.Graph.Neo4j.Querying.Cypher.Execution;
+using Cvoya.Graph.Neo4j.Querying.Commands;
+using Cvoya.Graph.Querying;
+using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Querying.Linq;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransaction>
+internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransaction>, IGraphCommandProvider
 {
     private readonly GraphContext context;
     private readonly GraphTransaction? transaction;
@@ -34,6 +37,18 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
         Expression expression,
         CancellationToken cancellationToken)
     {
+        if (GraphMutationModelBuilder.IsMutation(expression))
+        {
+            var mutation = GraphMutationModelBuilder.Build(expression);
+            // Plan every expression-derived part before opening an owned transaction. A bad setter
+            // or unsupported selection therefore fails before any provider I/O.
+            CypherEngine.ValidateMutation(mutation);
+            var affected = await ((IGraphCommandProvider)this).InWriteTransactionAsync(
+                (command, token) => command.ApplyAsync(mutation, expression, token),
+                cancellationToken).ConfigureAwait(false);
+            return (TResult)(object)affected;
+        }
+
         var result = await TransactionHelpers.ExecuteInTransactionAsync(
             context,
             transaction,
@@ -43,6 +58,30 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
             isReadOnly,
             cancellationToken).ConfigureAwait(false);
         return result!;
+    }
+
+    object IGraphCommandProvider.GraphOwnershipToken => context;
+
+    IGraphTransaction? IGraphCommandProvider.BoundTransaction => transaction;
+
+    Task<TResult> IGraphCommandProvider.InWriteTransactionAsync<TResult>(
+        Func<IGraphCommandExecutionContext, CancellationToken, Task<TResult>> command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        if (transaction?.IsReadOnly == true)
+        {
+            throw new GraphException("A graph command cannot use a transaction opened with read-only access.");
+        }
+
+        return TransactionHelpers.ExecuteInTransactionAsync(
+            context,
+            transaction,
+            tx => command(new Neo4jGraphCommandExecutionContext(tx, cypherEngine), cancellationToken),
+            "Error executing graph command",
+            logger,
+            isReadOnly: false,
+            cancellationToken);
     }
 
     protected override Task<GraphTransaction> GetOrCreateTransactionAsync(CancellationToken cancellationToken) =>

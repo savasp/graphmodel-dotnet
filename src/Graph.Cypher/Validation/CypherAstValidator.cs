@@ -142,6 +142,28 @@ public sealed class CypherAstValidator : ICypherPass
                     ValidateReturnItems(@return.Items, scope, parameters);
                     break;
 
+                case SetClause set:
+                    foreach (var item in set.Items)
+                    {
+                        if (item.Target is not PropertyAccess and not EscapedPropertyAccess)
+                        {
+                            throw new GraphException("A Cypher SET target must be a property access.");
+                        }
+
+                        ValidateExpression(item.Target, scope, parameters);
+                        ValidateExpression(item.Value, scope, parameters);
+                    }
+
+                    break;
+
+                case DeleteClause delete:
+                    foreach (var target in delete.Targets)
+                    {
+                        ValidateAlias(target.Alias, scope);
+                    }
+
+                    break;
+
                 case OrderByClause orderBy:
                     foreach (var item in orderBy.Items)
                     {
@@ -247,6 +269,10 @@ public sealed class CypherAstValidator : ICypherPass
 
             case EscapedPropertyAccess property:
                 ValidateExpression(property.Target, scope, parameters);
+                break;
+
+            case NativeElementIdentity identity:
+                ValidateExpression(identity.Target, scope, parameters);
                 break;
 
             case QueryParameter parameter:

@@ -86,4 +86,56 @@ internal static class TransactionRunner
             }
         }
     }
+
+    /// <summary>Runs an asynchronous operation under the effective transaction.</summary>
+    public static async Task<T> ExecuteAsync<T>(
+        InMemoryStore store,
+        IGraphTransaction? transaction,
+        Func<InMemoryTransaction, Task<T>> operation,
+        string errorMessage,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var (effective, owned) = GetOrCreate(store, transaction);
+        try
+        {
+            var result = await operation(effective).ConfigureAwait(false);
+            if (owned)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await effective.CommitAsync().ConfigureAwait(false);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            if (owned && effective.IsActive)
+            {
+                try
+                {
+                    await effective.RollbackAsync().ConfigureAwait(false);
+                }
+                catch (GraphException)
+                {
+                    // Best-effort rollback of an implicit transaction; the original failure wins.
+                }
+            }
+
+            if (ex is GraphException or OperationCanceledException)
+            {
+                throw;
+            }
+
+            throw new GraphException($"{errorMessage}: {ex.Message}", ex);
+        }
+        finally
+        {
+            if (owned)
+            {
+                await effective.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
 }

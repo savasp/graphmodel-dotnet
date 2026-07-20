@@ -7,9 +7,15 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Cvoya.Graph.Age.Core;
+using Cvoya.Graph.Age.Entities;
 using Cvoya.Graph.Age.Querying.Cypher.Builders;
+using Cvoya.Graph.Age.Querying.Cypher.Lowering;
 using Cvoya.Graph.Age.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Cypher;
+using Cvoya.Graph.Cypher.Ast;
+using Cvoya.Graph.Cypher.Planning;
 using Cvoya.Graph.Querying;
+using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Serialization;
 using Cvoya.Graph.Serialization.Results;
 using Microsoft.Extensions.Logging;
@@ -52,6 +58,185 @@ internal sealed class CypherEngine
         _loggerFactory = loggerFactory;
         _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
         _fullTextSearchRewriter = new AgeFullTextSearchRewriter(schemaRegistry);
+    }
+
+    internal static void ValidateMutation(GraphMutationModel mutation)
+    {
+        _ = new CypherQueryPlanner(AgeDialect.CommandPlanningInstance).Plan(mutation.Selection);
+        if (mutation.Kind == GraphMutationKind.Update ||
+            mutation.Selection.ElementKind == GraphElementKind.Relationship)
+        {
+            _ = new CypherMutationPlanner(AgeDialect.PlanningInstance).Plan(mutation, []);
+        }
+    }
+
+    internal async Task<IReadOnlyList<SelectedGraphElement>> SelectNativeAsync(
+        GraphElementSelectionModel selection,
+        Expression sourceExpression,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var rewritten = await _fullTextSearchRewriter
+            .RewriteAsync(sourceExpression, transaction.Runner, cancellationToken)
+            .ConfigureAwait(false);
+        if (!ReferenceEquals(rewritten, sourceExpression))
+        {
+            selection = new GraphElementSelectionModel(
+                GraphQueryModelBuilder.Build(rewritten),
+                selection.Mode);
+            GraphElementSelectionModelValidator.Validate(selection);
+        }
+
+        return await SelectPlannedAsync(selection, transaction, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<int> ApplyMutationAsync(
+        GraphMutationModel mutation,
+        Expression mutationExpression,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var rewritten = await _fullTextSearchRewriter
+            .RewriteAsync(mutationExpression, transaction.Runner, cancellationToken)
+            .ConfigureAwait(false);
+        if (!ReferenceEquals(rewritten, mutationExpression))
+        {
+            mutation = GraphMutationModelBuilder.Build(rewritten);
+        }
+
+        var selected = await SelectPlannedAsync(mutation.Selection, transaction, cancellationToken)
+            .ConfigureAwait(false);
+        if (selected.Count == 0)
+        {
+            return 0;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var nativeIdentities = selected.Select(item => item.NativeIdentity).ToArray();
+        if (mutation.Kind == GraphMutationKind.Delete &&
+            mutation.Selection.ElementKind == GraphElementKind.Node)
+        {
+            await DeleteNodesAsync(
+                nativeIdentities.Cast<long>().ToArray(),
+                mutation.CascadeDelete,
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            var statement = new CypherMutationPlanner(AgeDialect.PlanningInstance)
+                .Plan(mutation, nativeIdentities);
+            _ = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
+        }
+
+        return selected.Count;
+    }
+
+    private async Task<IReadOnlyList<SelectedGraphElement>> SelectPlannedAsync(
+        GraphElementSelectionModel selection,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var statement = new CypherQueryPlanner(AgeDialect.CommandPlanningInstance).Plan(selection);
+        var records = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
+        return records.Select(record => new SelectedGraphElement(
+            selection.ElementKind,
+            record["__nativeId"].As<long>())).ToArray();
+    }
+
+    private async Task DeleteNodesAsync(
+        IReadOnlyList<long> nativeIdentities,
+        bool cascadeDelete,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, object?>
+        {
+            ["targetIds"] = nativeIdentities,
+        };
+        if (!cascadeDelete)
+        {
+            var preflight = $"""
+                MATCH (target)
+                WHERE id(target) IN $targetIds
+                OPTIONAL MATCH (target)-[relationship]-()
+                WHERE coalesce(relationship.{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = false
+                RETURN count(relationship) AS relationshipCount
+                """;
+            var records = await _executor.ExecuteAsync(
+                preflight,
+                parameters,
+                ["relationshipCount"],
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+            var relationshipCount = records.Single()["relationshipCount"].As<long>();
+            if (relationshipCount > 0)
+            {
+                throw new GraphException(
+                    $"Cannot delete the selected nodes because the frozen target set has {relationshipCount} incident user relationship(s). " +
+                    "Delete those relationships first or use cascade delete.");
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var propertyQuery = $"""
+            UNWIND $targetIds AS targetId
+            MATCH (target)
+            WHERE id(target) = targetId
+            MATCH (target)-[propertyRelationships*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
+            WHERE size([age_hop IN range(0, size(propertyRelationships) - 1) WHERE propertyRelationships[toInteger(age_hop)].{ComplexPropertyStorage.RelationshipMarkerProperty} = true]) = size(propertyRelationships)
+            RETURN DISTINCT id(propertyNode) AS propertyNodeId
+            """;
+        var propertyNodes = await _executor.ExecuteAsync(
+            propertyQuery,
+            parameters,
+            ["propertyNodeId"],
+            transaction,
+            cancellationToken).ConfigureAwait(false);
+        foreach (var propertyNode in propertyNodes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _ = await _executor.ExecuteAsync(
+                "MATCH (propertyNode) WHERE id(propertyNode) = $propertyNodeId DETACH DELETE propertyNode RETURN true AS deleted",
+                new Dictionary<string, object?>
+                {
+                    ["propertyNodeId"] = propertyNode["propertyNodeId"].As<long>(),
+                },
+                ["deleted"],
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = await _executor.ExecuteAsync(
+            "UNWIND $targetIds AS targetId MATCH (target) WHERE id(target) = targetId DETACH DELETE target RETURN count(*) AS affectedCount",
+            parameters,
+            ["affectedCount"],
+            transaction,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<List<AgeRecord>> ExecuteStatementAsync(
+        CypherStatement statement,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        statement = CypherQueryVisitor.LowerStatement(statement);
+        var rendered = new CypherRenderer(AgeDialect.Instance).Render(statement);
+        var projectionColumns = rendered.ProjectionColumns
+            .Select(AgeEntityProjectionPass.NormalizeProjectionColumn)
+            .ToArray();
+        var parameterBuilder = new CypherParameterBuilder(_entityFactory, _loggerFactory);
+        var converted = rendered.Parameters.ToDictionary(
+            pair => pair.Key,
+            pair => parameterBuilder.BuildParameterValue(pair.Value),
+            StringComparer.Ordinal);
+        return await _executor.ExecuteAsync(
+            rendered.Text,
+            converted,
+            projectionColumns,
+            transaction,
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<T?> ExecuteAsync<T>(

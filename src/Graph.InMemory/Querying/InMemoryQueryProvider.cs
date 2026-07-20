@@ -7,6 +7,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Cvoya.Graph.Querying;
+using Cvoya.Graph.Querying.Commands;
 
 /// <summary>
 /// The in-memory <see cref="IGraphQueryProvider"/>: compiles LINQ expression trees to the shared
@@ -14,7 +15,7 @@ using Cvoya.Graph.Querying;
 /// consumes) and interprets that model with LINQ-to-objects over a store snapshot. No query
 /// language is involved anywhere on this path.
 /// </summary>
-internal sealed class InMemoryQueryProvider : IGraphQueryProvider
+internal sealed class InMemoryQueryProvider : IGraphQueryProvider, IGraphCommandProvider
 {
     private readonly InMemoryStore _store;
     private readonly InMemoryTransaction? _transaction;
@@ -52,17 +53,50 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
     public TResult Execute<TResult>(Expression expression) =>
         ResultShaper.Shape<TResult>(ExecuteCore(expression, CancellationToken.None));
 
-    public Task<TResult> ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken = default)
+    public async Task<TResult> ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(ResultShaper.Shape<TResult>(ExecuteCore(expression, cancellationToken)));
+        if (GraphMutationModelBuilder.IsMutation(expression))
+        {
+            var mutation = GraphMutationModelBuilder.Build(expression);
+            var affected = await ((IGraphCommandProvider)this).InWriteTransactionAsync(
+                (context, token) => context.ApplyAsync(mutation, expression, token),
+                cancellationToken).ConfigureAwait(false);
+            return ResultShaper.Shape<TResult>(affected);
+        }
+
+        return ResultShaper.Shape<TResult>(ExecuteCore(expression, cancellationToken));
     }
 
-    public Task<object?> ExecuteAsync(Expression expression, CancellationToken cancellationToken = default)
+    public async Task<object?> ExecuteAsync(Expression expression, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (GraphMutationModelBuilder.IsMutation(expression))
+        {
+            return await ExecuteAsync<int>(expression, cancellationToken).ConfigureAwait(false);
+        }
+
         var result = ExecuteCore(expression, cancellationToken);
-        return Task.FromResult(result is DefaultResult ? null : result);
+        return result is DefaultResult ? null : result;
+    }
+
+    object IGraphCommandProvider.GraphOwnershipToken => _store;
+
+    IGraphTransaction? IGraphCommandProvider.BoundTransaction => _transaction;
+
+    Task<TResult> IGraphCommandProvider.InWriteTransactionAsync<TResult>(
+        Func<IGraphCommandExecutionContext, CancellationToken, Task<TResult>> command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return TransactionRunner.ExecuteAsync(
+            _store,
+            _transaction,
+            transaction => command(
+                new Commands.InMemoryGraphCommandExecutionContext(transaction, _reader, Graph.SchemaRegistry),
+                cancellationToken),
+            "Failed to execute an in-memory graph command",
+            cancellationToken);
     }
 
     /// <summary>

@@ -6,13 +6,16 @@ namespace Cvoya.Graph.Age.Querying.Linq.Providers;
 using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Age.Core;
+using Cvoya.Graph.Age.Querying.Commands;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
+using Cvoya.Graph.Querying;
+using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Querying.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
-internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransaction>
+internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransaction>, IGraphCommandProvider
 {
     private readonly AgeGraphContext context;
     private readonly AgeGraphTransaction? transaction;
@@ -35,6 +38,16 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
         Expression expression,
         CancellationToken cancellationToken)
     {
+        if (GraphMutationModelBuilder.IsMutation(expression))
+        {
+            var mutation = GraphMutationModelBuilder.Build(expression);
+            CypherEngine.ValidateMutation(mutation);
+            var affected = await ((IGraphCommandProvider)this).InWriteTransactionAsync(
+                (command, token) => command.ApplyAsync(mutation, expression, token),
+                cancellationToken).ConfigureAwait(false);
+            return (TResult)(object)affected;
+        }
+
         var result = await TransactionHelpers.ExecuteInTransactionAsync(
             context,
             transaction,
@@ -44,6 +57,30 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
             isReadOnly,
             cancellationToken).ConfigureAwait(false);
         return result!;
+    }
+
+    object IGraphCommandProvider.GraphOwnershipToken => context;
+
+    IGraphTransaction? IGraphCommandProvider.BoundTransaction => transaction;
+
+    Task<TResult> IGraphCommandProvider.InWriteTransactionAsync<TResult>(
+        Func<IGraphCommandExecutionContext, CancellationToken, Task<TResult>> command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        if (transaction?.IsReadOnly == true)
+        {
+            throw new GraphException("A graph command cannot use a transaction opened with read-only access.");
+        }
+
+        return TransactionHelpers.ExecuteInTransactionAsync(
+            context,
+            transaction,
+            tx => command(new AgeGraphCommandExecutionContext(tx, cypherEngine), cancellationToken),
+            "Error executing graph command",
+            logger,
+            isReadOnly: false,
+            cancellationToken);
     }
 
     protected override Task<AgeGraphTransaction> GetOrCreateTransactionAsync(CancellationToken cancellationToken) =>

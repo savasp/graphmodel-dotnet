@@ -148,6 +148,56 @@ internal sealed record StoreState(
         return new StoreState(state.Nodes.Remove(root.Key), relationships);
     }
 
+    /// <summary>Deletes one frozen set of nodes addressed by private record key.</summary>
+    public StoreState DeleteNodes(IReadOnlyCollection<Guid> keys, bool cascadeDelete)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        var distinctKeys = keys.Distinct().ToArray();
+        var targets = distinctKeys.Select(key => Nodes.TryGetValue(key, out var node)
+            ? node
+            : throw new GraphException("A frozen in-memory node target no longer exists in the transaction view."))
+            .ToArray();
+        var targetIds = targets.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
+        var userRelationships = Relationships.Values
+            .Where(relationship => !relationship.IsComplexProperty &&
+                (targetIds.Contains(relationship.StartNodeId) || targetIds.Contains(relationship.EndNodeId)))
+            .ToArray();
+        if (!cascadeDelete && userRelationships.Length > 0)
+        {
+            throw new GraphException(
+                $"Cannot delete the selected nodes because the frozen target set has {userRelationships.Length} incident user relationship(s). " +
+                "Delete those relationships first or use cascade delete.");
+        }
+
+        var state = this;
+        foreach (var key in distinctKeys)
+        {
+            state = state.RemoveComplexSubtree(key);
+        }
+
+        var nodes = state.Nodes.RemoveRange(distinctKeys);
+        var relationships = state.Relationships;
+        if (cascadeDelete)
+        {
+            relationships = relationships.RemoveRange(userRelationships.Select(relationship => relationship.Id));
+        }
+
+        return new StoreState(nodes, relationships);
+    }
+
+    /// <summary>Deletes one frozen set of relationships addressed by private record key.</summary>
+    public StoreState DeleteRelationships(IReadOnlyCollection<string> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        var distinctKeys = keys.Distinct(StringComparer.Ordinal).ToArray();
+        if (distinctKeys.Any(key => !Relationships.ContainsKey(key)))
+        {
+            throw new GraphException("A frozen in-memory relationship target no longer exists in the transaction view.");
+        }
+
+        return this with { Relationships = Relationships.RemoveRange(distinctKeys) };
+    }
+
     /// <summary>
     /// Adds a user relationship. Throws when the id already exists or either endpoint does not.
     /// </summary>

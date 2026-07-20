@@ -48,6 +48,9 @@ internal sealed class AgeTemporalParameterArithmeticPass : ICypherPass
             WithClause { Wildcard: true } => WithClause.All,
             WithClause with => new WithClause(RewriteItems(with.Items), with.Distinct),
             ReturnClause @return => new ReturnClause(RewriteItems(@return.Items), @return.Distinct),
+            SetClause set => new SetClause(set.Items
+                .Select(item => new SetItem(Rewrite(item.Target), Rewrite(item.Value)))
+                .ToArray()),
             CallSubqueryClause subquery => new CallSubqueryClause(
                 subquery.ImportedVariables,
                 RewriteClauses(subquery.Body)),
@@ -92,6 +95,7 @@ internal sealed class AgeTemporalParameterArithmeticPass : ICypherPass
                 EscapedPropertyAccess property => new EscapedPropertyAccess(
                     Rewrite(property.Target),
                     property.Property),
+                NativeElementIdentity identity => new NativeElementIdentity(Rewrite(identity.Target)),
                 FunctionCall function => RewriteFunction(function),
                 LabelTest label => new LabelTest(Rewrite(label.Target), label.Labels),
                 ListExpression list => new ListExpression(list.Items.Select(Rewrite).ToArray()),

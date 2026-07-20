@@ -75,7 +75,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
     /// whole-word, all-terms-match) instead of inheriting the Lucene parser's default OR combinator and
     /// live metacharacter syntax.
     /// </summary>
-    private static IReadOnlyDictionary<string, object?> RewriteFullTextSearchParameters(
+    internal static IReadOnlyDictionary<string, object?> RewriteFullTextSearchParameters(
         CypherStatement statement,
         IReadOnlyDictionary<string, object?> parameters)
     {

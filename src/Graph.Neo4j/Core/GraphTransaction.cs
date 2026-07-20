@@ -32,6 +32,7 @@ internal class GraphTransaction : IGraphTransaction
     public GraphTransaction(GraphContext context, bool isReadOnly = false)
     {
         _context = context;
+        IsReadOnly = isReadOnly;
         _session = context.Driver.AsyncSession(c => c
             .WithDatabase(context.DatabaseName)
             .WithDefaultAccessMode(isReadOnly ? AccessMode.Read : AccessMode.Write));
@@ -44,6 +45,9 @@ internal class GraphTransaction : IGraphTransaction
     /// </summary>
     /// <value>True if the transaction is active, false otherwise.</value>
     public bool IsActive => _transaction != null && !_committed && !_rolledBack;
+
+    /// <summary>Gets whether this transaction was opened with read access.</summary>
+    internal bool IsReadOnly { get; }
 
     /// <summary>
     /// Gets whether this transaction was created by the given graph context. Ownership is
