@@ -458,8 +458,6 @@ internal sealed class CodeGenModelBuilder
         {
             "startnodeid" => "StartNodeId",
             "endnodeid" => "EndNodeId",
-            "id" => "Id",
-            "direction" => "Direction",
             _ => Utils.GetPropertyNameFromParameter(parameter)
         };
     }

@@ -66,21 +66,13 @@ internal static class DefaultValueFormatter
         {
             if (member is { IsConst: true, HasConstantValue: true } && Equals(member.ConstantValue, value))
             {
-                return $"{qualifiedName}.{EscapeIdentifier(member.Name)}";
+                return $"{qualifiedName}.{Utils.EscapeIdentifier(member.Name)}";
             }
         }
 
         // ...otherwise a cast of the correctly formatted underlying constant, covering unnamed or
         // flag-combination values that map to no single member.
         return $"({qualifiedName})({FormatIntegral(value)})";
-    }
-
-    private static string EscapeIdentifier(string identifier)
-    {
-        return SyntaxFacts.GetKeywordKind(identifier) != SyntaxKind.None ||
-               SyntaxFacts.GetContextualKeywordKind(identifier) != SyntaxKind.None
-            ? $"@{identifier}"
-            : identifier;
     }
 
     private static string FormatIntegral(object value)

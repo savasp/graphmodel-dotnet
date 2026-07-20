@@ -77,6 +77,7 @@ internal static class Serialization
         var isNullable = propertyType.IsNullable;
         var escapedPropertyName = Utils.EscapeForGeneratedStringLiteral(property.Name);
         var escapedLabel = Utils.EscapeForGeneratedStringLiteral(propertyName);
+        var propertyIdentifier = Utils.EscapeIdentifier(property.Name);
 
         sb.AppendLine($"        {{");
         if (property.RequiresDeclaredOnlyLookup)
@@ -91,7 +92,7 @@ internal static class Serialization
         {
             sb.AppendLine($"            var propInfo = typeof({property.ContainingTypeDisplayName}).GetProperty(\"{escapedPropertyName}\")!;");
         }
-        sb.AppendLine($"            var value = entity.{property.Name};");
+        sb.AppendLine($"            var value = entity.{propertyIdentifier};");
         sb.AppendLine($"            Serialized? serializedValue;");
         sb.AppendLine();
 

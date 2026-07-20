@@ -11,6 +11,16 @@ internal static class Deserialization
 {
     internal static void GenerateDeserializeMethod(StringBuilder sb, SerializableTypeModel type)
     {
+        var identifiers = new GeneratedIdentifierAllocator(
+            "entity",
+            "result",
+            "simpleValue",
+            "index",
+            "entityItem",
+            "typedElement",
+            "untypedElement",
+            "guidValue");
+
         sb.AppendLine("    public object Deserialize(EntityInfo entity)");
         sb.AppendLine("    {");
 
@@ -26,11 +36,11 @@ internal static class Deserialization
         {
             // Simple case - parameterless constructor and all properties are settable
             sb.AppendLine($"        var result = new {type.Type.TypeOfName}();");
-            GeneratePropertySetters(sb, settableProperties, "result", "entity");
+            GeneratePropertySetters(sb, settableProperties, "result", "entity", identifiers);
         }
         else if (type.Constructor is not null)
         {
-            GenerateConstructorBasedDeserialization(sb, type, type.Constructor, allProperties);
+            GenerateConstructorBasedDeserialization(sb, type, type.Constructor, allProperties, identifiers);
         }
         else
         {
@@ -45,12 +55,15 @@ internal static class Deserialization
         StringBuilder sb,
         SerializableTypeModel type,
         ConstructorModel constructor,
-        List<SerializablePropertyModel> allProperties)
+        List<SerializablePropertyModel> allProperties,
+        GeneratedIdentifierAllocator identifiers)
     {
-        // Extract values for each constructor parameter (including Direction if it's part of the constructor)
+        var argumentNames = new List<string>();
+
+        // Extract values for each constructor parameter.
         foreach (var parameter in constructor.Parameters.Items)
         {
-            GenerateConstructorParameterExtraction(sb, parameter, "entity");
+            argumentNames.Add(GenerateConstructorParameterExtraction(sb, parameter, "entity", identifiers));
         }
 
         // Find properties handled by the selected constructor before choosing initializer/setter paths.
@@ -72,9 +85,10 @@ internal static class Deserialization
             .ToList();
 
         // Generate values assigned in the object initializer (init-only and required properties).
+        var initializerValueNames = new List<string>();
         foreach (var property in initializerProperties)
         {
-            GeneratePropertyExtraction(sb, property, "entity");
+            initializerValueNames.Add(GeneratePropertyExtraction(sb, property, "entity", identifiers));
         }
 
         // Generate constructor call with an object initializer when required by the property shape.
@@ -84,11 +98,10 @@ internal static class Deserialization
         {
             sb.AppendLine($"        var result = new {type.Type.TypeOfName}(");
 
-            var paramNames = constructor.Parameters.Items.Select(p => p.Name).ToList();
-            for (int i = 0; i < paramNames.Count; i++)
+            for (int i = 0; i < argumentNames.Count; i++)
             {
-                var comma = i < paramNames.Count - 1 ? "," : "";
-                sb.AppendLine($"            {paramNames[i]}{comma}");
+                var comma = i < argumentNames.Count - 1 ? "," : "";
+                sb.AppendLine($"            {argumentNames[i]}{comma}");
             }
 
             sb.AppendLine("        )");
@@ -99,7 +112,7 @@ internal static class Deserialization
             {
                 var property = initializerProperties[i];
                 var comma = i < initializerProperties.Count - 1 ? "," : "";
-                sb.AppendLine($"            {property.Name} = {property.Name.ToLowerInvariant()}Value{comma}");
+                sb.AppendLine($"            {Utils.EscapeIdentifier(property.Name)} = {initializerValueNames[i]}{comma}");
             }
 
             sb.AppendLine("        };");
@@ -108,11 +121,10 @@ internal static class Deserialization
         {
             sb.AppendLine($"        var result = new {type.Type.TypeOfName}(");
 
-            var paramNames = constructor.Parameters.Items.Select(p => p.Name).ToList();
-            for (int i = 0; i < paramNames.Count; i++)
+            for (int i = 0; i < argumentNames.Count; i++)
             {
-                var comma = i < paramNames.Count - 1 ? "," : "";
-                sb.AppendLine($"            {paramNames[i]}{comma}");
+                var comma = i < argumentNames.Count - 1 ? "," : "";
+                sb.AppendLine($"            {argumentNames[i]}{comma}");
             }
 
             sb.AppendLine("        );");
@@ -124,22 +136,25 @@ internal static class Deserialization
         if (settableProperties.Count > 0)
         {
             sb.AppendLine("        // Set remaining properties with setters");
-            GeneratePropertySetters(sb, settableProperties, "result", "entity");
+            GeneratePropertySetters(sb, settableProperties, "result", "entity", identifiers);
         }
     }
 
-    private static void GeneratePropertyExtraction(StringBuilder sb, SerializablePropertyModel property, string entityVar)
+    private static string GeneratePropertyExtraction(
+        StringBuilder sb,
+        SerializablePropertyModel property,
+        string entityVar,
+        GeneratedIdentifierAllocator identifiers)
     {
         var propertyName = property.Label;
         var escapedLabel = Utils.EscapeForGeneratedStringLiteral(propertyName);
         var propName = property.Name;
         var propertyType = property.Type.DisplayName;
-        var variableName = $"{propName.ToLowerInvariant()}Value";
+        var variableName = identifiers.Allocate($"{propName.ToLowerInvariant()}Value");
 
-        // Use property-specific variable names to avoid conflicts
-        var propRepVar = $"{propName.ToLowerInvariant()}PropRep";
-        var simplePropVar = $"{propName.ToLowerInvariant()}SimpleProp";
-        var complexPropVar = $"{propName.ToLowerInvariant()}ComplexProp";
+        var propRepVar = identifiers.Allocate($"{propName.ToLowerInvariant()}PropRep");
+        var simplePropVar = identifiers.Allocate($"{propName.ToLowerInvariant()}SimpleProp");
+        var complexPropVar = identifiers.Allocate($"{propName.ToLowerInvariant()}ComplexProp");
 
         var initializerKind = property.IsRequired && !property.SetterIsInitOnly ? "required" : "init-only";
         sb.AppendLine($"        // Extracting {initializerKind} property '{propName}'");
@@ -154,33 +169,28 @@ internal static class Deserialization
             propertyName,
             propRepVar,
             8,
-            GetMissingPropertyValueExpression(propName, propertyName, property.Type));
+            GetMissingPropertyValueExpression(propertyName, property.Type),
+            identifiers);
+
+        return variableName;
     }
 
-    private static string GetDefaultValueForProperty(string propertyName, TypeReferenceModel propertyType, out bool shouldThrow)
-    {
-        // Handle known interface properties with sensible defaults
-        shouldThrow = false;
-        return propertyName.ToLowerInvariant() switch
-        {
-            "direction" when propertyType.Name.Contains("RelationshipDirection") => "RelationshipDirection.Outgoing",
-            "id" when propertyType.SpecialType == SpecialType.System_String => "Guid.NewGuid().ToString(\"N\")",
-            _ => GetTypeDefault(propertyType, out shouldThrow)
-        };
-    }
-
-    private static void GenerateConstructorParameterExtraction(StringBuilder sb, ParameterModel parameter, string entityVar)
+    private static string GenerateConstructorParameterExtraction(
+        StringBuilder sb,
+        ParameterModel parameter,
+        string entityVar,
+        GeneratedIdentifierAllocator identifiers)
     {
         var paramName = parameter.Name;
         var paramType = parameter.Type.DisplayName;
+        var argumentName = identifiers.Allocate(paramName);
 
-        // Use parameter-specific variable names to avoid conflicts
-        var propRepVar = $"{paramName.ToLowerInvariant()}PropRep";
-        var simplePropVar = $"{paramName.ToLowerInvariant()}SimpleProp";
-        var complexPropVar = $"{paramName.ToLowerInvariant()}ComplexProp";
+        var propRepVar = identifiers.Allocate($"{paramName.ToLowerInvariant()}PropRep");
+        var simplePropVar = identifiers.Allocate($"{paramName.ToLowerInvariant()}SimpleProp");
+        var complexPropVar = identifiers.Allocate($"{paramName.ToLowerInvariant()}ComplexProp");
 
         sb.AppendLine($"        // Extracting value for parameter '{paramName}'");
-        sb.AppendLine($"        {paramType} {paramName};");
+        sb.AppendLine($"        {paramType} {argumentName};");
 
         var propertyName = parameter.PropertyName;
         var escapedLabel = Utils.EscapeForGeneratedStringLiteral(propertyName);
@@ -191,18 +201,22 @@ internal static class Deserialization
         GenerateValueExtraction(
             sb,
             parameter.Type,
-            paramName,
+            argumentName,
             propertyName,
             propRepVar,
             8,
-            GetMissingParameterValueExpression(parameter));
+            GetMissingParameterValueExpression(parameter),
+            identifiers);
+
+        return argumentName;
     }
 
     private static void GeneratePropertySetters(
         StringBuilder sb,
         List<SerializablePropertyModel> properties,
         string variableName,
-        string entityVar)
+        string entityVar,
+        GeneratedIdentifierAllocator identifiers)
     {
         foreach (var property in properties)
         {
@@ -210,10 +224,9 @@ internal static class Deserialization
             var escapedLabel = Utils.EscapeForGeneratedStringLiteral(propertyName);
             var propName = property.Name;
 
-            // Use property-specific variable names to avoid conflicts
-            var propRepVar = $"{propName.ToLowerInvariant()}PropRep";
-            var simplePropVar = $"{propName.ToLowerInvariant()}SimpleProp";
-            var complexPropVar = $"{propName.ToLowerInvariant()}ComplexProp";
+            var propRepVar = identifiers.Allocate($"{propName.ToLowerInvariant()}PropRep");
+            var simplePropVar = identifiers.Allocate($"{propName.ToLowerInvariant()}SimpleProp");
+            var complexPropVar = identifiers.Allocate($"{propName.ToLowerInvariant()}ComplexProp");
 
             sb.AppendLine($"        // Look for property '{escapedLabel}' in both simple and complex properties");
             sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{escapedLabel}\", out var {simplePropVar}) ? {simplePropVar}");
@@ -221,11 +234,12 @@ internal static class Deserialization
             GenerateValueExtraction(
                 sb,
                 property.Type,
-                $"{variableName}.{propName}",
+                $"{variableName}.{Utils.EscapeIdentifier(propName)}",
                 propertyName,
                 propRepVar,
                 8,
-                GetMissingPropertyValueExpression(propertyName, propertyName, property.Type));
+                GetMissingPropertyValueExpression(propertyName, property.Type),
+                identifiers);
         }
     }
 
@@ -236,7 +250,8 @@ internal static class Deserialization
         string propertyLabel,
         string propRepVarName,
         int indent,
-        string missingValueExpression)
+        string missingValueExpression,
+        GeneratedIdentifierAllocator identifiers)
     {
         var indentStr = new string(' ', indent);
 
@@ -249,11 +264,12 @@ internal static class Deserialization
                 propertyLabel,
                 propRepVarName,
                 indent,
-                missingValueExpression);
+                missingValueExpression,
+                identifiers);
         }
         else if (targetType.IsSimple)
         {
-            var simpleValueName = $"{propRepVarName}SimpleValue";
+            var simpleValueName = identifiers.Allocate($"{propRepVarName.TrimStart('@')}SimpleValue");
             sb.AppendLine($"{indentStr}// {GetSimpleValueExtractionComment(targetType)}");
             sb.AppendLine($"{indentStr}{variableName} = {propRepVarName} is null");
             sb.AppendLine($"{indentStr}    ? {missingValueExpression}");
@@ -263,7 +279,7 @@ internal static class Deserialization
         }
         else
         {
-            var complexEntityName = $"{propRepVarName}ComplexEntity";
+            var complexEntityName = identifiers.Allocate($"{propRepVarName.TrimStart('@')}ComplexEntity");
             // Complex type handling - delegate to other serializers, resolved by the serialized
             // entity's ActualType (same dispatch mechanism used for top-level Node/Relationship
             // polymorphism and for complex collections), falling back to the statically-declared
@@ -287,7 +303,8 @@ internal static class Deserialization
         string propertyLabel,
         string propRepVarName,
         int indent,
-        string missingValueExpression)
+        string missingValueExpression,
+        GeneratedIdentifierAllocator identifiers)
     {
         var indentStr = new string(' ', indent);
         var elementType = collectionType.ElementType;
@@ -305,7 +322,7 @@ internal static class Deserialization
 
         if (isElementSimple)
         {
-            var simpleCollectionName = $"{propRepVarName}SimpleCollection";
+            var simpleCollectionName = identifiers.Allocate($"{propRepVarName.TrimStart('@')}SimpleCollection");
             sb.AppendLine($"{indentStr}{variableName} = {propRepVarName} is null");
             sb.AppendLine($"{indentStr}    ? {missingValueExpression}");
             sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is SimpleCollection {simpleCollectionName}");
@@ -325,7 +342,7 @@ internal static class Deserialization
         }
         else
         {
-            var entityCollectionName = $"{propRepVarName}EntityCollection";
+            var entityCollectionName = identifiers.Allocate($"{propRepVarName.TrimStart('@')}EntityCollection");
             var escapedLabel = Utils.EscapeForGeneratedInterpolatedString(propertyLabel);
 
             // A deserialized element arrives boxed as `object`, so the type test names the
@@ -378,22 +395,7 @@ internal static class Deserialization
         sb.AppendLine($"{indentStr}        : {GetInvalidCollectionValueExpression(propertyLabel, collectionType)};");
     }
 
-    private static string GetDefaultValueForParameter(string paramName, TypeReferenceModel paramType, out bool shouldThrow)
-    {
-        // Handle known graph model properties with sensible defaults
-        shouldThrow = false;
-        return paramName.ToLowerInvariant() switch
-        {
-            "direction" when paramType.Name.Contains("RelationshipDirection") => "RelationshipDirection.Outgoing",
-            "id" when paramType.SpecialType == SpecialType.System_String => "string.Empty",
-            "startnodeid" when paramType.SpecialType == SpecialType.System_String => "string.Empty",
-            "endnodeid" when paramType.SpecialType == SpecialType.System_String => "string.Empty",
-            _ => GetTypeDefault(paramType, out shouldThrow)
-        };
-    }
-
     private static string GetMissingPropertyValueExpression(
-        string propertyName,
         string propertyLabel,
         TypeReferenceModel propertyType)
     {
@@ -402,7 +404,7 @@ internal static class Deserialization
             return "null";
         }
 
-        var defaultValue = GetDefaultValueForProperty(propertyName, propertyType, out var shouldThrow);
+        var defaultValue = GetTypeDefault(propertyType, out var shouldThrow);
         return shouldThrow
             ? $"throw new InvalidOperationException(\"No sensible default value for property '{Utils.EscapeForGeneratedStringLiteral(propertyLabel)}' of type '{propertyType.DisplayName}'.\")"
             : defaultValue;
@@ -420,7 +422,7 @@ internal static class Deserialization
             return "null";
         }
 
-        var defaultValue = GetDefaultValueForParameter(parameter.Name, parameter.Type, out var shouldThrow);
+        var defaultValue = GetTypeDefault(parameter.Type, out var shouldThrow);
         return shouldThrow
             ? $"throw new InvalidOperationException(\"No sensible default value for parameter '{Utils.EscapeForGeneratedStringLiteral(parameter.Name)}' of type '{parameter.Type.DisplayName}'.\")"
             : defaultValue;
@@ -433,7 +435,7 @@ internal static class Deserialization
             return "null";
         }
 
-        var defaultValue = GetDefaultValueForProperty(propertyLabel, targetType, out var shouldThrow);
+        var defaultValue = GetTypeDefault(targetType, out var shouldThrow);
         return shouldThrow
             ? $"throw new InvalidOperationException(\"No sensible default value for property '{Utils.EscapeForGeneratedStringLiteral(propertyLabel)}' of type '{targetType.DisplayName}'.\")"
             : defaultValue;
