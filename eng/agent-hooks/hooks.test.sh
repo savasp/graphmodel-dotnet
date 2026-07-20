@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Self-test for the PreToolUse hook and the pre-push gate. Run from the repo root:
-#   bash .claude/hooks/hooks.test.sh
+#   bash eng/agent-hooks/hooks.test.sh
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 REPO_ROOT="$(pwd)"
@@ -18,7 +18,7 @@ check() { # description expected_exit json script
   fi
 }
 
-P=.claude/hooks/protect-files.sh
+P=eng/agent-hooks/protect-files.sh
 check "blocks VERSION (absolute path)"        2 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/VERSION\"}}" "$P"
 check "blocks .github workflow"               2 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/.github/workflows/tests.yml\"}}" "$P"
 check "blocks Directory.Build.props"          2 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/Directory.Build.props\"}}" "$P"

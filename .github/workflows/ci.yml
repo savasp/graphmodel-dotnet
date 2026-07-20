@@ -92,7 +92,7 @@ jobs:
       - name: Test repository hooks and release orchestration
         shell: bash
         run: |
-          bash .claude/hooks/hooks.test.sh
+          bash eng/agent-hooks/hooks.test.sh
           bash scripts/release.test.sh
 
   validation:

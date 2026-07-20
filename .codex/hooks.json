@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'case \"$TOOL_INPUT\" in *VERSION*|*\".github/\"*|*Directory.Build.props*|*Directory.Packages.props*|*nuget.config*|*\".claude/\"*|*\".codex/\"*) echo \"STOP: protected file (see AGENTS.md, Shared-file discipline). Ask the user before modifying it.\" >&2; exit 2;; esac'"
+            "command": "bash \"$(git rev-parse --show-toplevel)/eng/agent-hooks/protect-files.sh\""
           }
         ]
       }

@@ -9,7 +9,7 @@ This repository is set up so AI coding agents can discover project context, buil
 
 | Tool | What to use |
 |------|-------------|
-| **Claude Code** | [CLAUDE.md](https://github.com/cvoya-com/graph/blob/main/CLAUDE.md) (thin entry point → AGENTS.md). Task agents in `.claude/agents/`, skills in `.claude/skills/`, hooks in `.claude/hooks/`, settings in `.claude/settings.json`. |
+| **Claude Code** | [CLAUDE.md](https://github.com/cvoya-com/graph/blob/main/CLAUDE.md) (thin entry point → AGENTS.md). Task agents in `.claude/agents/`, skills in `.claude/skills/`, shared hook scripts in `eng/agent-hooks/`, settings in `.claude/settings.json`. |
 | **Codex** | Reads [AGENTS.md](https://github.com/cvoya-com/graph/blob/main/AGENTS.md) natively. Agent role definitions in `.codex/agents/*.toml`, configuration in `.codex/config.toml`, hooks in `.codex/hooks.json`. |
 | **GitHub Copilot** | [.github/copilot-instructions.md](https://github.com/cvoya-com/graph/blob/main/.github/copilot-instructions.md) (thin pointer → AGENTS.md). |
 | **Other tools** (Zed, ChatGPT, etc.) | [AGENTS.md](https://github.com/cvoya-com/graph/blob/main/AGENTS.md) directly. |
@@ -30,6 +30,6 @@ The **lead session** owns isolation: it creates a worktree and branch per task a
 
 ### Guardrails
 
-- **Protected files** (`VERSION`, `.github/`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `.claude/`, `.codex/`): a PreToolUse hook blocks direct edits and tells the agent to ask the user first. This is advisory, not a security boundary. Self-test: `bash .claude/hooks/hooks.test.sh`.
-- **Build feedback**: a PostToolUse hook builds the affected project after `.cs` edits and feeds compile errors back to the agent.
+- **Protected files** (`VERSION`, `.github/`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `.claude/`, `.codex/`): a PreToolUse hook blocks direct edits and tells the agent to ask the user first. This is advisory, not a security boundary. Self-test: `bash eng/agent-hooks/hooks.test.sh`.
+- **Build feedback**: install the git pre-push hook with `eng/install-hooks.sh`; it runs the fast local gate before pushes. Agent-time per-edit builds are intentionally not used.
 - **Permissions**: `.claude/settings.json` pre-approves the repository test runner and common development commands (`dotnet`, `git`, `gh`, etc.) so agents can work without manual approval prompts.
