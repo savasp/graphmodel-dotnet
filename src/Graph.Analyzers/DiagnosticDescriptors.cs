@@ -181,4 +181,14 @@ internal static class DiagnosticDescriptors
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG017_Description);
+
+    // CG018: Invalid graph key or ignored property declaration
+    public static readonly DiagnosticDescriptor InvalidPropertySchemaDeclaration = new(
+        id: "CG018",
+        title: Resources.CG018_Title,
+        messageFormat: Resources.CG018_MessageFormat,
+        category: "Cvoya.Graph",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: Resources.CG018_Description);
 }

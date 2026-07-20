@@ -306,4 +306,19 @@ internal class Resources
     ///   Looks up a localized string similar to Nullable complex collection elements are not supported.
     /// </summary>
     internal static string CG017_Title => ResourceManager.GetString("CG017_Title", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Opt-in domain keys must be non-nullable graph-storable scalar values. A property ignored from graph storage cannot also request key, unique, index, or required schema behavior..
+    /// </summary>
+    internal static string CG018_Description => ResourceManager.GetString("CG018_Description", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Property '{0}' in type '{1}' has an invalid [Property] declaration: {2}.
+    /// </summary>
+    internal static string CG018_MessageFormat => ResourceManager.GetString("CG018_MessageFormat", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Invalid graph key or ignored property declaration.
+    /// </summary>
+    internal static string CG018_Title => ResourceManager.GetString("CG018_Title", resourceCulture)!;
 }

@@ -198,4 +198,15 @@
   <data name="CG017_Description" xml:space="preserve">
     <value>The provider-neutral wire model stores a collection of complex values as a sequence of serialized entities and has no representation for an empty slot, so a null element cannot round-trip. Serialization and materialization therefore throw a GraphException naming the property, the element type, and the zero-based index rather than silently dropping the element and shifting the ones after it. Declare the element type as non-nullable; support for nullable complex elements requires a new wire representation and is tracked as additive post-1.0 work.</value>
   </data>
+
+  <!-- CG018: Invalid graph key or ignored property declaration -->
+  <data name="CG018_Title" xml:space="preserve">
+    <value>Invalid graph key or ignored property declaration</value>
+  </data>
+  <data name="CG018_MessageFormat" xml:space="preserve">
+    <value>Property '{0}' in type '{1}' has an invalid [Property] declaration: {2}</value>
+  </data>
+  <data name="CG018_Description" xml:space="preserve">
+    <value>Opt-in domain keys must be non-nullable graph-storable scalar values. A property ignored from graph storage cannot also request key, unique, index, or required schema behavior.</value>
+  </data>
 </root>

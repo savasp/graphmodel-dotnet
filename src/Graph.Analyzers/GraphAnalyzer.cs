@@ -39,7 +39,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         DiagnosticDescriptors.EntityTypeMustBeReferenceType,
         DiagnosticDescriptors.IneffectiveComplexPropertyAttribute,
         DiagnosticDescriptors.OpenGenericEntityUnsupported,
-        DiagnosticDescriptors.NullableComplexCollectionElement);
+        DiagnosticDescriptors.NullableComplexCollectionElement,
+        DiagnosticDescriptors.InvalidPropertySchemaDeclaration);
 
     /// <summary>
     /// Initializes the analyzer and registers the symbol action for named types.
@@ -159,6 +160,15 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         // CG017: Check for nullable complex collection elements
         AnalyzeNullableComplexCollectionElements(context, namedTypeSymbol, helper, state);
+
+        // CG018: Check opt-in key shapes and contradictory ignored-property flags
+        AnalyzePropertySchemaDeclarations(
+            context,
+            namedTypeSymbol,
+            implementsINode,
+            implementsIRelationship,
+            helper,
+            state);
     }
 
     /// <summary>
@@ -204,7 +214,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 if (helper.IsCollectionOfNullableComplexTypes(property.Type))
                 {
                     var location = property.Locations.FirstOrDefault(candidate => candidate.IsInSource);
-                    if (location is not null && state.TryReport(location))
+                    if (location is not null && state.TryReport("CG017", location))
                     {
                         context.ReportDiagnostic(Diagnostic.Create(
                             DiagnosticDescriptors.NullableComplexCollectionElement,
@@ -232,6 +242,135 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 {
                     pending.Push(complexNamedType);
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// CG018: Reports invalid opt-in domain keys and schema behavior requested for ignored
+    /// properties. A key-specific report is intentionally limited to property types that the
+    /// entity could otherwise serialize; CG003-CG006 remain the single diagnostic when the
+    /// property's shape is invalid independently of <c>IsKey</c>.
+    /// </summary>
+    private static void AnalyzePropertySchemaDeclarations(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol namedType,
+        bool implementsINode,
+        bool implementsIRelationship,
+        AnalyzerHelper helper,
+        AnalyzerCompilationState state)
+    {
+        foreach (var property in GetSchemaProperties(namedType))
+        {
+            var attribute = property.GetAttributes().FirstOrDefault(candidate =>
+                candidate.AttributeClass?.Name == "PropertyAttribute" &&
+                candidate.AttributeClass.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph");
+            if (attribute is null)
+                continue;
+
+            var isKey = HasTrueNamedArgument(attribute, "IsKey");
+            var isIgnored = HasTrueNamedArgument(attribute, "Ignore");
+
+            string? reason = null;
+            if (isIgnored)
+            {
+                var conflictingFlags = new List<string>();
+                AddFlagIfTrue(attribute, "IsKey", conflictingFlags);
+                AddFlagIfTrue(attribute, "IsUnique", conflictingFlags);
+                AddFlagIfTrue(attribute, "IsIndexed", conflictingFlags);
+                AddFlagIfTrue(attribute, "IsRequired", conflictingFlags);
+
+                if (conflictingFlags.Count > 0)
+                {
+                    var configuredFlags = conflictingFlags.Select(flag => $"{flag} = true");
+                    reason = $"Ignore = true cannot be combined with {string.Join(", ", configuredFlags)}";
+                }
+            }
+
+            if (reason is null && isKey)
+            {
+                // If the property is unsupported even without IsKey, the existing property-type
+                // rule is the more fundamental and sufficient diagnostic. Do not report both.
+                var isOtherwiseValid = (!implementsINode || helper.IsValidNodePropertyType(property.Type)) &&
+                    (!implementsIRelationship || helper.IsValidRelationshipPropertyType(property.Type));
+                if (!isOtherwiseValid)
+                    continue;
+
+                if (AnalyzerHelper.IsNullableType(property.Type) ||
+                    (property.Type.IsReferenceType && property.Type.NullableAnnotation == NullableAnnotation.Annotated))
+                {
+                    reason = "IsKey = true requires a non-nullable property";
+                }
+                else if (!AnalyzerHelper.IsSimpleType(property.Type))
+                {
+                    reason = $"IsKey = true requires a graph-storable scalar; '{GetShortTypeName(property.Type)}' is not a scalar";
+                }
+            }
+
+            if (reason is null)
+                continue;
+
+            var location = property.Locations.FirstOrDefault(candidate => candidate.IsInSource);
+            if (location is null || !state.TryReport("CG018", location))
+                continue;
+
+            context.ReportDiagnostic(Diagnostic.Create(
+                DiagnosticDescriptors.InvalidPropertySchemaDeclaration,
+                location,
+                property.Name,
+                property.ContainingType.Name,
+                reason));
+        }
+    }
+
+    private static bool HasTrueNamedArgument(AttributeData attribute, string name)
+    {
+        if (attribute.NamedArguments.Any(argument =>
+            argument.Key == name && argument.Value.Value is true))
+        {
+            return true;
+        }
+
+        // Some analyzer-test compilations expose referenced attributes without populated
+        // NamedArguments. The application syntax remains authoritative for an explicit literal.
+        if (attribute.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax syntax)
+        {
+            var argument = syntax.ArgumentList?.Arguments.FirstOrDefault(candidate =>
+                candidate.NameEquals?.Name.Identifier.ValueText == name);
+            return argument?.Expression is LiteralExpressionSyntax literal &&
+                literal.Token.Value is true;
+        }
+
+        return false;
+    }
+
+    private static void AddFlagIfTrue(AttributeData attribute, string name, List<string> flags)
+    {
+        if (HasTrueNamedArgument(attribute, name))
+        {
+            flags.Add(name);
+        }
+    }
+
+    /// <summary>
+    /// Mirrors reflection's public-instance schema property set while keeping ignored properties,
+    /// which CG018 must inspect for contradictory schema flags.
+    /// </summary>
+    private static IEnumerable<IPropertySymbol> GetSchemaProperties(INamedTypeSymbol type)
+    {
+        var seenProperties = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            foreach (var property in current.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (property.IsStatic ||
+                    property.DeclaredAccessibility != Accessibility.Public ||
+                    !seenProperties.Add(property.Name))
+                {
+                    continue;
+                }
+
+                yield return property;
             }
         }
     }
@@ -1671,9 +1810,9 @@ public class GraphAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// Compilation-scoped CG017 state. Derived-type discovery is built once, and concurrent symbol
-    /// actions share both the visited-type set and the reported source locations so a reachable
-    /// declaration is analyzed and reported at most once.
+    /// Compilation-scoped analyzer state. Derived-type discovery is built once, and concurrent
+    /// symbol actions share both the visited-type set and per-rule reported source locations so a
+    /// reachable declaration is analyzed and reported at most once for each diagnostic.
     /// </summary>
     private sealed class AnalyzerCompilationState
     {
@@ -1681,7 +1820,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             new(SymbolEqualityComparer.Default);
         private readonly ConcurrentDictionary<ITypeSymbol, byte> analyzedTypes =
             new(SymbolEqualityComparer.Default);
-        private readonly ConcurrentDictionary<(SyntaxTree Tree, int Start, int Length), byte> reportedLocations = new();
+        private readonly ConcurrentDictionary<(string Id, SyntaxTree Tree, int Start, int Length), byte> reportedLocations = new();
 
         public AnalyzerCompilationState(Compilation compilation)
         {
@@ -1705,11 +1844,11 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         public IEnumerable<INamedTypeSymbol> GetDirectDerivedTypes(INamedTypeSymbol type) =>
             directDerivedTypes.TryGetValue(type, out var derivedTypes) ? derivedTypes : [];
 
-        public bool TryReport(Location location)
+        public bool TryReport(string diagnosticId, Location location)
         {
             var tree = location.SourceTree;
             return tree is not null &&
-                   reportedLocations.TryAdd((tree, location.SourceSpan.Start, location.SourceSpan.Length), 0);
+                   reportedLocations.TryAdd((diagnosticId, tree, location.SourceSpan.Start, location.SourceSpan.Length), 0);
         }
 
         private static IEnumerable<INamedTypeSymbol> GetAllNamedTypes(INamespaceSymbol namespaceSymbol)
