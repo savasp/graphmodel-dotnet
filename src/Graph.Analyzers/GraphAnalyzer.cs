@@ -1633,6 +1633,10 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             // Skip compiler-generated properties (like EqualityContract in records)
             if (IsCompilerGeneratedProperty(property))
                 continue;
+            // Only serialized properties can create serialization cycles; static, non-public,
+            // getterless, and ignored properties never round-trip.
+            if (!AnalyzerHelper.IsSerializedProperty(property))
+                continue;
             // Skip properties that would be handled by CG004/CG005 (invalid property types)
             bool isNode = AnalyzerHelper.ImplementsINode(namedType);
             bool isRelationship = AnalyzerHelper.ImplementsIRelationship(namedType);
@@ -1722,6 +1726,10 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             {
                 // Skip compiler-generated properties (like EqualityContract in records)
                 if (IsCompilerGeneratedProperty(property))
+                    continue;
+                // Only serialized properties can create serialization cycles; a static self-typed
+                // member (IntPtr.MaxValue, a Default/Empty singleton) is not a stored cycle.
+                if (!AnalyzerHelper.IsSerializedProperty(property))
                     continue;
                 // Skip nullable references - they break the cycle
                 if (IsNullableReference(property.Type, helper))

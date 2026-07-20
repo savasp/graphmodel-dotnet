@@ -53,6 +53,167 @@ public sealed class RuntimeKeySchemaValidationTests
     }
 
     [Theory]
+    [InlineData("IntPtr")]
+    [InlineData("UIntPtr")]
+    [InlineData("IntPtr?")]
+    [InlineData("UIntPtr?")]
+    [InlineData("nint[]")]
+    [InlineData("List<nuint?>")]
+    public void CreateEntitySchemaInfo_NativeSizedIntegerProperty_Throws(string propertyType)
+    {
+        var source = $$"""
+            #nullable enable
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            [Node("RuntimeNativeIntegerNode")]
+            public sealed record RuntimeNativeIntegerNode : Node
+            {
+                public {{propertyType}} DomainKey { get; init; }
+            }
+            """;
+
+        AssertInvalidSchema(source, "RuntimeNativeIntegerNode", "native-sized integer", "IntPtr", "UIntPtr");
+    }
+
+    [Theory]
+    [InlineData("nint")]
+    [InlineData("nuint")]
+    public void CreateEntitySchemaInfo_NativeSizedIntegerKey_Throws(string propertyType)
+    {
+        var source = $$"""
+            using Cvoya.Graph;
+
+            [Node("RuntimeNativeIntegerKeyNode")]
+            public sealed record RuntimeNativeIntegerKeyNode : Node
+            {
+                [Property(IsKey = true)]
+                public {{propertyType}} DomainKey { get; init; }
+            }
+            """;
+
+        AssertInvalidSchema(source, "RuntimeNativeIntegerKeyNode", "native-sized integer", "IntPtr", "UIntPtr");
+    }
+
+    [Fact]
+    public void CreateEntitySchemaInfo_ComplexPropertyContainingNativeSizedInteger_Throws()
+    {
+        const string source = """
+            using System;
+            using Cvoya.Graph;
+
+            public sealed class NativeHandleHolder
+            {
+                public IntPtr Handle { get; set; }
+            }
+
+            [Node("RuntimeNestedNativeIntegerNode")]
+            public sealed record RuntimeNestedNativeIntegerNode : Node
+            {
+                public NativeHandleHolder DomainKey { get; init; } = new();
+            }
+            """;
+
+        AssertInvalidSchema(source, "RuntimeNestedNativeIntegerNode", "native-sized integer", "IntPtr");
+    }
+
+    [Fact]
+    public void CreateEntitySchemaInfo_ComplexCollectionElementContainingNativeSizedInteger_Throws()
+    {
+        const string source = """
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            public sealed class PointerHolder
+            {
+                public UIntPtr Pointer { get; set; }
+            }
+
+            [Node("RuntimeNestedNativeIntegerCollectionNode")]
+            public sealed record RuntimeNestedNativeIntegerCollectionNode : Node
+            {
+                public List<PointerHolder> DomainKey { get; init; } = new();
+            }
+            """;
+
+        AssertInvalidSchema(source, "RuntimeNestedNativeIntegerCollectionNode", "native-sized integer", "UIntPtr");
+    }
+
+    [Fact]
+    public void CreateEntitySchemaInfo_SelfReferentialComplexTypeWithNativeSizedInteger_Throws()
+    {
+        const string source = """
+            #nullable enable
+            using System;
+            using Cvoya.Graph;
+
+            public sealed class RecursiveHandleHolder
+            {
+                public RecursiveHandleHolder? Next { get; set; }
+                public IntPtr Handle { get; set; }
+            }
+
+            [Node("RuntimeRecursiveNativeIntegerNode")]
+            public sealed record RuntimeRecursiveNativeIntegerNode : Node
+            {
+                public RecursiveHandleHolder DomainKey { get; init; } = new();
+            }
+            """;
+
+        AssertInvalidSchema(source, "RuntimeRecursiveNativeIntegerNode", "native-sized integer", "IntPtr");
+    }
+
+    [Fact]
+    public void CreateEntitySchemaInfo_SelfReferentialComplexTypeWithoutNativeSizedInteger_Succeeds()
+    {
+        const string source = """
+            #nullable enable
+            using Cvoya.Graph;
+
+            public sealed class RecursiveHolder
+            {
+                public RecursiveHolder? Next { get; set; }
+                public string Name { get; set; } = string.Empty;
+            }
+
+            [Node("RuntimeRecursiveCleanNode")]
+            public sealed record RuntimeRecursiveCleanNode : Node
+            {
+                public RecursiveHolder DomainKey { get; init; } = new();
+            }
+            """;
+
+        AssertValidSchema(source, "RuntimeRecursiveCleanNode");
+    }
+
+    [Fact]
+    public void CreateEntitySchemaInfo_ComplexPropertyWithIgnoredNativeSizedInteger_Succeeds()
+    {
+        const string source = """
+            using System;
+            using Cvoya.Graph;
+
+            public sealed class IgnoredHandleHolder
+            {
+                [Property(Ignore = true)]
+                public IntPtr Handle { get; set; }
+
+                public string Name { get; set; } = string.Empty;
+            }
+
+            [Node("RuntimeIgnoredNestedNativeIntegerNode")]
+            public sealed record RuntimeIgnoredNestedNativeIntegerNode : Node
+            {
+                public IgnoredHandleHolder DomainKey { get; init; } = new();
+            }
+            """;
+
+        AssertValidSchema(source, "RuntimeIgnoredNestedNativeIntegerNode");
+    }
+
+    [Theory]
     [InlineData("IsKey = true", "IsKey")]
     [InlineData("IsUnique = true", "IsUnique")]
     [InlineData("IsIndexed = true", "IsIndexed")]
@@ -73,6 +234,14 @@ public sealed class RuntimeKeySchemaValidationTests
             """;
 
         AssertInvalidSchema(source, "RuntimeIgnoredSchemaFlagNode", "Ignore", expectedFlag);
+    }
+
+    private static void AssertValidSchema(string source, string typeName)
+    {
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            [typeName],
+            types => Assert.NotNull(CreateEntitySchemaInfo(types[0])));
     }
 
     private static void AssertInvalidSchema(

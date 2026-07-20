@@ -150,6 +150,10 @@ Supported property types:
   properties. A `struct` is valid only as a nested complex value; graph entities themselves
   (`INode`/`IRelationship`) must be reference types (CG014).
 
+Native-sized integers (`IntPtr`/`UIntPtr`, including the `nint`/`nuint` aliases) are not supported
+anywhere in an entity's property graph: as ordinary properties, key values, nullable values,
+collection elements, or members of complex property values.
+
 ```csharp
 public record Person : Node
 {

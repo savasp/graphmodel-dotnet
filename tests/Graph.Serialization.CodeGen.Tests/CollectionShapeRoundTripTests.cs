@@ -269,6 +269,74 @@ public class CollectionShapeRoundTripTests
         AssertGeneratorProducesNoSources(frameworkLookalike);
     }
 
+    [Fact]
+    public void NativeSizedIntegerProperties_DoNotEmitSerializers()
+    {
+        const string source = """
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            [Node("Invalid")]
+            public sealed record InvalidNode : Node
+            {
+                public IntPtr Pointer { get; set; }
+                public UIntPtr? OptionalPointer { get; set; }
+                public List<nint> Pointers { get; set; } = new();
+            }
+            """;
+
+        AssertGeneratorProducesNoSources(source);
+    }
+
+    [Fact]
+    public void NestedNativeSizedIntegerProperties_DoNotEmitSerializers()
+    {
+        const string source = """
+            using System;
+            using Cvoya.Graph;
+
+            public sealed class NativeHandleHolder
+            {
+                public IntPtr Handle { get; set; }
+            }
+
+            [Node("Invalid")]
+            public sealed record InvalidNode : Node
+            {
+                public NativeHandleHolder Holder { get; set; } = new();
+            }
+            """;
+
+        AssertGeneratorProducesNoSources(source);
+    }
+
+    [Fact]
+    public void IgnoredNestedNativeSizedIntegerProperties_EmitSerializers()
+    {
+        const string source = """
+            using System;
+            using Cvoya.Graph;
+
+            public sealed class NativeHandleHolder
+            {
+                [Property(Ignore = true)]
+                public IntPtr Handle { get; set; }
+
+                public string Name { get; set; } = string.Empty;
+            }
+
+            [Node("Valid")]
+            public sealed record ValidNode : Node
+            {
+                public NativeHandleHolder Holder { get; set; } = new();
+            }
+            """;
+
+        var generated = GeneratorTestHelpers.RunGenerator(source);
+        Assert.Contains("Serializer.g.cs", generated, StringComparison.Ordinal);
+    }
+
     private static IEntitySerializer CreateSerializer(System.Reflection.Assembly assembly, string serializerTypeName)
     {
         var serializerType = assembly.GetType(serializerTypeName, throwOnError: true)!;

@@ -209,7 +209,7 @@ public static class GraphDataModel
     /// A "simple" type is one that can be used as the type of the property of an <see cref="INode"/> .
     /// The full list of simple types includes:
     /// <list type="bullet">
-    /// <item>All .NET primitive types (e.g., <see cref="int"/>, <see cref="long"/>, <see cref="double"/>, etc.)</item>
+    /// <item>Supported .NET primitive types (excluding <see cref="IntPtr"/> and <see cref="UIntPtr"/>)</item>
     /// <item>All .NET enum types</item>
     /// <item><see cref="string"/></item>
     /// <item><see cref="Point"/></item>
@@ -230,7 +230,7 @@ public static class GraphDataModel
 
         return type switch
         {
-            _ when type.IsPrimitive => true,
+            _ when type.IsPrimitive && type != typeof(IntPtr) && type != typeof(UIntPtr) => true,
             _ when type.IsEnum => true,
             _ when type == typeof(string) => true,
             _ when type == typeof(Point) => true,

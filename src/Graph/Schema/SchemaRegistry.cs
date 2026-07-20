@@ -469,12 +469,7 @@ public class SchemaRegistry : IDisposable
     /// </summary>
     private static void ValidatePropertySchema(PropertyInfo property, PropertyAttribute? attribute)
     {
-        if (attribute is null)
-        {
-            return;
-        }
-
-        if (attribute.Ignore)
+        if (attribute?.Ignore == true)
         {
             var conflictingFlags = new List<string>();
             if (attribute.IsKey)
@@ -503,9 +498,18 @@ public class SchemaRegistry : IDisposable
                     $"Property '{property.DeclaringType?.FullName}.{property.Name}' cannot combine " +
                     $"{nameof(PropertyAttribute.Ignore)} with {string.Join(", ", conflictingFlags)}.");
             }
+
+            return;
         }
 
-        if (!attribute.IsKey)
+        if (FindNativeSizedInteger(property.PropertyType) is { } unsupportedType)
+        {
+            throw new GraphException(
+                $"Property '{property.DeclaringType?.FullName}.{property.Name}' uses unsupported native-sized integer " +
+                $"type '{unsupportedType}'. IntPtr and UIntPtr cannot be stored as graph property values.");
+        }
+
+        if (attribute is null || !attribute.IsKey)
         {
             return;
         }
@@ -526,6 +530,57 @@ public class SchemaRegistry : IDisposable
                 $"Key property '{property.DeclaringType?.FullName}.{property.Name}' must be a graph-storable scalar value; " +
                 $"'{propertyType}' is not supported.");
         }
+    }
+
+    private static Type? FindNativeSizedInteger(Type type)
+    {
+        return FindNativeSizedInteger(type, []);
+    }
+
+    private static Type? FindNativeSizedInteger(Type type, HashSet<Type> visited)
+    {
+        var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+        if (underlyingType == typeof(IntPtr) || underlyingType == typeof(UIntPtr))
+        {
+            return underlyingType;
+        }
+
+        if (GraphDataModel.IsSimple(underlyingType) || !visited.Add(underlyingType))
+        {
+            return null;
+        }
+
+        if (typeof(System.Collections.IEnumerable).IsAssignableFrom(underlyingType))
+        {
+            var elementType = underlyingType.IsArray
+                ? underlyingType.GetElementType()
+                : underlyingType.IsGenericType
+                    ? underlyingType.GetGenericArguments().FirstOrDefault()
+                    : null;
+
+            return elementType is null ? null : FindNativeSizedInteger(elementType, visited);
+        }
+
+        // Any other shape serializes as a complex value whose effective property set is walked the
+        // same way here as by serialization (public instance getters, no indexers, not ignored): a
+        // native-sized integer nested in a complex value is equally unstorable, and the generator
+        // already refuses to emit serializers for it.
+        foreach (var property in underlyingType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.GetMethod is null ||
+                property.GetIndexParameters().Length > 0 ||
+                property.GetCustomAttribute<PropertyAttribute>()?.Ignore == true)
+            {
+                continue;
+            }
+
+            if (FindNativeSizedInteger(property.PropertyType, visited) is { } nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private static string GetLabelFromType(Type type)

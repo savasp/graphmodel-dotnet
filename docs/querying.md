@@ -105,7 +105,7 @@ await transaction.CommitAsync();
 
 ## Working with "complex" types
 
-The Graph Model supports "complex" properties. These are properties whose type isn't one of the primitive types. Neo4j doesn't natively support such properties on graph nodes. The Graph Model requires implementing providers to support them. Consider this example:
+The Graph Model supports "complex" properties. These are user-defined property types that are not supported scalar values. Unsupported framework scalars such as `IntPtr` and `UIntPtr` are rejected rather than treated as complex properties. Neo4j doesn't natively support complex properties on graph nodes. The Graph Model requires implementing providers to support them. Consider this example:
 
 ```csharp
 public record Address
