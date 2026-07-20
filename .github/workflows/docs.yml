@@ -38,67 +38,76 @@ on:
       - '.config/dotnet-tools.json'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Release tag recorded in the generated site
+        required: false
+        type: string
+        default: ''
+      release_version:
+        description: Tag-derived package version recorded in the generated site
+        required: false
+        type: string
+        default: ''
+      release_commit:
+        description: Tagged commit to check out and record in the generated site
+        required: false
+        type: string
+        default: ''
+      upload_pages_artifact:
+        description: Upload the validated site for a downstream release deployment
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      pages_artifact_name:
+        description: Name of the immutable Pages artifact produced for this run attempt
+        value: ${{ jobs.validate-documentation.outputs.pages_artifact_name }}
 
 permissions:
   contents: read
 
 jobs:
-  # Validates the DocFX API reference build on every push/PR. This does not deploy anything; it only
-  # proves the site still generates cleanly with zero warnings (DocFX surfaces malformed/missing XML
-  # doc comments on the public API surface as warnings, which we treat as build failures here).
-  validate-api-reference:
-    name: 🔍 Validate API Reference
+  # Pull requests and main-branch pushes run this complete build with read-only
+  # permissions. The release workflow calls the same job for the tagged commit
+  # and opts into artifact upload; this workflow never has deployment authority.
+  validate-documentation:
+    name: 🔍 Build and Validate Documentation
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      pages_artifact_name: ${{ steps.artifact-name.outputs.name }}
 
     steps:
     - name: 📦 Checkout
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
+        ref: ${{ inputs.release_commit || github.sha }}
         persist-credentials: false
 
-    - name: ⚙️ Setup .NET
-      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-      with:
-        dotnet-version: '10.0.x'
-
-    - name: 🗂️ Cache Dependencies
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-
-
-    - name: 📋 Restore Dependencies
-      run: dotnet restore
-
-    - name: 🛠️ Restore DocFX Tool
-      run: dotnet tool restore
-
-    - name: 📖 Build API Reference Site (validation only)
-      run: dotnet docfx docs/apiref/docfx.json --warningsAsErrors
-
-  # Builds the Jekyll conceptual-docs site (owning the root of Pages) and the DocFX API reference
-  # (published under /api/), assembles both into a single Pages artifact, and deploys it.
-  deploy-docs:
-    name: 🚀 Deploy Documentation
-    runs-on: ubuntu-latest
-    needs: validate-api-reference
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-
-    steps:
-    - name: 📦 Checkout
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-      with:
-        persist-credentials: false
+    - name: Verify Tagged Source
+      if: inputs.release_commit != ''
+      shell: bash
+      env:
+        RELEASE_COMMIT: ${{ inputs.release_commit }}
+        RELEASE_TAG: ${{ inputs.release_tag }}
+        RELEASE_VERSION: ${{ inputs.release_version }}
+      run: |
+        set -euo pipefail
+        actual_commit="$(git rev-parse HEAD)"
+        if [[ "$actual_commit" != "$RELEASE_COMMIT" ]]; then
+          echo "::error::Documentation checkout $actual_commit does not match release commit $RELEASE_COMMIT."
+          exit 1
+        fi
+        if [[ -z "$RELEASE_TAG" || -z "$RELEASE_VERSION" ]]; then
+          echo "::error::Release tag, version, and commit must be provided together."
+          exit 1
+        fi
+        if [[ "$RELEASE_TAG" != "v$RELEASE_VERSION" ]]; then
+          echo "::error::Documentation tag $RELEASE_TAG does not match release version $RELEASE_VERSION."
+          exit 1
+        fi
 
     - name: ⚙️ Setup .NET
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -122,45 +131,84 @@ jobs:
     - name: 📖 Build API Reference Site
       run: dotnet docfx docs/apiref/docfx.json --warningsAsErrors
 
-    - name: 🏗️ Setup Ruby (for Jekyll)
+    - name: 🏗️ Setup Ruby
       uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1.319.0
       with:
         ruby-version: '3.2'
         bundler-cache: true
 
-    - name: 🧭 Configure Pages
-      uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
-
-    - name: 📦 Install Jekyll Dependencies
+    - name: Prepare Documentation Build
+      id: build-config
+      shell: bash
+      env:
+        RELEASE_COMMIT: ${{ inputs.release_commit }}
       run: |
-        echo "📦 Using repository Gemfile for Jekyll dependencies..."
-        echo "Gemfile contents:"
-        cat Gemfile
-        bundle install
+        set -euo pipefail
+        jekyll_config="_config.yml"
+        if [[ -n "$RELEASE_COMMIT" ]]; then
+          release_time="$(git show -s --format=%cI HEAD)"
+          source_date_epoch="$(git show -s --format=%ct HEAD)"
+          release_config="$RUNNER_TEMP/release-docs.yml"
+          printf 'time: "%s"\n' "$release_time" > "$release_config"
+          jekyll_config="_config.yml,$release_config"
+          echo "source_date_epoch=$source_date_epoch" >> "$GITHUB_OUTPUT"
+        fi
+        echo "jekyll_config=$jekyll_config" >> "$GITHUB_OUTPUT"
 
-    - name: 🏗️ Build Jekyll Site
+    - name: 🏗️ Build Conceptual Documentation
+      env:
+        JEKYLL_CONFIG: ${{ steps.build-config.outputs.jekyll_config }}
+      run: bundle exec jekyll build --config "$JEKYLL_CONFIG" --destination _site --strict_front_matter
+
+    # Jekyll owns the site root and DocFX owns /api/. Assemble both before
+    # validation so the link checker sees the same tree that a release deploys.
+    - name: 🔗 Merge API Reference into Site
       run: |
-        echo "🏗️ Building Jekyll site..."
-        bundle exec jekyll build --destination _site
-
-        echo "📋 Jekyll build completed. Contents:"
-        ls -la _site/
-
-    # DocFX owns /api/ under the Pages site; Jekyll owns everything else. Jekyll builds first (into
-    # _site/), then the already-built DocFX output (docs/apiref/_site/) is copied into _site/api/ so a
-    # single upload-pages-artifact step publishes both.
-    - name: 🔗 Merge API Reference into Pages Site
-      run: |
-        echo "🔗 Copying DocFX output into _site/api/..."
         mkdir -p _site/api
         cp -r docs/apiref/_site/. _site/api/
-        ls -la _site/api/
+
+    - name: 🔗 Validate Internal Links
+      # DocFX validates its own output with warnings-as-errors above. HTMLProofer
+      # checks the Jekyll-owned tree while still resolving links into /api/.
+      run: bundle exec htmlproofer --disable-external=true --assume-extension=.html --ignore-files='/\/api\//' --swap-urls='^/graph/:/' _site
+
+    # Keep the metadata deterministic: a retry for the same immutable tag and
+    # commit produces the same values, with no run ID, timestamp, or attempt ID.
+    - name: Record Release Provenance
+      if: inputs.release_commit != ''
+      shell: bash
+      env:
+        RELEASE_COMMIT: ${{ inputs.release_commit }}
+        RELEASE_TAG: ${{ inputs.release_tag }}
+        RELEASE_VERSION: ${{ inputs.release_version }}
+      run: |
+        jq -n \
+          --arg repository "$GITHUB_REPOSITORY" \
+          --arg tag "$RELEASE_TAG" \
+          --arg version "$RELEASE_VERSION" \
+          --arg commit "$RELEASE_COMMIT" \
+          '{repository: $repository, tag: $tag, version: $version, commit: $commit}' \
+          > _site/release.json
+
+    - name: Normalize Release Artifact Timestamps
+      if: inputs.release_commit != ''
+      shell: bash
+      env:
+        SOURCE_DATE_EPOCH: ${{ steps.build-config.outputs.source_date_epoch }}
+      run: find _site -exec touch -h --date="@$SOURCE_DATE_EPOCH" {} +
+
+    # A unique name per run attempt preserves artifact immutability while still
+    # allowing an explicit rerun of the same tagged release to build again.
+    - name: Name Pages Artifact
+      if: inputs.upload_pages_artifact
+      id: artifact-name
+      shell: bash
+      run: echo "name=github-pages-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
     - name: 📤 Upload Documentation Site
+      if: inputs.upload_pages_artifact
       uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
       with:
+        name: ${{ steps.artifact-name.outputs.name }}
         path: _site
-
-    - name: 🚀 Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        retention-days: 30
