@@ -31,6 +31,10 @@ public interface ICypherDialect
     /// </param>
     string RenderPropertyAccess(string target, string property, bool escape);
 
+    /// <summary>Renders transaction-local native identity for a bound graph element.</summary>
+    /// <param name="target">The already-rendered node or relationship expression.</param>
+    string RenderNativeElementIdentity(string target);
+
     /// <summary>Maps a provider-neutral function name to dialect syntax.</summary>
     /// <param name="function">The provider-neutral function name.</param>
     string RenderFunctionName(string function);

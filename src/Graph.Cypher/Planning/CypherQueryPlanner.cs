@@ -41,7 +41,21 @@ public sealed class CypherQueryPlanner
     /// </summary>
     /// <param name="model">The provider-independent query model.</param>
     /// <returns>The planned Cypher statement.</returns>
-    public CypherStatement Plan(GraphQueryModel model)
+    public CypherStatement Plan(GraphQueryModel model) => PlanCore(model, selection: null);
+
+    /// <summary>Plans a transaction-local native graph-element selection.</summary>
+    /// <param name="selection">The provider-neutral command selection.</param>
+    /// <returns>A statement that returns opaque, distinct native identities.</returns>
+    public CypherStatement Plan(GraphElementSelectionModel selection)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        GraphElementSelectionModelValidator.Validate(selection);
+        return PlanCore(selection.Query, selection);
+    }
+
+    private CypherStatement PlanCore(
+        GraphQueryModel model,
+        GraphElementSelectionModel? selection)
     {
         ArgumentNullException.ThrowIfNull(model);
 
@@ -116,9 +130,16 @@ public sealed class CypherQueryPlanner
         var predicates = LowerPredicates(model, state, lowerer);
         var terminalPredicate = LowerTerminalPredicate(model, state, lowerer);
         var ordering = LowerOrdering(model, state, lowerer);
-        var projection = model.PathShape is null
-            ? LowerProjection(model, state, lowerer)
-            : null;
+        var projection = selection is not null
+            ? ProjectionPlan.Scalar(
+            [
+                new ReturnItem(
+                    new NativeElementIdentity(new VariableRef(state.CurrentAlias)),
+                    "__nativeId")
+            ])
+            : model.PathShape is null
+                ? LowerProjection(model, state, lowerer)
+                : null;
         var postPagingLowerer = model.PostPaging is not null
             ? new ExpressionToCypherAstLowerer(
                 parameters,
@@ -181,7 +202,11 @@ public sealed class CypherQueryPlanner
             clauses.Add(BuildTraversalMatch(model.Root, [optionalStep], pathAlias: null, optional: true));
         }
 
-        if (model.PathShape is not null)
+        if (selection is not null)
+        {
+            AddElementSelection(clauses, model, selection, ordering, projection!);
+        }
+        else if (model.PathShape is not null)
         {
             AddGraphPathTerminalAndProjection(clauses, model, lowerer);
         }
@@ -216,6 +241,38 @@ public sealed class CypherQueryPlanner
 #endif
 
         return statement;
+    }
+
+    private static void AddElementSelection(
+        List<ICypherClause> clauses,
+        GraphQueryModel model,
+        GraphElementSelectionModel selection,
+        OrderByItem[] ordering,
+        ProjectionPlan projection)
+    {
+        if (ordering.Length > 0 || model.Paging.Skip is not null || model.Paging.Take is not null)
+        {
+            // Make ordering/paging an explicit row-pipeline stage. This is byte-stable for Neo4j
+            // and gives dialect lowering passes (notably AGE) a WITH boundary that preserves the
+            // query window before native-identity deduplication.
+            clauses.Add(WithClause.All);
+        }
+
+        AddOrderingAndPaging(clauses, ordering, model.Paging, reverseOrdering: false);
+
+        // The query window is applied to physical rows first. Native identity is then projected
+        // and deduplicated inside the active write transaction, so provider join/search expansion
+        // can never inflate affected counts or repeat a mutation target.
+        clauses.Add(new WithClause(projection.Items!, distinct: true));
+        if (selection.Mode == GraphElementSelectionMode.ExactOne)
+        {
+            // Two distinct candidates are sufficient to distinguish empty, one, and multiple.
+            clauses.Add(new LimitClause(new Literal(2)));
+        }
+
+        clauses.Add(new ReturnClause(
+            [new ReturnItem(new VariableRef("__nativeId"), "__nativeId")],
+            distinct: false));
     }
 
     /// <summary>

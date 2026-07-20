@@ -72,7 +72,11 @@ public sealed class ComplianceInventoryTests
     // one result per physical relationship across node, segment-end, and path-end projections.
     // +3 for #464: single-key tuple enforcement, explicit uniqueness on a composite-key component,
     // and key-value scope across distinct node labels and relationship types.
-    private const int ExpectedTotalTestMethods = 456;
+    // +9 for #466: zero/cancelled mutations, search and relationship-existence selection,
+    // ordered-window updates, relationship mutation, atomic/cascading node deletion,
+    // dynamic-property mutation without exposing provider-native identities, and role-specific
+    // exact-one endpoint cardinality failures.
+    private const int ExpectedTotalTestMethods = 465;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

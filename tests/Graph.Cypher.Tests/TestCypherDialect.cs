@@ -25,6 +25,8 @@ internal sealed class TestCypherDialect(
 
     public string RenderPropertyAccess(string target, string property, bool escape) => $"{target}.{property}";
 
+    public string RenderNativeElementIdentity(string target) => $"nativeId({target})";
+
     public string RenderFunctionName(string function) => function;
 
     public CypherFunctionBehavior GetFunctionBehavior(string function) =>

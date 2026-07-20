@@ -6,6 +6,7 @@ namespace Cvoya.Graph.InMemory.Querying;
 using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Querying;
+using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Serialization;
 
 /// <summary>
@@ -130,6 +131,60 @@ internal sealed class InMemoryQueryExecutor(
 
         var values = materialized.Select(p => p.Value).ToList();
         return ApplyTerminal(values, model, hints);
+    }
+
+    /// <summary>Selects opaque store keys with command ordering/windowing followed by deduplication.</summary>
+    public IReadOnlyList<SelectedGraphElement> SelectNative(GraphElementSelectionModel selection)
+    {
+        GraphElementSelectionModelValidator.Validate(selection);
+        var model = selection.Query;
+        var rows = RootRows(model.Root);
+        rows = ApplyLabelFilters(rows, model.LabelFilters);
+        rows = ApplyRelationshipExistence(rows, model.RelationshipExistence);
+
+        var deferred = new List<PredicateFragment>();
+        if (model.Predicates.Count > 0)
+        {
+            rows = FilterRows(rows, model.Predicates, deferred, complexTraversals: []);
+        }
+
+        if (model.SearchFilter is { } searchFilter)
+        {
+            rows = ApplySearchFilter(rows, searchFilter);
+        }
+
+        var pairs = ApplyOrdering(rows.Select(row => (row, row.Current)), model.Ordering).ToList();
+        if (deferred.Count > 0)
+        {
+            // ExecuteCore re-applies deferred fragments to projected values, but a command
+            // selection has no projection stage; dropping them would widen the mutation target
+            // set past the query's own filter, so the selection must fail instead.
+            throw new GraphQueryTranslationException(
+                "Cannot use the query as a graph command selection: a predicate does not bind to the selected graph element.");
+        }
+
+        if (model.Paging.Skip is { } skip)
+        {
+            pairs = [.. pairs.Skip(skip)];
+        }
+
+        if (model.Paging.Take is { } take)
+        {
+            pairs = [.. pairs.Take(take)];
+        }
+
+        var selected = pairs
+            .Select(pair => pair.Row.NativeIdentity ?? throw new GraphException(
+                "The in-memory command selection lost its private record key."))
+            .Distinct()
+            .Select(identity => new SelectedGraphElement(selection.ElementKind, identity))
+            .ToArray();
+        if (selection.Mode == GraphElementSelectionMode.ExactOne)
+        {
+            return selected.Take(2).ToArray();
+        }
+
+        return selected;
     }
 
     private object? ApplyTerminal(
@@ -265,6 +320,8 @@ internal sealed class InMemoryQueryExecutor(
 
         public object? Current { get; set; }
 
+        public object? NativeIdentity { get; set; }
+
         public List<StepTrace> Traces { get; init; } = [];
 
         public StepTrace? LastStep => Traces.Count > 0 ? Traces[^1] : null;
@@ -280,6 +337,7 @@ internal sealed class InMemoryQueryExecutor(
         {
             Bindings = new Dictionary<string, object?>(Bindings, StringComparer.Ordinal),
             Current = Current,
+            NativeIdentity = NativeIdentity,
             Traces = [.. Traces],
             Sources = new Dictionary<object, IReadOnlyDictionary<string, StoredProperty>>(
                 Sources, GraphDataModel.ReferenceEqualityComparer.Instance),
@@ -399,7 +457,7 @@ internal sealed class InMemoryQueryExecutor(
             }
 
             var entity = _reader.MaterializeNode(record, _state, elementType);
-            yield return NewRow(alias, entity, record.Properties);
+            yield return NewRow(alias, entity, record.Properties, record.Key);
         }
     }
 
@@ -415,20 +473,25 @@ internal sealed class InMemoryQueryExecutor(
             }
 
             var entity = _reader.MaterializeRelationship(record, elementType);
-            yield return NewRow(alias, entity, record.Properties);
+            yield return NewRow(alias, entity, record.Properties, record.Id);
         }
     }
 
-    private static Row NewRow(string alias, object entity, IReadOnlyDictionary<string, StoredProperty> source) => new()
-    {
-        Bindings = new Dictionary<string, object?>(StringComparer.Ordinal) { [alias] = entity },
-        Current = entity,
-        Sources = new Dictionary<object, IReadOnlyDictionary<string, StoredProperty>>(
-            GraphDataModel.ReferenceEqualityComparer.Instance)
+    private static Row NewRow(
+        string alias,
+        object entity,
+        IReadOnlyDictionary<string, StoredProperty> source,
+        object nativeIdentity) => new()
         {
-            [entity] = source,
-        },
-    };
+            Bindings = new Dictionary<string, object?>(StringComparer.Ordinal) { [alias] = entity },
+            Current = entity,
+            NativeIdentity = nativeIdentity,
+            Sources = new Dictionary<object, IReadOnlyDictionary<string, StoredProperty>>(
+            GraphDataModel.ReferenceEqualityComparer.Instance)
+            {
+                [entity] = source,
+            },
+        };
 
     // ---- traversal ----
 
@@ -507,6 +570,7 @@ internal sealed class InMemoryQueryExecutor(
             newRow.Bindings[targetAlias] = targetEntity;
             newRow.Bindings["r"] = lastRelationship;
             newRow.Current = targetEntity;
+            newRow.NativeIdentity = finalRecord.Key;
             newRow.Traces.Add(new StepTrace(sourceNode, lastRelationship, targetEntity));
             newRow.Sources[targetEntity] = finalRecord.Properties;
             newRow.Sources[lastRelationship] = path[^1].Relationship.Properties;

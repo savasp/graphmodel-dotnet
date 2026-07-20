@@ -79,6 +79,17 @@ public sealed class CypherRenderer : ICypherRenderContext
                 builder.Append(string.Join(", ", @return.Items.Select(RenderReturnItem)));
                 break;
 
+            case SetClause set:
+                builder.Append("SET ")
+                    .Append(string.Join(", ", set.Items.Select(item =>
+                        $"{RenderExpression(item.Target)} = {RenderExpression(item.Value)}")));
+                break;
+
+            case DeleteClause delete:
+                builder.Append(delete.Detach ? "DETACH DELETE " : "DELETE ")
+                    .Append(string.Join(", ", delete.Targets.Select(target => RenderExpression(target))));
+                break;
+
             case CallSubqueryClause subquery:
                 RenderCallSubquery(builder, subquery);
                 break;
@@ -271,6 +282,8 @@ public sealed class CypherRenderer : ICypherRenderContext
                 RenderExpression(property.Target), property.Property, escape: false),
             EscapedPropertyAccess property => dialect.RenderPropertyAccess(
                 RenderExpression(property.Target), property.Property, escape: true),
+            NativeElementIdentity identity => dialect.RenderNativeElementIdentity(
+                RenderExpression(identity.Target)),
             QueryParameter parameter => dialect.RenderParameter(parameter.Name),
             Literal literal => RenderLiteral(literal.Value),
             FunctionCall function => RenderFunction(function),

@@ -68,6 +68,13 @@ public sealed class Neo4jDialect : ICypherDialect
     }
 
     /// <inheritdoc/>
+    public string RenderNativeElementIdentity(string target)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(target);
+        return $"elementId({target})";
+    }
+
+    /// <inheritdoc/>
     public string RenderFunctionName(string function)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(function);

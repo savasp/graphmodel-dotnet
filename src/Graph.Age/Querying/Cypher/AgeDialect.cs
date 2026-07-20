@@ -24,15 +24,41 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.PatternSizeProjection,
         GraphCapability.GroupByAggregation);
 
+    private static readonly CapabilitySet CommandPlanningCapabilities = CapabilitySet.Of(
+        GraphCapability.Transactions,
+        GraphCapability.ComplexPropertyCascade,
+        GraphCapability.MultiLabelMatch,
+        GraphCapability.LabelFiltering,
+        GraphCapability.OrderByEntity,
+        GraphCapability.OptionalTraversal,
+        GraphCapability.FullTextSearch,
+        GraphCapability.CallSubqueries,
+        GraphCapability.PatternSizeProjection,
+        GraphCapability.GroupByAggregation,
+        GraphCapability.RelationshipPredicates);
+
+    private readonly CapabilitySet capabilities;
+
     /// <summary>Initializes the Apache AGE dialect.</summary>
     public AgeDialect()
+        : this(SupportedCapabilities)
     {
     }
+
+    private AgeDialect(CapabilitySet capabilities) => this.capabilities = capabilities;
 
     /// <summary>Gets the shared Apache AGE dialect instance.</summary>
     public static AgeDialect Instance { get; } = new();
 
     internal static AgeDialect PlanningInstance { get; } = Instance;
+
+    /// <summary>
+    /// Gets the planning dialect for the narrower command-selection grammar. Command selections
+    /// end in a scalar native-id projection, which AGE can structurally lower to optional-match
+    /// counts even though general entity-hydrating relationship-existence queries remain outside
+    /// the provider's declared read capability.
+    /// </summary>
+    internal static AgeDialect CommandPlanningInstance { get; } = new(CommandPlanningCapabilities);
 
     /// <inheritdoc/>
     public string Name => "Apache AGE";
@@ -44,10 +70,11 @@ public sealed class AgeDialect : ICypherDialect
     /// earlier still, at the expression level, to a two-phase Postgres text-search query
     /// (<see cref="Querying.AgeFullTextSearch"/>).
     /// Scalar-key grouping uses AGE's native grouping and aggregate support through the shared
-    /// structured <c>WITH</c> plan. Capabilities describe user-visible behavior, whether native or
-    /// lowered, so both the planning and public instances declare those features.
+    /// structured <c>WITH</c> plan. Capabilities describe user-visible read behavior, whether
+    /// native or lowered. The internal command planner has one additional selection-only lowering
+    /// for relationship existence; it does not broaden this public capability set.
     /// </remarks>
-    public CapabilitySet Capabilities => SupportedCapabilities;
+    public CapabilitySet Capabilities => capabilities;
 
     /// <inheritdoc/>
     /// <remarks>
@@ -81,6 +108,13 @@ public sealed class AgeDialect : ICypherDialect
         return $"{target}.{(escape
             ? CypherIdentifier.Escape(property, "property name")
             : CypherIdentifier.EscapeIfNeeded(property, "property name"))}";
+    }
+
+    /// <inheritdoc/>
+    public string RenderNativeElementIdentity(string target)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(target);
+        return $"id({target})";
     }
 
     /// <inheritdoc/>

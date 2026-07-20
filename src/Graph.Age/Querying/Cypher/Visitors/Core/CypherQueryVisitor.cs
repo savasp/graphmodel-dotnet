@@ -51,7 +51,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         {
             var model = GraphQueryModelBuilder.Build(node);
             statement = new CypherQueryPlanner(AgeDialect.PlanningInstance).Plan(model);
-            statement = LoweringPasses.Run(statement);
+            statement = LowerStatement(statement);
         }
         catch (GraphQueryTranslationException exception)
         {
@@ -72,6 +72,9 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         }
         return node;
     }
+
+    internal static CypherStatement LowerStatement(CypherStatement statement) =>
+        LoweringPasses.Run(statement);
 
     private static Exception PreserveLegacyProviderException(GraphQueryTranslationException exception)
     {
