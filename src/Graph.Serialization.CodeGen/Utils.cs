@@ -149,6 +149,19 @@ internal static class Utils
             .Replace("{", "{{")
             .Replace("}", "}}");
 
+    /// <summary>
+    /// Emits a consumer-provided semantic name as a valid C# identifier. Roslyn symbols expose the
+    /// semantic name without a source-level <c>@</c>, so reserved and contextual keywords are
+    /// escaped here while ordinary and Unicode identifiers remain byte-for-byte unchanged.
+    /// </summary>
+    internal static string EscapeIdentifier(string identifier)
+    {
+        return SyntaxFacts.GetKeywordKind(identifier) != SyntaxKind.None ||
+               SyntaxFacts.GetContextualKeywordKind(identifier) != SyntaxKind.None
+            ? $"@{identifier}"
+            : identifier;
+    }
+
     internal static string GetTypeOfName(ITypeSymbol type)
     {
         // For nullable reference types, get the underlying non-nullable type
@@ -311,8 +324,9 @@ internal static class Utils
     {
         var propertyType = property.Type;
 
-        // Skip standard INode/IRelationship properties that aren't really "complex"
-        if (property.Name is "Id" or "StartNodeId" or "EndNodeId" or "Direction")
+        // Relationship endpoints remain strings in the current runtime contract. Id and Direction
+        // are deliberately classified only from their declared types, like every domain property.
+        if (property.Name is "StartNodeId" or "EndNodeId")
             return false;
 
         // A property is complex if it's not simple and not a collection of simple types

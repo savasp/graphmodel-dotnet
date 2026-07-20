@@ -532,10 +532,10 @@ internal sealed class KennelSerializer : IEntitySerializer
                     : entity.ComplexProperties.TryGetValue("Id", out var idComplexProp) ? idComplexProp : null;
         // Extract simple value - no conversion, just cast
         idValue = idPropRep is null
-            ? Guid.NewGuid().ToString("N")
+            ? string.Empty
             : idPropRep.Value is SimpleValue idPropRepSimpleValue
                 ? (string)idPropRepSimpleValue.Object
-                : Guid.NewGuid().ToString("N");
+                : string.Empty;
 
         var result = new TestNamespace.Kennel(
         )

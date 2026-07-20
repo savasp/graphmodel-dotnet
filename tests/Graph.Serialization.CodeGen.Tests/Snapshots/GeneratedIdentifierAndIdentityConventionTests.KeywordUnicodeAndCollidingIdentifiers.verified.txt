@@ -1,0 +1,81 @@
+            ? default(Cvoya.Graph.RelationshipDirection)
+                : default(Cvoya.Graph.RelationshipDirection);
+        string @class;
+        @class = classPropRep is null
+        string result1;
+        result1 = resultPropRep is null
+            @class,
+            result1
+        result.@event = eventPropRep is null
+        // Look for property 'naïve' in both simple and complex properties
+        var naïvePropRep = entity.SimpleProperties.TryGetValue("naïve", out var naïveSimpleProp) ? naïveSimpleProp
+                    : entity.ComplexProperties.TryGetValue("naïve", out var naïveComplexProp) ? naïveComplexProp : null;
+        result.naïve = naïvePropRep is null
+            : naïvePropRep.Value is SimpleValue naïvePropRepSimpleValue
+                ? (string)naïvePropRepSimpleValue.Object
+            var value = entity.@class;
+            var value = entity.@event;
+        // Serialize property: naïve
+            var propInfo = typeof(KeywordIdentifiers.KeywordLink).GetProperty("naïve")!;
+            var value = entity.naïve;
+                Label: "naïve",
+            simpleProperties["naïve"] = propertyRep;
+        // Schema for property: naïve
+            var propInfo = typeof(KeywordIdentifiers.KeywordLink).GetProperty("naïve")!;
+            simpleProperties["naïve"] = new PropertySchema(
+                PropertyName: "naïve",
+            ? default(KeywordIdentifiers.BusinessRelationshipDirection)
+                : default(KeywordIdentifiers.BusinessRelationshipDirection);
+        string @class;
+        @class = classPropRep is null
+        string @event;
+        @event = eventPropRep is null
+        // Extracting value for parameter 'café'
+        string café;
+        // Look for property 'café' in both simple and complex properties
+        var caféPropRep = entity.SimpleProperties.TryGetValue("café", out var caféSimpleProp) ? caféSimpleProp
+                    : entity.ComplexProperties.TryGetValue("café", out var caféComplexProp) ? caféComplexProp : null;
+        café = caféPropRep is null
+            : caféPropRep.Value is SimpleValue caféPropRepSimpleValue
+                ? (string)caféPropRepSimpleValue.Object
+        string entity1;
+        entity1 = entityPropRep is null
+        string result1;
+        result1 = resultPropRep is null
+        string index1;
+        index1 = indexPropRep is null
+        string simpleValue1;
+        simpleValue1 = simplevaluePropRep is null
+        string guidValue1;
+        guidValue1 = guidvaluePropRep is null
+        string urlValue;
+        urlValue = urlPropRep is null
+        string urlValue1;
+        urlValue1 = urlPropRep1 is null
+            @class,
+            @event,
+            café,
+            entity1,
+            result1,
+            index1,
+            simpleValue1,
+            guidValue1
+            @required = requiredValue,
+            URL = urlValue,
+            Url = urlValue1
+        result.@namespace = namespacePropRep is null
+        result.@field = fieldPropRep is null
+            var value = entity.@class;
+            var value = entity.@event;
+        // Serialize property: café
+            var propInfo = typeof(KeywordIdentifiers.KeywordNode).GetProperty("café")!;
+            var value = entity.café;
+                Label: "café",
+            simpleProperties["café"] = propertyRep;
+            var value = entity.@namespace;
+            var value = entity.@required;
+            var value = entity.@field;
+        // Schema for property: café
+            var propInfo = typeof(KeywordIdentifiers.KeywordNode).GetProperty("café")!;
+            simpleProperties["café"] = new PropertySchema(
+                PropertyName: "café",

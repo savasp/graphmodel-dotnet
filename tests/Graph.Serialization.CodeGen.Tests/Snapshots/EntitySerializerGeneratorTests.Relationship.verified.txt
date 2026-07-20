@@ -64,10 +64,10 @@ internal sealed class KnowsSerializer : IEntitySerializer
                     : entity.ComplexProperties.TryGetValue("Direction", out var directionComplexProp) ? directionComplexProp : null;
         // Extract simple value - no conversion, just cast
         directionValue = directionPropRep is null
-            ? RelationshipDirection.Outgoing
+            ? default(Cvoya.Graph.RelationshipDirection)
             : directionPropRep.Value is SimpleValue directionPropRepSimpleValue
                 ? (Cvoya.Graph.RelationshipDirection)directionPropRepSimpleValue.Object
-                : RelationshipDirection.Outgoing;
+                : default(Cvoya.Graph.RelationshipDirection);
         // Extracting init-only property 'Id'
         string idValue;
         // Look for property 'Id' in both simple and complex properties
@@ -75,10 +75,10 @@ internal sealed class KnowsSerializer : IEntitySerializer
                     : entity.ComplexProperties.TryGetValue("Id", out var idComplexProp) ? idComplexProp : null;
         // Extract simple value - no conversion, just cast
         idValue = idPropRep is null
-            ? Guid.NewGuid().ToString("N")
+            ? string.Empty
             : idPropRep.Value is SimpleValue idPropRepSimpleValue
                 ? (string)idPropRepSimpleValue.Object
-                : Guid.NewGuid().ToString("N");
+                : string.Empty;
 
         var result = new TestNamespace.Knows(
             StartNodeId,
