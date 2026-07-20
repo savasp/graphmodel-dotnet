@@ -5,9 +5,9 @@ namespace Cvoya.Graph.Age.Tests;
 
 using Cvoya.Graph.Age.Querying.Cypher;
 using Cvoya.Graph.Age.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.CompatibilityTests;
 using Cvoya.Graph.Cypher;
 using Cvoya.Graph.Cypher.Planning;
-using Cvoya.Graph.CompatibilityTests;
 using Cvoya.Graph.Querying;
 
 public sealed class AgeRelationshipPredicateTranslationTests

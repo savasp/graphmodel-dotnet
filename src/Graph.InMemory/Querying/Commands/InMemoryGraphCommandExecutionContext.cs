@@ -177,13 +177,19 @@ internal sealed class InMemoryGraphCommandExecutionContext(
         object? value,
         StoredProperty? existing)
     {
-        var declaredType = assignment.Property?.PropertyType ?? existing?.Type ?? value?.GetType() ?? typeof(object);
+        // Dynamic-bag types follow the assigned value (matching the entity writer); the previous
+        // snapshot only fills in when the new value is null and carries no type of its own.
+        var declaredType = assignment.Property?.PropertyType
+            ?? (assignment.Dynamic ? value?.GetType() : null)
+            ?? existing?.Type
+            ?? value?.GetType()
+            ?? typeof(object);
         var isCollection = GraphDataModel.IsCollectionOfSimple(declaredType) ||
             assignment.Dynamic && value is IEnumerable and not string && value is not byte[];
         Type? elementType = null;
         if (isCollection)
         {
-            elementType = existing?.ElementType ?? GetElementType(declaredType) ?? GetRuntimeElementType(value);
+            elementType = GetElementType(declaredType) ?? GetRuntimeElementType(value) ?? existing?.ElementType;
         }
 
         return new StoredProperty(

@@ -5,8 +5,8 @@ namespace Cvoya.Graph.Neo4j.Querying.Linq.Providers;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Neo4j.Core;
-using Cvoya.Graph.Neo4j.Querying.Cypher.Execution;
 using Cvoya.Graph.Neo4j.Querying.Commands;
+using Cvoya.Graph.Neo4j.Querying.Cypher.Execution;
 using Cvoya.Graph.Querying;
 using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Querying.Linq;

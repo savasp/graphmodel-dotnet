@@ -165,7 +165,7 @@ internal sealed record StoreState(
         if (!cascadeDelete && userRelationships.Length > 0)
         {
             throw new GraphException(
-                $"Cannot delete the selected nodes because the frozen target set has {userRelationships.Length} incident user relationship(s). " +
+                $"Cannot delete the selected nodes because they have {userRelationships.Length} incident user relationship(s). " +
                 "Delete those relationships first or use cascade delete.");
         }
 

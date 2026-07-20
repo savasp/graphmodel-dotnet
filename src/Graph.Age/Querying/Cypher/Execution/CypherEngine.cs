@@ -161,7 +161,7 @@ internal sealed class CypherEngine
                 WHERE id(target) IN $targetIds
                 OPTIONAL MATCH (target)-[relationship]-()
                 WHERE coalesce(relationship.{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = false
-                RETURN count(relationship) AS relationshipCount
+                RETURN count(DISTINCT id(relationship)) AS relationshipCount
                 """;
             var records = await _executor.ExecuteAsync(
                 preflight,
@@ -173,7 +173,7 @@ internal sealed class CypherEngine
             if (relationshipCount > 0)
             {
                 throw new GraphException(
-                    $"Cannot delete the selected nodes because the frozen target set has {relationshipCount} incident user relationship(s). " +
+                    $"Cannot delete the selected nodes because they have {relationshipCount} incident user relationship(s). " +
                     "Delete those relationships first or use cascade delete.");
             }
         }

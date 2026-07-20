@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.InMemory.Tests;
 
+using System.Linq.Expressions;
 using Cvoya.Graph.CompatibilityTests;
 using Cvoya.Graph.Querying;
 using Cvoya.Graph.Querying.Commands;
@@ -243,5 +244,60 @@ public sealed class GraphCommandTests
 
         Assert.Equal(GraphEndpointRole.Source, exception.Role);
         Assert.Equal(GraphCardinalityFailure.Multiple, exception.Failure);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DynamicTypeChange_ReplacesStoredValueAndElementType()
+    {
+        await using var store = new InMemoryGraphStore();
+        var originalNames = new[] { "old" };
+        var node = new DynamicNode(
+            ["CommandDynamicTypeChange"],
+            new Dictionary<string, object?> { ["score"] = 1, ["names"] = originalNames });
+        await store.Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+        var replacementNames = new[] { 5, 6 };
+
+        var affected = await GraphCommandExtensions.UpdateAsync(
+            store.Graph.DynamicNodes().Where(candidate => candidate.Id == node.Id),
+            setters => setters
+                .SetProperty(candidate => candidate.Properties["score"], "high")
+                .SetProperty(candidate => candidate.Properties["names"], replacementNames),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, affected);
+        var updated = await store.Graph.GetDynamicNodeAsync(
+            node.Id,
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("high", updated.Properties["score"]);
+        Assert.Equal(replacementNames, Assert.IsType<List<int>>(updated.Properties["names"]));
+    }
+
+    [Fact]
+    public async Task SelectNative_PredicateThatCannotBind_FailsInsteadOfWideningSelection()
+    {
+        await using var store = new InMemoryGraphStore();
+        await store.Graph.CreateNodeAsync(
+            new Person { FirstName = "only" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        var query = store.Graph.Nodes<Person>();
+        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(query.Provider);
+        Expression<Func<string, bool>> foreign = value => value.Length > 0;
+        var selection = new GraphElementSelectionModel(
+            new GraphQueryModel(
+                new NodeRoot(typeof(Person)),
+                predicates: [new PredicateFragment(foreign, alias: null)],
+                traversal: [],
+                projection: null,
+                ordering: [],
+                new Paging(null, null),
+                TerminalOperation.ToListOrArray),
+            GraphElementSelectionMode.Set);
+
+        // The model validator rejects the unbindable predicate today; the executor's own
+        // deferred-predicate guard backstops it. Either way the selection must fail instead of
+        // silently widening the mutation target set.
+        await Assert.ThrowsAnyAsync<GraphException>(() => provider.InWriteTransactionAsync(
+            (context, token) => context.SelectAsync(selection, query.Expression, token),
+            TestContext.Current.CancellationToken));
     }
 }

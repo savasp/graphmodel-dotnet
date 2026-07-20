@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
+using Cvoya.Graph.Querying;
 using Cvoya.Graph.Querying.Commands;
 
 /// <summary>Provider contract tests for native target selection and set-based command execution.</summary>
@@ -236,6 +237,50 @@ public interface IGraphCommandTests : IGraphTest
         await Assert.ThrowsAsync<EntityNotFoundException>(() => Graph.GetRelationshipAsync<Knows>(
             relationship.Id,
             cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ExactOneEndpointSelection_ThrowsRoleSpecificCardinalityFailures()
+    {
+        var marker = $"command-exact-one-{Guid.NewGuid():N}";
+        var missing = $"missing-{Guid.NewGuid():N}";
+        await Graph.CreateNodeAsync(
+            new Person { FirstName = "first", LastName = marker },
+            cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(
+            new Person { FirstName = "second", LastName = marker },
+            cancellationToken: TestContext.Current.CancellationToken);
+        var empty = Graph.Nodes<Person>().Where(person => person.LastName == missing);
+        var multiple = Graph.Nodes<Person>().Where(person => person.LastName == marker);
+        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(multiple.Provider);
+
+        var emptyFailure = await Assert.ThrowsAsync<GraphCardinalityException>(() =>
+            provider.InWriteTransactionAsync(
+                (context, token) => GraphCommandSelection.SelectExactOneAsync(
+                    context,
+                    new GraphElementSelectionModel(
+                        GraphQueryModelBuilder.Build(empty.Expression),
+                        GraphElementSelectionMode.ExactOne),
+                    empty.Expression,
+                    GraphEndpointRole.Source,
+                    token),
+                TestContext.Current.CancellationToken));
+        var multipleFailure = await Assert.ThrowsAsync<GraphCardinalityException>(() =>
+            provider.InWriteTransactionAsync(
+                (context, token) => GraphCommandSelection.SelectExactOneAsync(
+                    context,
+                    new GraphElementSelectionModel(
+                        GraphQueryModelBuilder.Build(multiple.Expression),
+                        GraphElementSelectionMode.ExactOne),
+                    multiple.Expression,
+                    GraphEndpointRole.Target,
+                    token),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(GraphEndpointRole.Source, emptyFailure.Role);
+        Assert.Equal(GraphCardinalityFailure.Empty, emptyFailure.Failure);
+        Assert.Equal(GraphEndpointRole.Target, multipleFailure.Role);
+        Assert.Equal(GraphCardinalityFailure.Multiple, multipleFailure.Failure);
     }
 
     [Fact]

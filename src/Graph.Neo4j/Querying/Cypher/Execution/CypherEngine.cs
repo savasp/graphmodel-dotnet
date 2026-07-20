@@ -6,20 +6,20 @@ namespace Cvoya.Graph.Neo4j.Querying.Cypher.Execution;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Cvoya.Graph.Cypher;
+using Cvoya.Graph.Cypher.Ast;
+using Cvoya.Graph.Cypher.Planning;
 using Cvoya.Graph.Neo4j.Core;
 using Cvoya.Graph.Neo4j.Entities;
 using Cvoya.Graph.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Neo4j.Querying.Cypher.Visitors.Core;
-using Cvoya.Graph.Cypher;
-using Cvoya.Graph.Cypher.Ast;
-using Cvoya.Graph.Cypher.Planning;
 using Cvoya.Graph.Querying;
 using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Serialization;
 using Cvoya.Graph.Serialization.Results;
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using global::Neo4j.Driver;
 
 
 internal sealed class CypherEngine
@@ -129,7 +129,7 @@ internal sealed class CypherEngine
                 WHERE elementId(target) IN $targetIds
                 OPTIONAL MATCH (target)-[relationship]-()
                 WHERE coalesce(relationship.{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = false
-                RETURN count(relationship) AS relationshipCount
+                RETURN count(DISTINCT relationship) AS relationshipCount
                 """;
             var records = await _executor.ExecuteAsync(
                 preflight,
@@ -140,7 +140,7 @@ internal sealed class CypherEngine
             if (relationshipCount > 0)
             {
                 throw new GraphException(
-                    $"Cannot delete the selected nodes because the frozen target set has {relationshipCount} incident user relationship(s). " +
+                    $"Cannot delete the selected nodes because they have {relationshipCount} incident user relationship(s). " +
                     "Delete those relationships first or use cascade delete.");
             }
         }

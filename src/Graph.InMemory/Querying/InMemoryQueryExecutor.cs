@@ -154,6 +154,15 @@ internal sealed class InMemoryQueryExecutor(
         }
 
         var pairs = ApplyOrdering(rows.Select(row => (row, row.Current)), model.Ordering).ToList();
+        if (deferred.Count > 0)
+        {
+            // ExecuteCore re-applies deferred fragments to projected values, but a command
+            // selection has no projection stage; dropping them would widen the mutation target
+            // set past the query's own filter, so the selection must fail instead.
+            throw new GraphQueryTranslationException(
+                "Cannot use the query as a graph command selection: a predicate does not bind to the selected graph element.");
+        }
+
         if (model.Paging.Skip is { } skip)
         {
             pairs = [.. pairs.Skip(skip)];
@@ -473,16 +482,16 @@ internal sealed class InMemoryQueryExecutor(
         object entity,
         IReadOnlyDictionary<string, StoredProperty> source,
         object nativeIdentity) => new()
-    {
-        Bindings = new Dictionary<string, object?>(StringComparer.Ordinal) { [alias] = entity },
-        Current = entity,
-        NativeIdentity = nativeIdentity,
-        Sources = new Dictionary<object, IReadOnlyDictionary<string, StoredProperty>>(
-            GraphDataModel.ReferenceEqualityComparer.Instance)
         {
-            [entity] = source,
-        },
-    };
+            Bindings = new Dictionary<string, object?>(StringComparer.Ordinal) { [alias] = entity },
+            Current = entity,
+            NativeIdentity = nativeIdentity,
+            Sources = new Dictionary<object, IReadOnlyDictionary<string, StoredProperty>>(
+            GraphDataModel.ReferenceEqualityComparer.Instance)
+            {
+                [entity] = source,
+            },
+        };
 
     // ---- traversal ----
 

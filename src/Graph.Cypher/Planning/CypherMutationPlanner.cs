@@ -101,10 +101,10 @@ public sealed class CypherMutationPlanner
         string alias,
         ExpressionToCypherAstLowerer lowerer,
         CypherParameterRegistry parameters) => assignment switch
-    {
-        GraphConstantPropertyAssignment constant => parameters.Add(constant.Value),
-        GraphComputedPropertyAssignment computed => lowerer.LowerLambda(computed.ValueExpression, alias),
-        _ => throw new GraphException(
-            $"Graph property assignment '{assignment.GetType().Name}' is not supported."),
-    };
+        {
+            GraphConstantPropertyAssignment constant => parameters.Add(constant.Value),
+            GraphComputedPropertyAssignment computed => lowerer.LowerLambda(computed.ValueExpression, alias),
+            _ => throw new GraphException(
+                $"Graph property assignment '{assignment.GetType().Name}' is not supported."),
+        };
 }

@@ -19,12 +19,18 @@ internal sealed class AgeGraphCommandExecutionContext(
     public Task<IReadOnlyList<SelectedGraphElement>> SelectAsync(
         GraphElementSelectionModel selection,
         Expression sourceExpression,
-        CancellationToken cancellationToken) =>
-        engine.SelectNativeAsync(selection, sourceExpression, transaction, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(sourceExpression);
+        return engine.SelectNativeAsync(selection, sourceExpression, transaction, cancellationToken);
+    }
 
     public Task<int> ApplyAsync(
         GraphMutationModel mutation,
         Expression mutationExpression,
-        CancellationToken cancellationToken) =>
-        engine.ApplyMutationAsync(mutation, mutationExpression, transaction, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(mutationExpression);
+        return engine.ApplyMutationAsync(mutation, mutationExpression, transaction, cancellationToken);
+    }
 }
