@@ -6,7 +6,7 @@ namespace Cvoya.Graph.InMemory;
 /// <summary>
 /// Enforces the declarative <c>[Property(IsUnique = ...)]</c> and <c>[Property(IsKey = ...)]</c>
 /// constraints the reference provider enforces through database constraints: per-property
-/// uniqueness, and composite-key uniqueness across all key properties, scoped to entities of the
+/// uniqueness, and one key-tuple uniqueness check across all key properties, scoped to entities of the
 /// same label. Checks run inside the mutation so they see the transaction's own writes and are
 /// re-validated against the latest committed state on commit.
 /// </summary>
@@ -27,19 +27,14 @@ internal static class ConstraintChecker
             return null;
         }
 
+        var keys = schema.GetKeyProperties()
+            .Select(property => string.IsNullOrEmpty(property.Name) ? property.PropertyInfo.Name : property.Name)
+            .ToArray();
         var unique = new List<string>();
-        var keys = new List<string>();
         foreach (var property in schema.Properties.Values)
         {
             var name = string.IsNullOrEmpty(property.Name) ? property.PropertyInfo.Name : property.Name;
-            if (property.IsKey)
-            {
-                // Key properties are unique only as a composite; the registry also flags them
-                // IsUnique, but enforcing that per-property would reject legal rows that differ
-                // in another key part.
-                keys.Add(name);
-            }
-            else if (property.IsUnique)
+            if (property.IsUnique && (!property.IsKey || schema.HasCompositeKey()))
             {
                 unique.Add(name);
             }

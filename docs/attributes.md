@@ -78,9 +78,52 @@ public record Person : Node
 | -------- | ------------------------------------- | --------------------------------- |
 | `Label`  | Custom property name in graph storage | `[Property(Label = "full_name")]` |
 | `Ignore` | Exclude from graph persistence        | `[Property(Ignore = true)]`       |
+| `IsKey` | Include the property in the entity's optional domain-key tuple | `[Property(IsKey = true)]` |
+| `IsUnique` | Require this individual property's value to be unique within the mapped label/type | `[Property(IsUnique = true)]` |
+| `IsRequired` | Require a stored non-null value | `[Property(IsRequired = true)]` |
 | `IsIndexed` | Request a provider index for the property | `[Property(IsIndexed = true)]` |
 
 **Note**: Providers decide how to apply requested indexes and constraints for their storage engine.
+
+### Optional domain keys
+
+A node or relationship may be keyless. A property named `Id` is not inferred as a key; only an
+explicit `IsKey = true` declaration participates in the domain key.
+
+```csharp
+[Node("Person")]
+public record Person : Node
+{
+    // Keyless: neither Name nor the transitional inherited Id property is a domain key.
+    public string Name { get; init; } = string.Empty;
+}
+
+[Node("Customer")]
+public record Customer : Node
+{
+    [Property(IsKey = true)]
+    public string Tenant { get; init; } = string.Empty;
+
+    [Property(IsKey = true)]
+    public string CustomerNumber { get; init; } = string.Empty;
+}
+```
+
+All `IsKey` properties on one entity form one ordered tuple. The `Customer` example therefore has
+one composite key `(CustomerNumber, Tenant)` (the runtime schema orders mapped property names
+ordinally), not two individually unique properties. Set `IsUnique = true` on a component only when
+that component must also be independently unique.
+
+Keys are scoped to the mapped node label or relationship type in one configured graph store. They
+must be non-nullable, graph-storable scalar values; collections, complex values, ignored properties,
+and unsupported property types are rejected at runtime even when the analyzer package is not
+installed. `IsKey` implies `IsRequired` and `IsIndexed`, but does not set the explicit `IsUnique`
+schema flag.
+
+A domain key is not provider-native graph element identity, is not an implicit endpoint or mutation
+target, and is not automatically immutable. Key values may change through an operation that can
+preserve the applicable constraints. An ignored property cannot also request key, unique, indexed,
+or required behavior.
 
 ### Property Types
 

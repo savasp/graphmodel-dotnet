@@ -256,26 +256,30 @@ internal class Neo4jSchemaManager
                 _logger.LogDebugNeo4jSchemaManager239(label);
             }
 
-            if (schema.HasCompositeKey())
+            var keyPropertyNames = schema.GetKeyProperties().Select(property => property.Name).ToList();
+            if (keyPropertyNames.Count > 0)
             {
-                var keyPropertyNames = schema.GetKeyProperties().Select(property => property.Name).ToList();
-                var compositeKeyConstraintName =
-                    $"composite_key_{label}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
-                var cypherPropertyNames = keyPropertyNames.Select(property => EscapedProperty("n", property));
+                var keyConstraintName = keyPropertyNames.Count == 1
+                    ? $"unique_{label}_{keyPropertyNames[0]}".ToLowerInvariant()
+                    : $"composite_key_{label}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
+                var cypherPropertyNames = keyPropertyNames.Select(property => EscapedProperty("n", property)).ToList();
+                var keyExpression = cypherPropertyNames.Count == 1
+                    ? cypherPropertyNames[0]
+                    : $"({string.Join(", ", cypherPropertyNames)})";
 
-                var createdCompositeKeyConstraint = await CreateSchemaObjectAsync(
+                var createdKeyConstraint = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
                         new Neo4jSchemaObjectDescriptor(
-                            compositeKeyConstraintName,
+                            keyConstraintName,
                             Neo4jSchemaObjectKind.NodeUniquenessConstraint,
                             Neo4jSchemaEntityType.Node,
                             [label],
                             keyPropertyNames),
-                        $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(compositeKeyConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE ({string.Join(", ", cypherPropertyNames)}) IS UNIQUE"),
+                        $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(keyConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE {keyExpression} IS UNIQUE"),
                     existingSchema,
                     cancellationToken).ConfigureAwait(false);
 
-                if (createdCompositeKeyConstraint && _logger.IsEnabled(LogLevel.Debug))
+                if (createdKeyConstraint && _logger.IsEnabled(LogLevel.Debug))
                 {
                     _logger.LogDebugNeo4jSchemaManager261(string.Join(", ", keyPropertyNames), label);
                 }
@@ -288,7 +292,7 @@ internal class Neo4jSchemaManager
                     continue;
                 }
 
-                if (propertySchema.IsUnique && !(schema.HasCompositeKey() && propertySchema.IsKey))
+                if (propertySchema.IsUnique && (!propertySchema.IsKey || schema.HasCompositeKey()))
                 {
                     var uniqueConstraintName =
                         $"unique_{label}_{propertySchema.Name}".ToLowerInvariant();
@@ -382,26 +386,30 @@ internal class Neo4jSchemaManager
                 _logger.LogDebugNeo4jSchemaManager348(type);
             }
 
-            if (schema.HasCompositeKey())
+            var keyPropertyNames = schema.GetKeyProperties().Select(property => property.Name).ToList();
+            if (keyPropertyNames.Count > 0)
             {
-                var keyPropertyNames = schema.GetKeyProperties().Select(property => property.Name).ToList();
-                var compositeKeyConstraintName =
-                    $"composite_key_rel_{type}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
-                var cypherPropertyNames = keyPropertyNames.Select(property => EscapedProperty("r", property));
+                var keyConstraintName = keyPropertyNames.Count == 1
+                    ? $"unique_rel_{type}_{keyPropertyNames[0]}".ToLowerInvariant()
+                    : $"composite_key_rel_{type}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
+                var cypherPropertyNames = keyPropertyNames.Select(property => EscapedProperty("r", property)).ToList();
+                var keyExpression = cypherPropertyNames.Count == 1
+                    ? cypherPropertyNames[0]
+                    : $"({string.Join(", ", cypherPropertyNames)})";
 
-                var createdCompositeKeyConstraint = await CreateSchemaObjectAsync(
+                var createdKeyConstraint = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
                         new Neo4jSchemaObjectDescriptor(
-                            compositeKeyConstraintName,
+                            keyConstraintName,
                             Neo4jSchemaObjectKind.RelationshipUniquenessConstraint,
                             Neo4jSchemaEntityType.Relationship,
                             [type],
                             keyPropertyNames),
-                        $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(compositeKeyConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE ({string.Join(", ", cypherPropertyNames)}) IS UNIQUE"),
+                        $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(keyConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE {keyExpression} IS UNIQUE"),
                     existingSchema,
                     cancellationToken).ConfigureAwait(false);
 
-                if (createdCompositeKeyConstraint && _logger.IsEnabled(LogLevel.Debug))
+                if (createdKeyConstraint && _logger.IsEnabled(LogLevel.Debug))
                 {
                     _logger.LogDebugNeo4jSchemaManager370(string.Join(", ", keyPropertyNames), type);
                 }
@@ -414,7 +422,7 @@ internal class Neo4jSchemaManager
                     continue;
                 }
 
-                if (propertySchema.IsUnique && !(schema.HasCompositeKey() && propertySchema.IsKey))
+                if (propertySchema.IsUnique && (!propertySchema.IsKey || schema.HasCompositeKey()))
                 {
                     var uniqueConstraintName =
                         $"unique_rel_{type}_{propertySchema.Name}".ToLowerInvariant();
@@ -771,7 +779,8 @@ internal class Neo4jSchemaManager
         {
             if (propertySchema.Ignore
                 || !propertySchema.IsIndexed
-                || (propertySchema.IsUnique && !(schema.HasCompositeKey() && propertySchema.IsKey)))
+                || propertySchema.IsUnique
+                || (propertySchema.IsKey && !schema.HasCompositeKey()))
             {
                 continue;
             }
@@ -807,7 +816,8 @@ internal class Neo4jSchemaManager
         {
             if (propertySchema.Ignore
                 || !propertySchema.IsIndexed
-                || (propertySchema.IsUnique && !(schema.HasCompositeKey() && propertySchema.IsKey)))
+                || propertySchema.IsUnique
+                || (propertySchema.IsKey && !schema.HasCompositeKey()))
             {
                 continue;
             }

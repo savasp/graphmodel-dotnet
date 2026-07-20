@@ -26,13 +26,21 @@ public class PropertySchemaInfo
     public bool IsIndexed { get; set; }
 
     /// <summary>
-    /// Gets whether this property should be used as a key for the entity.
+    /// Gets whether this property participates in the entity's domain key tuple.
     /// </summary>
+    /// <remarks>
+    /// Domain keys are schema constraints only. They do not carry provider-native graph element identity
+    /// and are not implicit mutation targets.
+    /// </remarks>
     public bool IsKey { get; set; }
 
     /// <summary>
-    /// Gets whether this property should have unique values across entities with the same label/type.
+    /// Gets whether explicit per-property uniqueness was requested across entities with the same label/type.
     /// </summary>
+    /// <remarks>
+    /// This value is independent of <see cref="IsKey"/>. Composite-key components are not individually
+    /// unique unless this value is <see langword="true"/>.
+    /// </remarks>
     public bool IsUnique { get; set; }
 
     /// <summary>

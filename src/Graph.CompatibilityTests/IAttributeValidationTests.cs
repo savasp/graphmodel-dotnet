@@ -144,6 +144,57 @@ public interface IAttributeValidationTests : IGraphTest
         public string Address { get; set; } = string.Empty;
     }
 
+    [Node("PersonWithSingleDomainKey")]
+    public record PersonWithSingleDomainKey : Node
+    {
+        [Property(IsKey = true)]
+        public string DomainKey { get; set; } = string.Empty;
+    }
+
+    [Node("PersonWithExplicitlyUniqueCompositeComponent")]
+    public record PersonWithExplicitlyUniqueCompositeComponent : Node
+    {
+        [Property(IsKey = true, IsUnique = true)]
+        public string Tenant { get; set; } = string.Empty;
+
+        [Property(IsKey = true)]
+        public string LocalNumber { get; set; } = string.Empty;
+    }
+
+    [Node("ScopedDomainKeyNodeA")]
+    public record ScopedDomainKeyNodeA : Node
+    {
+        [Property(IsKey = true)]
+        public string DomainKey { get; set; } = string.Empty;
+    }
+
+    [Node("ScopedDomainKeyNodeB")]
+    public record ScopedDomainKeyNodeB : Node
+    {
+        [Property(IsKey = true)]
+        public string DomainKey { get; set; } = string.Empty;
+    }
+
+    [Relationship("SCOPED_DOMAIN_KEY_REL_A")]
+    public record ScopedDomainKeyRelationshipA : Relationship
+    {
+        public ScopedDomainKeyRelationshipA() : base(string.Empty, string.Empty) { }
+        public ScopedDomainKeyRelationshipA(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+
+        [Property(IsKey = true)]
+        public string DomainKey { get; set; } = string.Empty;
+    }
+
+    [Relationship("SCOPED_DOMAIN_KEY_REL_B")]
+    public record ScopedDomainKeyRelationshipB : Relationship
+    {
+        public ScopedDomainKeyRelationshipB() : base(string.Empty, string.Empty) { }
+        public ScopedDomainKeyRelationshipB(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+
+        [Property(IsKey = true)]
+        public string DomainKey { get; set; } = string.Empty;
+    }
+
     [Node("PersonWithRequiredProperties")]
     public record PersonWithRequiredProperties : Node
     {
@@ -277,27 +328,90 @@ public interface IAttributeValidationTests : IGraphTest
     }
 
     [Fact]
-    public async Task PropertyWithIsKey_ImpliesOtherProperties()
+    public async Task PropertyWithIsKey_ImpliesRequiredAndIndexedButNotPerPropertyUniqueness()
     {
         // The registry is lazily initialized on first use of the graph instance, so a test that
         // only reads schema must initialize it rather than rely on another test having done so.
         await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
-        // Test that IsKey = true implies IsUnique = true, IsRequired = true, and IsIndexed = true
+        // Composite-key components are required and indexed, but not independently unique.
         var schema = Graph.SchemaRegistry.GetNodeSchema("PersonWithKeyProperties");
         Assert.NotNull(schema);
 
         var employeeIdSchema = schema.Properties["EmployeeId"];
         Assert.True(employeeIdSchema.IsKey);
-        Assert.True(employeeIdSchema.IsUnique);
+        Assert.False(employeeIdSchema.IsUnique);
         Assert.True(employeeIdSchema.IsRequired);
         Assert.True(employeeIdSchema.IsIndexed);
 
         var departmentCodeSchema = schema.Properties["DepartmentCode"];
         Assert.True(departmentCodeSchema.IsKey);
-        Assert.True(departmentCodeSchema.IsUnique);
+        Assert.False(departmentCodeSchema.IsUnique);
         Assert.True(departmentCodeSchema.IsRequired);
         Assert.True(departmentCodeSchema.IsIndexed);
+    }
+
+    [Fact]
+    public async Task PropertyWithSingleDomainKey_EnforcesOneKeyTuple()
+    {
+        await Graph.CreateNodeAsync(
+            new PersonWithSingleDomainKey { DomainKey = "shared-key" },
+            null,
+            TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<GraphException>(() => Graph.CreateNodeAsync(
+            new PersonWithSingleDomainKey { DomainKey = "shared-key" },
+            null,
+            TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CompositeKey_ExplicitlyUniqueComponentIsIndependentlyUnique()
+    {
+        await Graph.CreateNodeAsync(
+            new PersonWithExplicitlyUniqueCompositeComponent
+            {
+                Tenant = "tenant-a",
+                LocalNumber = "1",
+            },
+            null,
+            TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<GraphException>(() => Graph.CreateNodeAsync(
+            new PersonWithExplicitlyUniqueCompositeComponent
+            {
+                Tenant = "tenant-a",
+                LocalNumber = "2",
+            },
+            null,
+            TestContext.Current.CancellationToken));
+
+        await Graph.CreateNodeAsync(
+            new PersonWithExplicitlyUniqueCompositeComponent
+            {
+                Tenant = "tenant-b",
+                LocalNumber = "1",
+            },
+            null,
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task DomainKeyValues_AreScopedByNodeLabelAndRelationshipType()
+    {
+        var first = new ScopedDomainKeyNodeA { DomainKey = "same-value" };
+        var second = new ScopedDomainKeyNodeB { DomainKey = "same-value" };
+        await Graph.CreateNodeAsync(first, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(second, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(
+            new ScopedDomainKeyRelationshipA(first.Id, second.Id) { DomainKey = "same-value" },
+            null,
+            TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new ScopedDomainKeyRelationshipB(first.Id, second.Id) { DomainKey = "same-value" },
+            null,
+            TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -475,7 +589,7 @@ public interface IAttributeValidationTests : IGraphTest
     }
 
     [Fact]
-    public async Task PropertyWithCompositeKey_CreatesMultipleKeyConstraints()
+    public async Task PropertyWithCompositeKey_EnforcesOneTupleConstraint()
     {
         var person1 = new PersonWithCompositeKeyProperties
         {
@@ -651,7 +765,7 @@ public interface IAttributeValidationTests : IGraphTest
         var nodeSchema = Graph.SchemaRegistry.GetNodeSchema("PersonWithMixedProperties");
         Assert.NotNull(nodeSchema);
 
-        // Check EmployeeId properties (IsKey = true implies all others)
+        // Check the explicitly combined key, unique, required, and indexed flags.
         var employeeIdSchema = nodeSchema.Properties["EmployeeId"];
         Assert.True(employeeIdSchema.IsKey);
         Assert.True(employeeIdSchema.IsUnique);
@@ -696,10 +810,16 @@ public interface IAttributeValidationTests : IGraphTest
         // in the IGraph interface.
         await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
-        // Since IEntity.Id is marked as IsKey, all INode and IRelationship instances will have
-        // at least one Property attribute.
         var nodeSchema = Graph.SchemaRegistry.GetNodeSchema("PersonWithNoAttributes");
         Assert.NotNull(nodeSchema);
+        Assert.False(nodeSchema.HasKey());
+        Assert.Empty(nodeSchema.GetKeyProperties());
+
+        var idSchema = nodeSchema.Properties[nameof(IEntity.Id)];
+        Assert.False(idSchema.IsKey);
+        Assert.False(idSchema.IsUnique);
+        Assert.False(idSchema.IsRequired);
+        Assert.False(idSchema.IsIndexed);
 
         // Check default values for properties without explicit attributes
         var addressSchema = nodeSchema.Properties["Address"];

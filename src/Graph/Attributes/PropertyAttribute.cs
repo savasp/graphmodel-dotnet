@@ -10,21 +10,30 @@ namespace Cvoya.Graph;
 /// Use this attribute on properties of classes implementing IEntity to control 
 /// how they are represented in the graph storage system, including indexing,
 /// constraints, validation, and storage configuration.
+/// Entity types may declare no domain key. When multiple properties declare
+/// <see cref="IsKey"/>, they form one composite key tuple.
 /// </remarks>
 /// <example>
 /// <code>
-/// public class Person : INode
+/// // Keyless domain entity. The inherited Id member is not a domain key.
+/// [Node("Person")]
+/// public sealed record Person : Node
 /// {
-///     public string Id { get; set; } = Guid.NewGuid().ToString();
-///     
-///     [Property(Label = "email", IsUnique = true, IsIndexed = true, IsRequired = true)]
-///     public string Email { get; set; } = string.Empty;
-///     
-///     [Property(IsIndexed = true, Validation = new PropertyValidation { MinLength = 2, MaxLength = 50 })]
-///     public string FirstName { get; set; } = string.Empty;
-///     
+///     public string Name { get; init; } = string.Empty;
+///
 ///     [Property(Ignore = true)]
-///     public string TempCalculation { get; set; }
+///     public string DisplayText =&gt; Name.ToUpperInvariant();
+/// }
+///
+/// // Explicit composite domain key, unique within the Customer label.
+/// [Node("Customer")]
+/// public sealed record Customer : Node
+/// {
+///     [Property(IsKey = true)]
+///     public string Tenant { get; init; } = string.Empty;
+///
+///     [Property(IsKey = true)]
+///     public string CustomerNumber { get; init; } = string.Empty;
 /// }
 /// </code>
 /// </example>
@@ -44,11 +53,16 @@ public class PropertyAttribute() : Attribute
     public bool Ignore { get; set; }
 
     /// <summary>
-    /// Gets or sets whether this property is a key for the entity.
+    /// Gets or sets whether this property participates in the entity's domain key tuple.
     /// </summary>
     /// <value>True if the property is a key, otherwise false.</value>
     /// <remarks>
-    /// This implies that the property is indexed and unique.
+    /// A key is optional domain schema metadata, not provider-native graph element identity or an implicit
+    /// mutation target. All key properties on an entity type form one ordered tuple that is unique within
+    /// the mapped node label or relationship type. Key properties must be non-null, graph-storable scalar
+    /// values and implicitly set <see cref="IsIndexed"/> and <see cref="IsRequired"/>. A component of a
+    /// composite key is not independently unique unless <see cref="IsUnique"/> is also explicitly set.
+    /// Key values are not implicitly immutable.
     /// </remarks>
     public bool IsKey { get; set; }
 
@@ -62,6 +76,10 @@ public class PropertyAttribute() : Attribute
     /// Gets or sets whether this property should have unique values across entities with the same label/type.
     /// </summary>
     /// <value>True if the property should have unique values, otherwise false.</value>
+    /// <remarks>
+    /// This represents an explicit per-property uniqueness declaration. It is not inferred from
+    /// <see cref="IsKey"/>; a key tuple supplies its own uniqueness semantics.
+    /// </remarks>
     public bool IsUnique { get; set; }
 
     /// <summary>

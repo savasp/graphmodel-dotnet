@@ -10,7 +10,7 @@ using Microsoft.CodeAnalysis.CSharp;
 
 /// <summary>
 /// Compiles small C# snippets into an isolated, collectible <see cref="AssemblyLoadContext"/> for
-/// <see cref="RuntimeLabelCollisionTests"/>.
+/// runtime schema tests that require intentionally invalid entity types.
 /// </summary>
 /// <remarks>
 /// <see cref="SchemaRegistry.InitializeAsync"/> discovers node/relationship types by scanning every
