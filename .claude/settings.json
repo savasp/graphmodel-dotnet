@@ -10,13 +10,22 @@
       "Bash(./scripts/run-tests.sh*)",
       "Bash(./scripts/containers/start-neo4j.sh*)",
       "Bash(./scripts/containers/start-age.sh*)",
-      "Bash(git *)",
-      "Bash(gh *)",
-      "Bash(ls *)",
-      "Bash(mkdir *)",
-      "Bash(cat *)",
-      "Bash(chmod *)"
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cat:*)",
+      "Bash(chmod:*)"
     ]
+  },
+  "enabledPlugins": {
+    "csharp-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": false,
+    "swift-lsp@claude-plugins-official": false,
+    "kotlin-lsp@claude-plugins-official": false,
+    "pyright-lsp@claude-plugins-official": false,
+    "playwright@claude-plugins-official": false,
+    "frontend-design@claude-plugins-official": false
   },
   "hooks": {
     "PreToolUse": [
