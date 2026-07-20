@@ -9,6 +9,16 @@ namespace Cvoya.Graph;
 /// </summary>
 internal static class LegacyRelationshipEndpoints
 {
+    /// <summary>
+    /// Gets the transitional storage direction of the legacy relationship model, defaulting to
+    /// <see cref="RelationshipDirection.Outgoing"/> for relationships that do not derive from
+    /// <see cref="Relationship"/>.
+    /// </summary>
+    public static RelationshipDirection LegacyDirection(IRelationship relationship) =>
+        relationship is Relationship { Direction: var direction }
+            ? direction
+            : RelationshipDirection.Outgoing;
+
     /// <summary>Populates the legacy endpoint tuple and returns the segment relationship.</summary>
     public static TRelationship Populate<TRelationship>(IGraphPathSegment segment)
         where TRelationship : class, IRelationship
@@ -16,9 +26,7 @@ internal static class LegacyRelationshipEndpoints
         ArgumentNullException.ThrowIfNull(segment);
 
         var relationship = (TRelationship)segment.Relationship;
-        var legacyDirection = relationship is Relationship { Direction: var direction }
-            ? direction
-            : RelationshipDirection.Outgoing;
+        var legacyDirection = LegacyDirection(relationship);
         var physicalStart = segment.Direction == RelationshipDirection.Outgoing
             ? segment.StartNode.Id
             : segment.EndNode.Id;

@@ -102,6 +102,55 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_DynamicRelationshipTraversalFromUntypedNodes_EmitsUnconstrainedPattern()
+    {
+        var traversal = new TraversalStep(
+            "DynamicRelationship",
+            GraphTraversalDirection.Both,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(INode),
+            typeof(DynamicRelationship));
+
+        var statement = planner.Plan(Model(
+            root: new NodeRoot(typeof(INode)),
+            traversal: [traversal]));
+
+        var match = statement.Clauses.OfType<MatchClause>().First();
+        var pattern = Assert.Single(match.Patterns);
+        var relationship = Assert.Single(pattern.Elements.OfType<RelationshipPattern>());
+        Assert.Empty(relationship.Types);
+        Assert.All(pattern.Elements.OfType<NodePattern>(), node => Assert.Empty(node.Labels));
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_InterfaceRelationshipTraversal_EmitsUnconstrainedRelationshipTypes()
+    {
+        var traversal = new TraversalStep(
+            "IRelationship",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(DynamicNode),
+            typeof(IRelationship));
+
+        var statement = planner.Plan(Model(
+            root: new NodeRoot(typeof(Person)),
+            traversal: [traversal]));
+
+        var match = statement.Clauses.OfType<MatchClause>().First();
+        var pattern = Assert.Single(match.Patterns);
+        var relationship = Assert.Single(pattern.Elements.OfType<RelationshipPattern>());
+        Assert.Empty(relationship.Types);
+        var target = pattern.Elements.OfType<NodePattern>().Last();
+        Assert.Empty(target.Labels);
+        var source = pattern.Elements.OfType<NodePattern>().First();
+        Assert.NotEmpty(source.Labels);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
     public void Plan_RelationshipRoot_UsesBareRelationshipProjection()
     {
         var statement = planner.Plan(Model(root: new RelationshipRoot(typeof(Knows))));

@@ -861,17 +861,31 @@ public sealed class CypherQueryPlanner
             _ => throw new GraphQueryTranslationException($"Traversal direction '{step.Direction}' is not supported."),
         };
 
-        IReadOnlyList<string> types = step.RelationshipClrType is null
-            ? step.RelationshipType is { } relationshipType ? [relationshipType] : []
-            : Labels.GetCompatibleLabels(step.RelationshipClrType);
-
         return new PathPattern(
         [
             new NodePattern("src", []),
-            new RelationshipPattern("r", direction, depth: null, types),
-            new NodePattern("tgt", step.TargetType is null ? [] : Labels.GetCompatibleLabels(step.TargetType)),
+            new RelationshipPattern("r", direction, depth: null, TraversalRelationshipTypes(step)),
+            new NodePattern("tgt", TraversalNodeLabels(step.TargetType)),
         ]);
     }
+
+    // The base INode interface and DynamicNode match nodes whose labels need not correspond to any
+    // loaded CLR type (dynamic entities carry arbitrary labels), so a compatible-labels list cannot
+    // bound them and the pattern must stay unconstrained.
+    private static List<string> TraversalNodeLabels(Type? type) =>
+        type is null || type == typeof(INode) || type == typeof(DynamicNode)
+            ? []
+            : Labels.GetCompatibleLabels(type);
+
+    // Same reasoning as TraversalNodeLabels: the base IRelationship interface and
+    // DynamicRelationship match edges whose stored type strings need not correspond to any loaded
+    // CLR type, mirroring the untyped pattern DynamicRoot queries already use.
+    private static List<string> TraversalRelationshipTypes(TraversalStep step) =>
+        step.RelationshipClrType is { } clrType
+            ? clrType == typeof(IRelationship) || clrType == typeof(DynamicRelationship)
+                ? []
+                : Labels.GetCompatibleLabels(clrType)
+            : step.RelationshipType is { } relationshipType ? [relationshipType] : [];
 
     private static bool IsStartNodeKey(LambdaExpression keySelector)
     {
@@ -1987,8 +2001,8 @@ public sealed class CypherQueryPlanner
             [
                 new NodePattern(
                     sourceAlias,
-                    sourceAlias == rootAlias && root is not SearchRoot && rootType is not null
-                        ? Labels.GetCompatibleLabels(rootType)
+                    sourceAlias == rootAlias && root is not SearchRoot
+                        ? TraversalNodeLabels(rootType)
                         : []),
                 new RelationshipPattern(
                     relationshipAlias,
@@ -2000,12 +2014,10 @@ public sealed class CypherQueryPlanner
                         _ => throw new GraphQueryTranslationException($"Traversal direction '{step.Direction}' is not supported."),
                     },
                     depth,
-                    step.RelationshipClrType is null
-                        ? step.RelationshipType is { } relationshipType ? [relationshipType] : []
-                        : Labels.GetCompatibleLabels(step.RelationshipClrType)),
+                    TraversalRelationshipTypes(step)),
                 new NodePattern(
                     targetAlias,
-                    step.TargetType is null ? [] : Labels.GetCompatibleLabels(step.TargetType))
+                    TraversalNodeLabels(step.TargetType))
             ],
             index == traversal.Count - 1 ? pathAlias : null,
             step.PathSelection switch

@@ -88,9 +88,7 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
             builder,
             parameters,
             relationshipEntity,
-            relationship is Graph.Relationship { Direction: var direction }
-                ? direction
-                : RelationshipDirection.Outgoing);
+            LegacyRelationshipEndpoints.LegacyDirection(relationship));
 
         return new SubgraphStatement(builder.ToString(), parameters);
     }

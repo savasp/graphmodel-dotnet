@@ -1,5 +1,5 @@
 == Cypher ==
-MATCH (src_1:INode|Person|Manager|Company|DynamicNode)-[r:KNOWS]->(tgt:Person|Manager)
+MATCH (src_1)-[r:KNOWS]->(tgt:Person|Manager)
 WHERE src_1.Id <> $p0
 OPTIONAL MATCH src_path = (tgt)-[rels*1..5]->(prop)
 WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)

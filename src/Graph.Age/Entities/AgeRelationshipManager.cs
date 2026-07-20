@@ -26,11 +26,6 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         ?? NullLogger<AgeRelationshipManager>.Instance;
     private readonly EntityFactory _serializer = new();
 
-    private static RelationshipDirection LegacyDirection(Graph.IRelationship relationship) =>
-        relationship is Graph.Relationship { Direction: var direction }
-            ? direction
-            : RelationshipDirection.Outgoing;
-
     private static readonly string[] _ignoredProperties =
     [
         nameof(Graph.IRelationship.StartNodeId),
@@ -79,7 +74,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 entity,
                 relationship.StartNodeId,
                 relationship.EndNodeId,
-                LegacyDirection(relationship),
+                LegacyRelationshipEndpoints.LegacyDirection(relationship),
                 transaction.Runner,
                 cancellationToken).ConfigureAwait(false);
 
@@ -113,7 +108,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
 
         try
         {
-            var direction = LegacyDirection(relationship);
+            var direction = LegacyRelationshipEndpoints.LegacyDirection(relationship);
 
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);

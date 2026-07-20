@@ -26,7 +26,7 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
-    public Task Traverse_WidenedToINodeBeforeWhere_UsesINodeStartLabels()
+    public Task Traverse_WidenedToINodeBeforeWhere_LeavesStartUnconstrained()
     {
         var query = ((IGraphQueryable<INode>)Root.Nodes<Person>())
             .Where(n => n.Id != "")

@@ -59,8 +59,9 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
 
         Assert.Equal(node.Id, segment.StartNode.Id);
         Assert.Equal("Vancouver", segment.EndNode.City);
-        Assert.Equal(segment.StartNode.Id, segment.Relationship.StartNodeId);
-        Assert.Equal(segment.EndNode.Id, segment.Relationship.EndNodeId);
+        Assert.Empty(segment.Relationship.StartNodeId);
+        Assert.Empty(segment.Relationship.EndNodeId);
+        Assert.Equal(RelationshipDirection.Outgoing, segment.Direction);
     }
 
     [Fact]

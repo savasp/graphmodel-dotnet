@@ -345,9 +345,7 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         bool createMissingEndpoints)
         where TRelationship : class, Graph.IRelationship
     {
-        var direction = relationship is Graph.Relationship { Direction: var legacyDirection }
-            ? legacyDirection
-            : RelationshipDirection.Outgoing;
+        var direction = LegacyRelationshipEndpoints.LegacyDirection(relationship);
         var (sourceNodeId, targetNodeId) = direction switch
         {
             RelationshipDirection.Outgoing => (relationship.StartNodeId, relationship.EndNodeId),
