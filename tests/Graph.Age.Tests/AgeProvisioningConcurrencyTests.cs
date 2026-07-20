@@ -22,7 +22,7 @@ using Npgsql.Age;
 /// scheduled first, so there are no retry loops and no timing tolerances - only bounded waits for
 /// states the lock guarantees will be reached.
 /// </remarks>
-public sealed class AgeProvisioningConcurrencyTests
+public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graphCleanup)
 {
     private static readonly string ConnectionString = Environment.GetEnvironmentVariable("AGE_CONNECTION_STRING")
         ?? "Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres";
@@ -36,7 +36,7 @@ public sealed class AgeProvisioningConcurrencyTests
     public async Task ConcurrentFirstUse_OnOneStore_RunsOneProvisioningSequence()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var graphName = NewGraphName();
+        var graphName = graphCleanup.CreateGraphName("cvoya_provisioning");
         await using var dataSource = CreateDataSource();
         await using var store = new AgeGraphStore(dataSource, graphName);
 
@@ -82,6 +82,7 @@ public sealed class AgeProvisioningConcurrencyTests
 
         await holder.ReleaseAsync(cancellationToken);
         await Task.WhenAll(firstUse);
+        graphCleanup.MarkGraphCreated(graphName);
 
         // Without the gate each of those eight would have run the sequence itself: every one of them
         // reached the gate while the winner was still parked, so none could see a provisioned store.
@@ -94,7 +95,7 @@ public sealed class AgeProvisioningConcurrencyTests
     public async Task IndependentStores_RacingTheSameFreshGraph_AllConverge()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var graphName = NewGraphName();
+        var graphName = graphCleanup.CreateGraphName("cvoya_provisioning");
         await using var dataSource = CreateDataSource();
 
         // Separate store instances have separate gates, so nothing in process can coordinate them -
@@ -123,6 +124,7 @@ public sealed class AgeProvisioningConcurrencyTests
             // None may fail: the peer that creates the graph wins, and the rest must positively
             // confirm it exists rather than colliding inside ag_catalog.create_graph.
             await Task.WhenAll(racers);
+            graphCleanup.MarkGraphCreated(graphName);
 
             Assert.Equal(1, await GraphCountAsync(dataSource, graphName, cancellationToken));
             await AssertGraphIsUsableAsync(dataSource, stores[0], graphName, cancellationToken);
@@ -140,13 +142,14 @@ public sealed class AgeProvisioningConcurrencyTests
     public async Task FailedProvisioning_PropagatesTheDatabaseErrorAndStaysRetryable()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var graphName = NewGraphName();
+        var graphName = graphCleanup.CreateGraphName("cvoya_provisioning");
         await using var dataSource = CreateDataSource();
         await using var store = new AgeGraphStore(dataSource, graphName);
 
         // Begin with a successful provisioning run so the store has cached a true state, then remove
         // the graph behind its back. The explicit API is the supported recovery path for that case.
         await store.CreateGraphIfNotExistsAsync(cancellationToken);
+        graphCleanup.MarkGraphCreated(graphName);
         await DropGraphAsync(dataSource, graphName, cancellationToken);
 
         // A schema squatting on the graph's name makes ag_catalog.create_graph fail for a reason that
@@ -171,13 +174,14 @@ public sealed class AgeProvisioningConcurrencyTests
     public async Task CancelledProvisioning_DoesNotPublishStateAndStaysRetryable()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var graphName = NewGraphName();
+        var graphName = graphCleanup.CreateGraphName("cvoya_provisioning");
         await using var dataSource = CreateDataSource();
         await using var store = new AgeGraphStore(dataSource, graphName);
 
         // Exercise cancellation from a previously successful state: this is the path where preserving
         // the old cached value would make the later implicit retry skip provisioning.
         await store.CreateGraphIfNotExistsAsync(cancellationToken);
+        graphCleanup.MarkGraphCreated(graphName);
         await DropGraphAsync(dataSource, graphName, cancellationToken);
 
         var holder = await ProvisioningLockHolder.AcquireAsync(dataSource, graphName, cancellationToken);
@@ -204,7 +208,7 @@ public sealed class AgeProvisioningConcurrencyTests
     public async Task DisposalDuringProvisioning_LetsTheAttemptFinishAndRejectsLaterUse()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var graphName = NewGraphName();
+        var graphName = graphCleanup.CreateGraphName("cvoya_provisioning");
         await using var dataSource = CreateDataSource();
         var store = new AgeGraphStore(dataSource, graphName);
 
@@ -222,6 +226,7 @@ public sealed class AgeProvisioningConcurrencyTests
         await holder.ReleaseAsync(cancellationToken);
 
         await provisioning;
+        graphCleanup.MarkGraphCreated(graphName);
         Assert.Equal(1, await GraphCountAsync(dataSource, graphName, cancellationToken));
 
         // Disposal is still idempotent, and still rejects everything that starts after it.
@@ -421,8 +426,6 @@ public sealed class AgeProvisioningConcurrencyTests
         builder.UseAge();
         return builder.Build();
     }
-
-    private static string NewGraphName() => $"cvoya_provisioning_{Guid.NewGuid():N}";
 
     /// <summary>
     /// A control connection holding the provisioning lock for one graph, so provisioning attempts can

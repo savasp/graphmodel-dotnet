@@ -13,7 +13,7 @@ using Npgsql.Age;
 /// adversarial shape that suite cannot express - two stores sharing one data source and one AGE
 /// graph name (#366).
 /// </summary>
-public sealed class AgeTransactionOwnershipTests
+public sealed class AgeTransactionOwnershipTests(AgeGraphCleanupFixture graphCleanup)
 {
     private static readonly string ConnectionString = Environment.GetEnvironmentVariable("AGE_CONNECTION_STRING")
         ?? "Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres";
@@ -22,7 +22,7 @@ public sealed class AgeTransactionOwnershipTests
     public async Task TransactionFromStoreWithIdenticalDataSourceAndGraphName_IsRejected()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var graphName = NewGraphName();
+        var graphName = graphCleanup.CreateGraphName("cvoya_tx_owner");
 
         // One data source, one AGE graph, two stores: every setting a settings-comparison check
         // could look at is identical, so only the graph's own identity can tell them apart.
@@ -30,6 +30,7 @@ public sealed class AgeTransactionOwnershipTests
         await using var first = new AgeGraphStore(dataSource, graphName);
         await using var second = new AgeGraphStore(dataSource, graphName);
         await first.CreateGraphIfNotExistsAsync(cancellationToken);
+        graphCleanup.MarkGraphCreated(graphName);
 
         var seeded = new Person { FirstName = "AgeOwnership", LastName = "Seeded" };
         await first.Graph.CreateNodeAsync(seeded, null, cancellationToken);
@@ -63,12 +64,13 @@ public sealed class AgeTransactionOwnershipTests
     public async Task TransactionFromStoreWithIdenticalSettings_RemainsUsableAfterRejection()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var graphName = NewGraphName();
+        var graphName = graphCleanup.CreateGraphName("cvoya_tx_owner");
 
         await using var dataSource = CreateDataSource();
         await using var first = new AgeGraphStore(dataSource, graphName);
         await using var second = new AgeGraphStore(dataSource, graphName);
         await second.CreateGraphIfNotExistsAsync(cancellationToken);
+        graphCleanup.MarkGraphCreated(graphName);
 
         await using var transaction = await second.Graph.GetTransactionAsync(cancellationToken);
 
@@ -92,6 +94,4 @@ public sealed class AgeTransactionOwnershipTests
         builder.UseAge();
         return builder.Build();
     }
-
-    private static string NewGraphName() => $"cvoya_tx_owner_{Guid.NewGuid():N}";
 }
