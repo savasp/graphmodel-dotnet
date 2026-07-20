@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Point git at the version-controlled hooks in .githooks/.
-# Run once per clone (and per worktree — core.hooksPath is local config).
+# Run once per clone: core.hooksPath is written to the repo's shared config, so every
+# linked worktree inherits it (and the relative .githooks path resolves to each
+# worktree's own copy) — no need to re-run this per worktree.
 
 set -euo pipefail
 
