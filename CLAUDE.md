@@ -10,6 +10,8 @@
 | Skills | `.claude/skills/` — `/build-and-test [config]`, `/new-node-type <Name>`, `/new-analyzer <Id> <Title>`, `/cvoya-graph` (context) |
 | Hooks | `.claude/hooks/` — `protect-files.sh` (PreToolUse: blocks Edit/Write on `VERSION`, `.github/`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `.claude/`, `.codex/` — ask the user first; advisory, not a security boundary) and `verify-build.sh` (PostToolUse: builds the affected project after `.cs` edits and feeds compile errors back) |
 | Permissions | `.claude/settings.json` pre-approves `dotnet`/`git`/`gh` and common read-only commands |
+| Plugins | `.claude/settings.json` `enabledPlugins` keeps `csharp-lsp` and turns off the web/mobile LSPs (`typescript`, `swift`, `kotlin`, `pyright`), `playwright`, and `frontend-design` — this repo is a headless .NET library |
+| Search scope | `.claudeignore` excludes build output (`bin/`, `obj/`, `artifacts/`, `TestResults/`) and `local-nuget-feed/` |
 
 ## Quick reference
 

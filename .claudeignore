@@ -1,0 +1,13 @@
+# Build artifacts
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+
+# Local package feed (built .nupkg output, not source)
+local-nuget-feed/
+
+# IDE / caches
+.vs/
+*.user
+*.suo
