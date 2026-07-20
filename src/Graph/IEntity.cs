@@ -5,17 +5,17 @@ namespace Cvoya.Graph;
 
 /// <summary>
 /// Represents the foundation for all entities in the graph model.
-/// This is the base interface for both nodes and relationships, providing the core identity functionality.
+/// This is the base interface for both nodes and relationships.
 /// </summary>
 public interface IEntity
 {
     /// <summary>
-    /// Gets the unique identifier of the entity.
-    /// This property is used to uniquely identify and reference the entity within the graph system.
+    /// Gets the identifier used by the transitional ID-based graph APIs.
     /// </summary>
     /// <remarks>
-    /// Identifiers should be immutable once the entity has been persisted to ensure referential integrity.
+    /// This property is ordinary mapped data for schema purposes. It is not a domain key unless the
+    /// implementing property explicitly declares <see cref="PropertyAttribute.IsKey"/>. Domain keys do not
+    /// represent provider-native graph element identity and are not implicit mutation targets.
     /// </remarks>
-    [Property(IsKey = true)]
     string Id { get; init; }
 }

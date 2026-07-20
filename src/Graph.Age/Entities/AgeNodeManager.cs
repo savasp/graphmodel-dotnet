@@ -486,7 +486,8 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             checks.Add(BuildCheck(keyProperties, "composite key"));
         }
 
-        foreach (var property in schema.Properties.Values.Where(property => property.IsUnique && !property.IsKey))
+        foreach (var property in schema.Properties.Values.Where(
+                     property => property.IsUnique && (!property.IsKey || schema.HasCompositeKey())))
         {
             checks.Add(BuildCheck([property], $"unique property '{property.Name}'"));
         }

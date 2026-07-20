@@ -70,7 +70,9 @@ public sealed class ComplianceInventoryTests
     // +4 for #380/#444: a self-loop is traversed once per direction shape and yields one path
     // segment and one path, while parallel self-loops and opposite-direction relationships preserve
     // one result per physical relationship across node, segment-end, and path-end projections.
-    private const int ExpectedTotalTestMethods = 453;
+    // +3 for #464: single-key tuple enforcement, explicit uniqueness on a composite-key component,
+    // and key-value scope across distinct node labels and relationship types.
+    private const int ExpectedTotalTestMethods = 456;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

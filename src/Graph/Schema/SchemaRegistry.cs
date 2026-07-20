@@ -436,6 +436,8 @@ public class SchemaRegistry : IDisposable
     private static PropertySchemaInfo CreatePropertySchemaInfo(PropertyInfo property)
     {
         var attribute = property.GetCustomAttribute<PropertyAttribute>();
+        ValidatePropertySchema(property, attribute);
+
         var isKey = attribute?.IsKey ?? false;
 
         var includeInFullTextSearch = property.PropertyType == typeof(string)
@@ -449,7 +451,7 @@ public class SchemaRegistry : IDisposable
             Name = Labels.ResolveLabelFromProperty(property),
             IsIndexed = isKey || (attribute?.IsIndexed ?? false),
             IsKey = isKey,
-            IsUnique = isKey || (attribute?.IsUnique ?? false),
+            IsUnique = attribute?.IsUnique ?? false,
             IsRequired = isKey || (attribute?.IsRequired ?? false),
             Ignore = attribute?.Ignore ?? false,
             IncludeInFullTextSearch = includeInFullTextSearch,
@@ -460,6 +462,70 @@ public class SchemaRegistry : IDisposable
                 Pattern = attribute?.Pattern
             }
         };
+    }
+
+    /// <summary>
+    /// Applies the runtime property-schema rules shared by every provider before schema metadata is published.
+    /// </summary>
+    private static void ValidatePropertySchema(PropertyInfo property, PropertyAttribute? attribute)
+    {
+        if (attribute is null)
+        {
+            return;
+        }
+
+        if (attribute.Ignore)
+        {
+            var conflictingFlags = new List<string>();
+            if (attribute.IsKey)
+            {
+                conflictingFlags.Add(nameof(PropertyAttribute.IsKey));
+            }
+
+            if (attribute.IsUnique)
+            {
+                conflictingFlags.Add(nameof(PropertyAttribute.IsUnique));
+            }
+
+            if (attribute.IsIndexed)
+            {
+                conflictingFlags.Add(nameof(PropertyAttribute.IsIndexed));
+            }
+
+            if (attribute.IsRequired)
+            {
+                conflictingFlags.Add(nameof(PropertyAttribute.IsRequired));
+            }
+
+            if (conflictingFlags.Count > 0)
+            {
+                throw new GraphException(
+                    $"Property '{property.DeclaringType?.FullName}.{property.Name}' cannot combine " +
+                    $"{nameof(PropertyAttribute.Ignore)} with {string.Join(", ", conflictingFlags)}.");
+            }
+        }
+
+        if (!attribute.IsKey)
+        {
+            return;
+        }
+
+        var propertyType = property.PropertyType;
+        var isNullable = Nullable.GetUnderlyingType(propertyType) is not null ||
+            (!propertyType.IsValueType &&
+             new NullabilityInfoContext().Create(property).ReadState == NullabilityState.Nullable);
+        if (isNullable)
+        {
+            throw new GraphException(
+                $"Key property '{property.DeclaringType?.FullName}.{property.Name}' must be non-nullable.");
+        }
+
+        if (!GraphDataModel.IsSimple(propertyType))
+        {
+            throw new GraphException(
+                $"Key property '{property.DeclaringType?.FullName}.{property.Name}' must be a graph-storable scalar value; " +
+                $"'{propertyType}' is not supported.");
+        }
     }
 
     private static string GetLabelFromType(Type type)

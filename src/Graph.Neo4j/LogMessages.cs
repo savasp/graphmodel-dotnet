@@ -328,7 +328,7 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created unique Id constraint for label {Label}")]
     internal static partial void LogDebugNeo4jSchemaManager239(this ILogger logger, global::System.String label);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created composite key constraint for properties {Properties} on label {Label}")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created key tuple constraint for properties {Properties} on label {Label}")]
     internal static partial void LogDebugNeo4jSchemaManager261(this ILogger logger, global::System.String properties, global::System.String label);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created unique constraint for property {Property} on label {Label}")]
@@ -349,7 +349,7 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created unique Id constraint for relationship type {Type}")]
     internal static partial void LogDebugNeo4jSchemaManager348(this ILogger logger, global::System.String type);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created composite key constraint for properties {Properties} on relationship type {Type}")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created key tuple constraint for properties {Properties} on relationship type {Type}")]
     internal static partial void LogDebugNeo4jSchemaManager370(this ILogger logger, global::System.String properties, global::System.String type);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created unique constraint for property {Property} on relationship type {Type}")]

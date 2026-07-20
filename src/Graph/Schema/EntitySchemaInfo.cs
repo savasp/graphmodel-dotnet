@@ -26,12 +26,18 @@ public class EntitySchemaInfo
     public IDictionary<string, PropertySchemaInfo> Properties { get; set; } = new Dictionary<string, PropertySchemaInfo>();
 
     /// <summary>
-    /// Gets all key properties for this entity.
+    /// Gets the ordered domain-key tuple for this entity.
     /// </summary>
-    /// <returns>An enumerable of key property schema information.</returns>
+    /// <remarks>
+    /// Zero key properties is valid. The tuple is ordered by mapped property name using ordinal comparison
+    /// so every schema consumer observes the same order. Its uniqueness scope is this entity's mapped node
+    /// label or relationship type within one configured graph store. The tuple does not represent graph
+    /// element identity and is not an implicit mutation target.
+    /// </remarks>
+    /// <returns>The ordered key-property schema information, or an empty sequence for a keyless entity.</returns>
     public IEnumerable<PropertySchemaInfo> GetKeyProperties()
     {
-        return Properties.Values.Where(p => p.IsKey).OrderBy(p => p.Name);
+        return Properties.Values.Where(p => p.IsKey).OrderBy(p => p.Name, StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -44,7 +50,7 @@ public class EntitySchemaInfo
     }
 
     /// <summary>
-    /// Gets whether this entity has any key properties.
+    /// Gets whether this entity declares a domain key tuple.
     /// </summary>
     /// <returns>True if the entity has at least one key property, false otherwise.</returns>
     public bool HasKey()
@@ -52,4 +58,3 @@ public class EntitySchemaInfo
         return Properties.Values.Any(p => p.IsKey);
     }
 }
-

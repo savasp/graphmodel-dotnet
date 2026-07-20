@@ -11,7 +11,7 @@ public class SchemaRegistryTests
 {
     public static TheoryData<string, string, bool, bool, bool, bool, bool, bool, int?, int?, string?> PropertySchemaCases => new()
     {
-        { nameof(RegistryNode.Key), "node_key", true, true, true, true, false, true, 2, 20, "^[a-z]+$" },
+        { nameof(RegistryNode.Key), "node_key", true, true, false, true, false, true, 2, 20, "^[a-z]+$" },
         { nameof(RegistryNode.IndexedName), "indexed_name", false, true, false, false, false, false, int.MinValue, int.MaxValue, string.Empty },
         { nameof(RegistryNode.UniqueName), nameof(RegistryNode.UniqueName), false, false, true, false, false, true, int.MinValue, int.MaxValue, string.Empty },
         { nameof(RegistryNode.RequiredName), nameof(RegistryNode.RequiredName), false, false, false, true, false, true, int.MinValue, int.MaxValue, string.Empty },
@@ -192,6 +192,75 @@ public class SchemaRegistryTests
         Assert.False(schema.HasCompositeKey());
         var key = Assert.Single(schema.GetKeyProperties());
         Assert.Equal("node_key", key.Name);
+        Assert.False(key.IsUnique);
+        Assert.True(key.IsRequired);
+        Assert.True(key.IsIndexed);
+    }
+
+    [Fact]
+    public async Task EntitySchemaInfo_KeylessNodeAndRelationshipHaveNoImplicitIdKey()
+    {
+        using var registry = new SchemaRegistry();
+        await registry.InitializeAsync(TestContext.Current.CancellationToken);
+
+        var nodeSchema = registry.GetNodeSchema("CoreKeylessRegistryNode");
+        var relationshipSchema = registry.GetRelationshipSchema("CORE_REGISTRY_REL");
+
+        Assert.NotNull(nodeSchema);
+        Assert.False(nodeSchema.HasKey());
+        Assert.False(nodeSchema.HasCompositeKey());
+        Assert.Empty(nodeSchema.GetKeyProperties());
+        Assert.False(nodeSchema.Properties[nameof(IEntity.Id)].IsKey);
+        Assert.False(nodeSchema.Properties[nameof(IEntity.Id)].IsUnique);
+
+        Assert.NotNull(relationshipSchema);
+        Assert.False(relationshipSchema.HasKey());
+        Assert.False(relationshipSchema.HasCompositeKey());
+        Assert.Empty(relationshipSchema.GetKeyProperties());
+        Assert.False(relationshipSchema.Properties[nameof(IEntity.Id)].IsKey);
+    }
+
+    [Fact]
+    public async Task EntitySchemaInfo_CompositeKeyIsOneOrderedTupleWithExplicitComponentUniqueness()
+    {
+        using var registry = new SchemaRegistry();
+        await registry.InitializeAsync(TestContext.Current.CancellationToken);
+
+        var nodeSchema = registry.GetNodeSchema("CoreCompositeKeyRegistryNode");
+        var relationshipSchema = registry.GetRelationshipSchema("CORE_COMPOSITE_KEY_REGISTRY_REL");
+
+        Assert.NotNull(nodeSchema);
+        Assert.True(nodeSchema.HasKey());
+        Assert.True(nodeSchema.HasCompositeKey());
+        var nodeKey = nodeSchema.GetKeyProperties().ToArray();
+        Assert.Equal(["account_key", "tenant_key"], nodeKey.Select(property => property.Name));
+        Assert.True(nodeKey[0].IsUnique);
+        Assert.False(nodeKey[1].IsUnique);
+        Assert.All(nodeKey, property =>
+        {
+            Assert.True(property.IsIndexed);
+            Assert.True(property.IsRequired);
+        });
+
+        Assert.NotNull(relationshipSchema);
+        Assert.True(relationshipSchema.HasCompositeKey());
+        Assert.Equal(
+            ["left_key", "right_key"],
+            relationshipSchema.GetKeyProperties().Select(property => property.Name));
+    }
+
+    [Fact]
+    public async Task EntitySchemaInfo_InheritedExplicitKeyIsPreserved()
+    {
+        using var registry = new SchemaRegistry();
+        await registry.InitializeAsync(TestContext.Current.CancellationToken);
+
+        var schema = registry.GetNodeSchema("CoreInheritedKeyRegistryNode");
+
+        Assert.NotNull(schema);
+        var key = Assert.Single(schema.GetKeyProperties());
+        Assert.Equal(nameof(InheritedKeyRegistryNode.ExternalKey), key.Name);
+        Assert.False(key.IsUnique);
     }
 
     [Fact]
@@ -328,4 +397,39 @@ public class SchemaRegistryTests
         [Property(IsIndexed = true)]
         public DateOnly Since { get; init; }
     }
+
+    [Node("CoreKeylessRegistryNode")]
+    private sealed record KeylessRegistryNode : Node
+    {
+        public string Name { get; init; } = string.Empty;
+    }
+
+    [Node("CoreCompositeKeyRegistryNode")]
+    private sealed record CompositeKeyRegistryNode : Node
+    {
+        [Property(Label = "tenant_key", IsKey = true)]
+        public string Tenant { get; init; } = string.Empty;
+
+        [Property(Label = "account_key", IsKey = true, IsUnique = true)]
+        public string Account { get; init; } = string.Empty;
+    }
+
+    [Relationship("CORE_COMPOSITE_KEY_REGISTRY_REL")]
+    private sealed record CompositeKeyRegistryRelationship(string Start, string End) : Relationship(Start, End)
+    {
+        [Property(Label = "right_key", IsKey = true)]
+        public string Right { get; init; } = string.Empty;
+
+        [Property(Label = "left_key", IsKey = true)]
+        public string Left { get; init; } = string.Empty;
+    }
+
+    private abstract record InheritedKeyRegistryNodeBase : Node
+    {
+        [Property(IsKey = true)]
+        public string ExternalKey { get; init; } = string.Empty;
+    }
+
+    [Node("CoreInheritedKeyRegistryNode")]
+    private sealed record InheritedKeyRegistryNode : InheritedKeyRegistryNodeBase;
 }
