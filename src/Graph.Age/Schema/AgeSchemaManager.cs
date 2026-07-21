@@ -59,12 +59,11 @@ internal sealed class AgeSchemaManager
     {
         await InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
 
-        // Provisioning creates the physical entity tables. Recreate means rebuild, rather than merely
-        // ensuring names exist: this refreshes existing expression indexes if the immutable extraction
-        // function changes between library versions.
+        // This is the explicit managed-infrastructure path. Ordinary reads and writes never create
+        // the legacy tables, extraction function, or indexes.
         var connection = await context.Store.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var connectionLease = connection.ConfigureAwait(false);
-        await context.Store.EnsureGraphProvisionedAsync(connection, cancellationToken).ConfigureAwait(false);
+        await context.Store.EnsureManagedFullTextTablesAsync(connection, cancellationToken).ConfigureAwait(false);
         await AgeFullTextIndex.RecreateAsync(connection, context.GraphName, cancellationToken).ConfigureAwait(false);
 
         logger.LogInformationAgeSchemaManager60();

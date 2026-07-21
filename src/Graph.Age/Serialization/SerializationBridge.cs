@@ -13,6 +13,8 @@ internal static class SerializationBridge
     internal const string MetadataPropertyName = "__metadata__";
     internal const string EntityKindPropertyName = "__graphModelEntityKind__";
     internal const string NodeEntityKind = "Node";
+    // These names remain the legacy root storage and the provider-owned complex-value storage.
+    // New user roots must never claim either table name.
     internal const string PhysicalNodeLabel = "CvoyaNode";
     internal const string PhysicalRelationshipType = "CvoyaRelationship";
     private const string TypeNameKey = "type";
@@ -105,6 +107,17 @@ internal static class SerializationBridge
         };
 
         return typeName is null ? null : Type.GetType(typeName);
+    }
+
+    internal static void ValidateRootStorageName(string name, string description)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (string.Equals(name, PhysicalNodeLabel, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(name, PhysicalRelationshipType, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new GraphException(
+                $"The {description} '{name}' is reserved by the AGE provider for legacy and complex-value storage.");
+        }
     }
 
     private static string RemoveAssemblyVersions(string assemblyQualifiedName)

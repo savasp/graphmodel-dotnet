@@ -22,7 +22,7 @@ public sealed class AgeGraphStore : IAsyncDisposable
     private readonly bool ownsDataSource;
     private readonly SemaphoreSlim provisioningGate = new(1, 1);
     private int disposed;
-    private volatile bool provisioned;
+    private volatile bool graphReady;
 
     /// <summary>Initializes a store from a PostgreSQL connection string.</summary>
     /// <param name="connectionString">The connection string, or <see langword="null"/> to use <c>AGE_CONNECTION_STRING</c>.</param>
@@ -122,7 +122,7 @@ public sealed class AgeGraphStore : IAsyncDisposable
     internal Action? BatchExecutionObserver { get; }
 
     /// <summary>
-    /// Test instrumentation invoked once per execution of the provisioning sequence, including
+    /// Test instrumentation invoked once per execution of the graph-creation sequence, including
     /// attempts that go on to fail. It deliberately stays internal so counting provisioning runs does
     /// not expand the public API.
     /// </summary>
@@ -132,7 +132,7 @@ public sealed class AgeGraphStore : IAsyncDisposable
     /// Test instrumentation invoked when a caller reaches the provisioning gate, before it waits on
     /// it. Paired with <see cref="ProvisioningObserver"/> it lets a test prove every racer was
     /// committed to the gate while a sequence was still in flight, rather than arriving after one
-    /// finished and taking the provisioned fast path - which would leave the test passing vacuously.
+    /// finished and taking the graph-ready fast path - which would leave the test passing vacuously.
     /// </summary>
     internal Action? ProvisioningGateObserver { get; set; }
 
@@ -154,7 +154,7 @@ public sealed class AgeGraphStore : IAsyncDisposable
 
     /// <summary>
     /// Runs the shared provisioning core unconditionally. An explicit request to create the graph
-    /// re-verifies the database rather than trusting what this store provisioned earlier, because the
+    /// re-verifies the database rather than trusting what this store created earlier, because the
     /// caller may be recovering from a drop this store never observed.
     /// </summary>
     internal Task CreateGraphIfNotExistsAsync(
@@ -163,24 +163,50 @@ public sealed class AgeGraphStore : IAsyncDisposable
         ProvisionAsync(connection, skipWhenProvisioned: false, cancellationToken);
 
     /// <summary>
-    /// Provisions the graph on first use only. The existence probe and physical-label round-trips
-    /// would otherwise run (and write) on every transaction begin, including read-only ones.
+    /// Creates the graph on first write use only. Read-only transactions use
+    /// <see cref="EnsureGraphExistsAsync"/> and never enter this mutating path.
     /// </summary>
-    internal Task EnsureGraphProvisionedAsync(
+    internal Task EnsureGraphCreatedAsync(
         NpgsqlConnection connection,
         CancellationToken cancellationToken) =>
-        provisioned
+        graphReady
             ? Task.CompletedTask
             : ProvisionAsync(connection, skipWhenProvisioned: true, cancellationToken);
 
+    /// <summary>Verifies that the configured graph exists without mutating database state.</summary>
+    /// <remarks>
+    /// A successful probe publishes <see cref="graphReady"/>, so only a store's first read-only
+    /// transaction pays the catalog round-trip; later reads - and the write path's graph-creation
+    /// check - trust the verified graph. An explicit
+    /// <see cref="CreateGraphIfNotExistsAsync(CancellationToken)"/> still clears the flag and
+    /// re-verifies the database.
+    /// </remarks>
+    internal async Task EnsureGraphExistsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (graphReady)
+        {
+            return;
+        }
+
+        if (!await GraphExistsAsync(connection, transaction, cancellationToken).ConfigureAwait(false))
+        {
+            throw new GraphException($"Apache AGE graph '{GraphName}' does not exist.");
+        }
+
+        graphReady = true;
+    }
+
     /// <summary>
-    /// Serializes provisioning within this store and publishes <see cref="provisioned"/> only after the
-    /// whole sequence has succeeded.
+    /// Serializes graph creation within this store and publishes <see cref="graphReady"/> only after the
+    /// graph-creation sequence has succeeded.
     /// </summary>
     /// <remarks>
     /// The gate keeps concurrent first-use operations on one store from each running the sequence;
     /// <see cref="Schema.AgeProvisioningLock"/> extends that to the peers this store cannot see. Because
-    /// the flag is published last, a failed or cancelled attempt leaves the store unprovisioned and the
+    /// the flag is published last, a failed or cancelled attempt leaves the graph unconfirmed and the
     /// next caller free to retry.
     /// </remarks>
     private async Task ProvisionAsync(
@@ -195,17 +221,17 @@ public sealed class AgeGraphStore : IAsyncDisposable
         {
             // The second check: callers that queued behind the winning first-use initialization
             // inherit its result instead of each repeating it.
-            if (skipWhenProvisioned && provisioned)
+            if (skipWhenProvisioned && graphReady)
             {
                 return;
             }
 
             // An explicit call re-verifies a graph that may have been dropped since this store first
-            // provisioned it. Clear the cached success before that attempt so a failure or cancellation
+            // created it. Clear the cached success before that attempt so a failure or cancellation
             // cannot leave later implicit first use trusting stale state.
-            provisioned = false;
+            graphReady = false;
             await ProvisionCoreAsync(connection, cancellationToken).ConfigureAwait(false);
-            provisioned = true;
+            graphReady = true;
         }
         finally
         {
@@ -214,14 +240,14 @@ public sealed class AgeGraphStore : IAsyncDisposable
     }
 
     /// <summary>
-    /// The one idempotent provisioning sequence: probe for the graph, create it when absent, then bring
-    /// the rest of the usable-store contract - the physical label tables and the managed full-text
-    /// objects - up to date.
+    /// The one idempotent opening sequence for writes: probe for the graph and create only the graph
+    /// itself when absent. Logical label/type tables are created by the authorized write that first
+    /// needs them; managed full-text infrastructure is explicit through <c>RecreateIndexesAsync</c>.
     /// </summary>
     /// <remarks>
     /// It runs in a single transaction holding <see cref="Schema.AgeProvisioningLock"/>, so peers racing
     /// the same graph name run it one at a time and a failure part-way rolls the graph back instead of
-    /// leaving a half-provisioned one behind. Nothing is interpreted as an "already exists" race here:
+    /// leaving a half-created graph behind. Nothing is interpreted as an "already exists" race here:
     /// permission, connectivity, syntax, timeout, and cancellation failures all propagate as themselves.
     /// </remarks>
     private async Task ProvisionCoreAsync(
@@ -241,10 +267,6 @@ public sealed class AgeGraphStore : IAsyncDisposable
             await CreateGraphAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
         }
 
-        await EnsurePhysicalLabelsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-        await Schema.AgeFullTextIndex
-            .EnsureAsync(connection, transaction, GraphName, cancellationToken)
-            .ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -272,6 +294,25 @@ public sealed class AgeGraphStore : IAsyncDisposable
         command.CommandText = "SELECT ag_catalog.create_graph(@name)";
         command.Parameters.AddWithValue("name", GraphName);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Explicitly creates the legacy managed tables needed by the current full-text implementation.
+    /// Ordinary reads and writes never call this method.
+    /// </summary>
+    internal async Task EnsureManagedFullTextTablesAsync(
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await EnsureGraphCreatedAsync(connection, cancellationToken).ConfigureAwait(false);
+
+        var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transactionLease = transaction.ConfigureAwait(false);
+        await Schema.AgeProvisioningLock
+            .AcquireAsync(connection, transaction, GraphName, cancellationToken)
+            .ConfigureAwait(false);
+        await EnsurePhysicalLabelsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage(

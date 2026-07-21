@@ -917,7 +917,8 @@ internal sealed class ExpressionToCypherAstLowerer(
                 alias: null,
                 GraphDataModel.GetComplexPropertyRelationshipType(property),
                 CypherDirection.Outgoing,
-                depth: null));
+                depth: null,
+                isComplexProperty: true));
             elements.Add(new NodePattern(targetAlias, [Labels.GetLabelFromType(targetType)]));
             currentAlias = targetAlias;
         }
@@ -946,7 +947,8 @@ internal sealed class ExpressionToCypherAstLowerer(
                     alias: null,
                     GraphDataModel.GetComplexPropertyRelationshipType(property),
                     CypherDirection.Outgoing,
-                    depth: null),
+                    depth: null,
+                    isComplexProperty: true),
                 new NodePattern(targetAlias, [Labels.GetLabelFromType(targetType)])
             ])
             // Optional so that rows without the navigated property survive: a required MATCH would

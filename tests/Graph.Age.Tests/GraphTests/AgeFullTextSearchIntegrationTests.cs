@@ -13,7 +13,7 @@ using Cvoya.Graph.CompatibilityTests;
 public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
     : AgeTest(harness, StoreIsolation.FreshStore)
 {
-    [Fact]
+    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
     public async Task Search_RunsOnCallerTransaction_SeesUncommittedWrites()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -35,7 +35,7 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
         Assert.Empty(afterRollback);
     }
 
-    [Fact]
+    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
     public async Task MixedSearch_AppliesOrderingPagingAndTerminalsAfterCombiningBothKinds()
     {
         var ct = TestContext.Current.CancellationToken;

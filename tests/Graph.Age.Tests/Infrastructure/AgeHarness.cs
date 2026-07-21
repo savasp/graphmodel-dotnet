@@ -114,7 +114,7 @@ public sealed class AgeHarness(AgeGraphCleanupFixture graphCleanup) : IGraphProv
         var result = await ageTransaction.Runner.RunAsync(
             $"""
             MATCH (n)
-            WHERE $label IN coalesce(n.inheritance_labels, [])
+            WHERE ($label IN labels(n) OR $label IN coalesce(n.inheritance_labels, []))
               AND n.{escapedProperty} IN $values
             RETURN count(n) AS node_count
             """,

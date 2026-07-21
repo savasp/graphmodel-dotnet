@@ -15,7 +15,7 @@ public sealed class AgeLabelPatternPassTests
     private readonly CypherRenderer renderer = new(AgeDialect.Instance);
 
     [Fact]
-    public void LowersNodeAndAliasedSingleHopRelationshipLabelsToLegacyGoldenOutput()
+    public void LowersNodeAndAliasedSingleHopRelationshipLabelsToNativeOrLegacyPredicates()
     {
         var statement = Statement(
             Match(
@@ -28,13 +28,11 @@ public sealed class AgeLabelPatternPassTests
         var lowered = pass.Run(statement);
         var rendered = renderer.Render(lowered);
 
-        Assert.Equal(
-            """
-            MATCH (src)-[knows]->(tgt)
-            WHERE ('Person' IN coalesce(src.inheritance_labels, []) OR 'Manager' IN coalesce(src.inheritance_labels, [])) AND ('Knows' IN coalesce(knows.inheritance_labels, []) OR 'WorksWith' IN coalesce(knows.inheritance_labels, []))
-            RETURN src
-            """,
-            rendered.Text);
+        Assert.Contains("'Person' IN labels(src)", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("'Person' IN coalesce(src.inheritance_labels, [])", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("type(knows) = 'Knows'", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("'Knows' IN coalesce(knows.inheritance_labels, [])", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("knows.__graphModelComplexProperty", rendered.Text, StringComparison.Ordinal);
         var match = Assert.IsType<MatchClause>(lowered.Clauses[0]);
         Assert.All(match.Patterns[0].Elements.OfType<NodePattern>(), node => Assert.Empty(node.Labels));
         Assert.All(match.Patterns[0].Elements.OfType<RelationshipPattern>(), relationship => Assert.Empty(relationship.Types));
@@ -56,13 +54,9 @@ public sealed class AgeLabelPatternPassTests
         var lowered = pass.Run(statement);
         var rendered = renderer.Render(lowered);
 
-        Assert.Equal(
-            """
-            MATCH (src)-[age_relationship_0]->(mid)-[age_relationship_1]->(tgt)
-            WHERE ('Knows' IN coalesce(age_relationship_0.inheritance_labels, []) OR 'WorksWith' IN coalesce(age_relationship_0.inheritance_labels, [])) AND ('Likes' IN coalesce(age_relationship_1.inheritance_labels, []) OR 'Avoids' IN coalesce(age_relationship_1.inheritance_labels, []))
-            RETURN tgt
-            """,
-            rendered.Text);
+        Assert.Contains("MATCH (src)-[age_relationship_0]->(mid)-[age_relationship_1]->(tgt)", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("type(age_relationship_0) = 'Knows'", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("type(age_relationship_1) = 'Likes'", rendered.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -78,13 +72,9 @@ public sealed class AgeLabelPatternPassTests
 
         var rendered = renderer.Render(pass.Run(statement));
 
-        Assert.Equal(
-            """
-            OPTIONAL MATCH (src)-[age_relationship_0*1..4]->(tgt)
-            WHERE ('Knows' IN coalesce(age_relationship_0[toInteger(0)].inheritance_labels, []) OR 'WorksWith' IN coalesce(age_relationship_0[toInteger(0)].inheritance_labels, []))
-            RETURN tgt
-            """,
-            rendered.Text);
+        Assert.Contains("type(age_relationship_0[toInteger(0)]) = 'Knows'", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("age_relationship_0[toInteger(0)].inheritance_labels", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("age_relationship_0[toInteger(0)].__graphModelComplexProperty", rendered.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -101,17 +91,11 @@ public sealed class AgeLabelPatternPassTests
         var lowered = pass.Run(statement);
         var rendered = renderer.Render(lowered);
 
-        Assert.Equal(
-            """
-            MATCH (src)-[relationships*1..4]->(tgt)
-            WHERE size([age_hop IN range(0, size(relationships) - 1) WHERE ('Knows' IN coalesce(relationships[toInteger(age_hop)].inheritance_labels, []) OR 'WorksWith' IN coalesce(relationships[toInteger(age_hop)].inheritance_labels, []))]) = size(relationships)
-            RETURN tgt
-            """,
-            rendered.Text);
-        var where = Assert.IsType<WhereClause>(lowered.Clauses[1]);
-        var equality = Assert.IsType<BinaryExpression>(where.Predicate);
-        var size = Assert.IsType<FunctionCall>(equality.Left);
-        Assert.IsType<ListComprehensionExpression>(Assert.Single(size.Arguments));
+        Assert.Contains("type(relationships[toInteger(age_hop)]) = 'Knows'", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("relationships[toInteger(age_hop)].inheritance_labels", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("relationships[toInteger(age_hop)].__graphModelComplexProperty", rendered.Text, StringComparison.Ordinal);
+        _ = Assert.IsType<WhereClause>(lowered.Clauses[1]);
+        Assert.Contains("size([age_hop IN range", rendered.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -132,15 +116,10 @@ public sealed class AgeLabelPatternPassTests
 
         var rendered = renderer.Render(pass.Run(statement));
 
-        Assert.Equal(
-            """
-            MATCH (src)
-            WHERE ('Person' IN coalesce(src.inheritance_labels, []) OR 'Manager' IN coalesce(src.inheritance_labels, [])) AND src.Active = true
-            MATCH (other)
-            WHERE ('Person' IN coalesce(other.inheritance_labels, []) OR 'Manager' IN coalesce(other.inheritance_labels, []))
-            RETURN other
-            """,
-            rendered.Text);
+        Assert.Contains("'Person' IN labels(src)", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("src.Active = true", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("MATCH (other)", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("'Manager' IN coalesce(other.inheritance_labels, [])", rendered.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -164,22 +143,14 @@ public sealed class AgeLabelPatternPassTests
 
         var rendered = renderer.Render(pass.Run(statement));
 
-        Assert.Equal(
-            """
-            MATCH (src)
-            CALL {
-              WITH src
-              MATCH (src)-[knows]->(tgt)
-              WHERE ('Person' IN coalesce(tgt.inheritance_labels, []) OR 'Manager' IN coalesce(tgt.inheritance_labels, [])) AND ('Knows' IN coalesce(knows.inheritance_labels, []) OR 'WorksWith' IN coalesce(knows.inheritance_labels, []))
-              RETURN tgt
-            }
-            RETURN tgt
-            """,
-            rendered.Text);
+        Assert.Contains("CALL {", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("'Person' IN labels(tgt)", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("'Manager' IN coalesce(tgt.inheritance_labels, [])", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("type(knows) = 'Knows'", rendered.Text, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void LowersSingleLabelToUnwrappedInheritancePredicate()
+    public void LowersSingleLabelToNativeOrLegacyPredicate()
     {
         var statement = Statement(
             Match(
@@ -189,13 +160,9 @@ public sealed class AgeLabelPatternPassTests
 
         var rendered = renderer.Render(pass.Run(statement));
 
-        Assert.Equal(
-            """
-            MATCH (src)
-            WHERE 'Person' IN coalesce(src.inheritance_labels, [])
-            RETURN src
-            """,
-            rendered.Text);
+        Assert.Contains("'Person' IN labels(src)", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("'Person' IN coalesce(src.inheritance_labels, [])", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("__graphModelComplexProperty", rendered.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -212,17 +179,14 @@ public sealed class AgeLabelPatternPassTests
 
         var rendered = renderer.Render(pass.Run(statement));
 
-        Assert.Equal(
-            """
-            MATCH (a), (b)
-            WHERE 'Person' IN coalesce(a.inheritance_labels, []) AND 'Company' IN coalesce(b.inheritance_labels, [])
-            RETURN a
-            """,
-            rendered.Text);
+        Assert.Contains("'Person' IN labels(a)", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("'Company' IN labels(b)", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("'Person' IN coalesce(a.inheritance_labels, [])", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("'Company' IN coalesce(b.inheritance_labels, [])", rendered.Text, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ReturnsSameStatementWhenNoLabelsOrTypesExist()
+    public void ExcludesInternalComplexElementsWhenNoLabelsOrTypesExist()
     {
         var statement = Statement(
             Match(
@@ -232,7 +196,10 @@ public sealed class AgeLabelPatternPassTests
                 new NodePattern("tgt", [])),
             Return("tgt"));
 
-        Assert.Same(statement, pass.Run(statement));
+        var rendered = renderer.Render(pass.Run(statement));
+
+        Assert.DoesNotContain("age_owner_relationship_0.__graphModelComplexProperty", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("knows.__graphModelComplexProperty", rendered.Text, StringComparison.Ordinal);
     }
 
     private static CypherStatement Statement(params ICypherClause[] clauses) =>

@@ -21,6 +21,11 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
     [
         new AgeCorrelatedProjectionPass(),
         new AgeLabelPatternPass(),
+        // Label lowering adds marker-based root-isolation EXISTS predicates. AGE parses those
+        // subqueries but evaluates them incorrectly, so run the pattern-subquery lowering again
+        // after labels have introduced them. The emitted ownership matches are label-free and do
+        // not need another label pass.
+        new AgeCorrelatedProjectionPass("__age_root_count"),
         new AgeClauseOrderPass(),
         new AgeTemporalParameterArithmeticPass(),
         new AgeInlineComplexPropertyProjectionPass(),
@@ -49,6 +54,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         CypherStatement statement;
         try
         {
+            WholeEntityOrderingValidator.Validate(node, AgeDialect.Instance);
             var model = GraphQueryModelBuilder.Build(node);
             statement = new CypherQueryPlanner(AgeDialect.PlanningInstance).Plan(model);
             statement = LowerStatement(statement);
@@ -71,6 +77,61 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
             _logger.LogDebugCypherQueryVisitor53(Query.Parameters.Keys.ToArray(), Query.Parameters.Count);
         }
         return node;
+    }
+
+    private sealed class WholeEntityOrderingValidator(AgeDialect dialect) : ExpressionVisitor
+    {
+        private static readonly HashSet<string> OrderingMethods = new(StringComparer.Ordinal)
+        {
+            nameof(Queryable.OrderBy),
+            nameof(Queryable.OrderByDescending),
+            nameof(Queryable.ThenBy),
+            nameof(Queryable.ThenByDescending),
+        };
+
+        public static void Validate(Expression expression, AgeDialect dialect)
+        {
+            if (!dialect.Capabilities.Has(GraphCapability.OrderByEntity))
+            {
+                new WholeEntityOrderingValidator(dialect).Visit(expression);
+            }
+        }
+
+        protected override Expression VisitMethodCall(MethodCallExpression node)
+        {
+            if (OrderingMethods.Contains(node.Method.Name) &&
+                node.Arguments.Count >= 2 &&
+                UnwrapLambda(node.Arguments[1]) is { } selector &&
+                typeof(IEntity).IsAssignableFrom(StripConvert(selector.Body).Type))
+            {
+                throw new GraphQueryTranslationException(
+                    $"Cypher construct 'OrderByEntity' requires capability '{GraphCapability.OrderByEntity}', " +
+                    $"which dialect '{dialect.Name}' does not declare.");
+            }
+
+            return base.VisitMethodCall(node);
+        }
+
+        private static LambdaExpression? UnwrapLambda(Expression expression)
+        {
+            while (expression is UnaryExpression { NodeType: ExpressionType.Quote or ExpressionType.Convert } unary)
+            {
+                expression = unary.Operand;
+            }
+
+            return expression as LambdaExpression;
+        }
+
+        private static Expression StripConvert(Expression expression)
+        {
+            while (expression is UnaryExpression
+                { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } unary)
+            {
+                expression = unary.Operand;
+            }
+
+            return expression;
+        }
     }
 
     internal static CypherStatement LowerStatement(CypherStatement statement) =>

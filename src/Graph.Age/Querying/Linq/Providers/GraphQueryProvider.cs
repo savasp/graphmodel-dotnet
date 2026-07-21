@@ -38,6 +38,8 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
         Expression expression,
         CancellationToken cancellationToken)
     {
+        await context.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
+
         if (GraphMutationModelBuilder.IsMutation(expression))
         {
             var mutation = GraphMutationModelBuilder.Build(expression);
@@ -63,7 +65,7 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
 
     IGraphTransaction? IGraphCommandProvider.BoundTransaction => transaction;
 
-    Task<TResult> IGraphCommandProvider.InWriteTransactionAsync<TResult>(
+    async Task<TResult> IGraphCommandProvider.InWriteTransactionAsync<TResult>(
         Func<IGraphCommandExecutionContext, CancellationToken, Task<TResult>> command,
         CancellationToken cancellationToken)
     {
@@ -73,18 +75,63 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
             throw new GraphException("A graph command cannot use a transaction opened with read-only access.");
         }
 
-        return TransactionHelpers.ExecuteInTransactionAsync(
+        // Public command execution reaches this method directly rather than passing through the
+        // normal query execution path, but node/relationship validation uses the synchronous schema
+        // lookup APIs. Initialize once before entering either an owned or caller-bound transaction.
+        await context.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
+
+        return await TransactionHelpers.ExecuteInTransactionAsync(
             context,
             transaction,
-            tx => command(new AgeGraphCommandExecutionContext(tx, cypherEngine), cancellationToken),
+            async tx =>
+            {
+                var savepoint = transaction is null ? null : $"cvoya_command_{Guid.NewGuid():N}";
+                if (savepoint is not null)
+                {
+                    await tx.DbTransaction.SaveAsync(savepoint, cancellationToken).ConfigureAwait(false);
+                }
+
+                try
+                {
+                    var result = await command(
+                        new AgeGraphCommandExecutionContext(tx, cypherEngine, context), cancellationToken).ConfigureAwait(false);
+                    if (savepoint is not null)
+                    {
+                        await tx.DbTransaction.ReleaseAsync(savepoint, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    return result;
+                }
+                catch (Exception operationException) when (savepoint is not null)
+                {
+                    try
+                    {
+                        await tx.DbTransaction.RollbackAsync(savepoint, CancellationToken.None).ConfigureAwait(false);
+                        await tx.DbTransaction.ReleaseAsync(savepoint, CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception rollbackException) when (rollbackException is NpgsqlException or InvalidOperationException)
+                    {
+                        throw new GraphException(
+                            "Failed to restore the caller transaction after a graph command failed.",
+                            new AggregateException(operationException, rollbackException));
+                    }
+
+                    throw;
+                }
+            },
             "Error executing graph command",
             logger,
             isReadOnly: false,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
     }
 
-    protected override Task<AgeGraphTransaction> GetOrCreateTransactionAsync(CancellationToken cancellationToken) =>
-        TransactionHelpers.GetOrCreateTransactionAsync(context, transaction, isReadOnly, cancellationToken);
+    protected override async Task<AgeGraphTransaction> GetOrCreateTransactionAsync(CancellationToken cancellationToken)
+    {
+        await context.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
+        return await TransactionHelpers
+            .GetOrCreateTransactionAsync(context, transaction, isReadOnly, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     protected override IAsyncEnumerable<TResult> StreamCoreAsync<TResult>(
         Expression expression,

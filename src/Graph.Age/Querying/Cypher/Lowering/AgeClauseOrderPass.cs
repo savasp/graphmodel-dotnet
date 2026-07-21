@@ -80,16 +80,14 @@ internal sealed class AgeClauseOrderPass : ICypherPass
 
             if (clause is OrderByClause orderBy)
             {
-                var rewritten = RewriteEntityOrdering(orderBy);
-                changed |= rewritten != orderBy;
                 if (hasActiveWith &&
                     (primaryPagingWithStage is null || primaryPagingWithStage == currentWithStage))
                 {
-                    retained.Add(rewritten);
+                    retained.Add(orderBy);
                 }
                 else
                 {
-                    trailing.Add(rewritten);
+                    trailing.Add(orderBy);
                     changed = true;
                 }
 
@@ -180,14 +178,6 @@ internal sealed class AgeClauseOrderPass : ICypherPass
         CallSubqueryClause or
         FullTextSearchClause or
         EntityProjectionClause;
-
-    private static OrderByClause RewriteEntityOrdering(OrderByClause orderBy)
-    {
-        var items = orderBy.Items.Select(item => item.Expression is VariableRef { Alias: "src" or "tgt" or "r" } variable
-            ? new OrderByItem(new PropertyAccess(variable, "Id"), item.Descending)
-            : item).ToArray();
-        return items.SequenceEqual(orderBy.Items) ? orderBy : new OrderByClause(items);
-    }
 
     private static bool ContainsAggregateReturn(IEnumerable<ICypherClause> clauses) => clauses
         .OfType<ReturnClause>()

@@ -25,8 +25,14 @@ using Cvoya.Graph.Cypher.Validation;
 internal sealed class AgeCorrelatedProjectionPass : ICypherPass
 {
     private const string ProjectionAliasPrefix = "__age_projection";
-    private const string CountAliasPrefix = "__age_count";
     private const string AnchorRowsAlias = "__age_anchor_rows";
+    private readonly string countAliasPrefix;
+
+    public AgeCorrelatedProjectionPass(string countAliasPrefix = "__age_count")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(countAliasPrefix);
+        this.countAliasPrefix = countAliasPrefix;
+    }
 
     /// <inheritdoc />
     public CypherStatement Run(CypherStatement input)
@@ -36,7 +42,7 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
         var statement = TryFindCorrelatedAnchor(input.Clauses, out var whereIndex, out var anchor, out var remainder)
             ? LowerCorrelatedCollection(input, whereIndex, anchor, remainder)
             : input;
-        return LowerPatternSubqueryProjections(statement);
+        return LowerPatternSubqueryProjections(statement, countAliasPrefix);
     }
 
     private static CypherStatement LowerCorrelatedCollection(
@@ -323,7 +329,9 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
         }
     }
 
-    private static CypherStatement LowerPatternSubqueryProjections(CypherStatement input)
+    private static CypherStatement LowerPatternSubqueryProjections(
+        CypherStatement input,
+        string countAliasPrefix)
     {
         var returnIndex = FindReturnIndex(input.Clauses, required: false);
         if (returnIndex < 0)
@@ -331,7 +339,7 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
             return input;
         }
 
-        var extractor = new PatternSubqueryExtractor();
+        var extractor = new PatternSubqueryExtractor(countAliasPrefix);
         var output = new List<ICypherClause>();
         var scope = new List<string>();
         for (var index = 0; index < input.Clauses.Count; index++)
@@ -416,21 +424,23 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
     {
         foreach (var count in counts)
         {
-            var prepared = PrepareCountPattern(count.Pattern, count.Ordinal);
+            var prepared = PrepareCountPattern(count.Pattern, count.Alias);
             output.Add(new MatchClause([prepared.Pattern], optional: true));
-            if (count.Predicate is not null)
-            {
-                output.Add(new WhereClause(count.Predicate));
-            }
 
             var items = scope.Select(alias => new ReturnItem(new VariableRef(alias), null)).ToList();
-            items.Add(new ReturnItem(Function("count", new VariableRef(prepared.RelationshipAlias)), count.Alias));
+            var countTarget = new VariableRef(prepared.RelationshipAlias);
+            // A WHERE following AGE's OPTIONAL MATCH eliminates the preserved null row when the
+            // optional pattern has no match. Put the subquery predicate inside the aggregate so a
+            // failed predicate contributes NULL while the outer row and its zero count survive.
+            items.Add(new ReturnItem(
+                Function("count", Conditional(count.Predicate, countTarget)),
+                count.Alias));
             output.Add(new WithClause(items, distinct: false));
             scope.Add(count.Alias);
         }
     }
 
-    private static PreparedCountPattern PrepareCountPattern(PathPattern pattern, int countIndex)
+    private static PreparedCountPattern PrepareCountPattern(PathPattern pattern, string countAlias)
     {
         var elements = new PatternElement[pattern.Elements.Count];
         string? relationshipAlias = null;
@@ -441,7 +451,7 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
             elements[index] = pattern.Elements[index] switch
             {
                 NodePattern node => new NodePattern(
-                    node.Alias ?? $"{CountAliasPrefix}{countIndex}_node{nodeIndex++}",
+                    node.Alias ?? $"{countAlias}_node{nodeIndex++}",
                     node.Labels),
                 RelationshipPattern relationship => PrepareRelationship(relationship),
                 _ => throw Unsupported("an unknown pattern element"),
@@ -454,9 +464,14 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
 
         RelationshipPattern PrepareRelationship(RelationshipPattern relationship)
         {
-            var alias = relationship.Alias ?? $"{CountAliasPrefix}{countIndex}_relationship{relationshipIndex++}";
+            var alias = relationship.Alias ?? $"{countAlias}_relationship{relationshipIndex++}";
             relationshipAlias ??= alias;
-            return new RelationshipPattern(alias, relationship.Direction, relationship.Depth, relationship.Types);
+            return new RelationshipPattern(
+                alias,
+                relationship.Direction,
+                relationship.Depth,
+                relationship.Types,
+                relationship.IsComplexProperty);
         }
     }
 
@@ -702,6 +717,7 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
                     string.Equals(leftRelationship.Alias, rightRelationship.Alias, StringComparison.Ordinal) &&
                     leftRelationship.Direction == rightRelationship.Direction &&
                     leftRelationship.Depth == rightRelationship.Depth &&
+                    leftRelationship.IsComplexProperty == rightRelationship.IsComplexProperty &&
                     leftRelationship.Types.SequenceEqual(rightRelationship.Types, StringComparer.Ordinal),
                 _ => false,
             };
@@ -767,8 +783,14 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
     /// </summary>
     private sealed class PatternSubqueryExtractor
     {
+        private readonly string countAliasPrefix;
         private readonly List<CountProjection> counts = [];
         private int drained;
+
+        public PatternSubqueryExtractor(string countAliasPrefix)
+        {
+            this.countAliasPrefix = countAliasPrefix;
+        }
 
         public int Created => counts.Count;
 
@@ -845,7 +867,7 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
                 }
             }
 
-            var created = new CountProjection(counts.Count, $"{CountAliasPrefix}{counts.Count}", pattern, predicate);
+            var created = new CountProjection(counts.Count, $"{countAliasPrefix}{counts.Count}", pattern, predicate);
             counts.Add(created);
             return created;
         }
