@@ -6,14 +6,15 @@ namespace Cvoya.Graph.Neo4j.Tests;
 using global::Neo4j.Driver;
 
 /// <summary>
-/// Delegating test driver that blocks each independent driver immediately before its first
-/// matching managed-transaction command. This makes schema races deterministic without adding a
-/// production synchronization mechanism.
+/// Delegating test driver that can fail commands and blocks each independent driver immediately
+/// before its first matching managed-transaction command. This makes schema races and failures
+/// deterministic without adding a production synchronization mechanism.
 /// </summary>
 internal sealed class SchemaCommandBarrierDriver(
     IDriver inner,
     Barrier barrier,
-    Func<string, bool> shouldSynchronize) : IDriver
+    Func<string, bool> shouldSynchronize,
+    Func<string, Exception?>? commandFailure = null) : IDriver
 {
     private int synchronized;
 
@@ -49,6 +50,12 @@ internal sealed class SchemaCommandBarrierDriver(
 
     private void Synchronize(string cypher)
     {
+        var failure = commandFailure?.Invoke(cypher);
+        if (failure is not null)
+        {
+            throw failure;
+        }
+
         if (!shouldSynchronize(cypher) || Interlocked.Exchange(ref synchronized, 1) != 0)
         {
             return;

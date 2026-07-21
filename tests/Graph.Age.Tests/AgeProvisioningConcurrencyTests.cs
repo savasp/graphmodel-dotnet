@@ -28,9 +28,38 @@ public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graph
         ?? "Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres";
 
     private static readonly TimeSpan BlockedWaitTimeout = TimeSpan.FromSeconds(30);
+    private static readonly string[] RetiredManagedIndexNames =
+        ["cvoya_node_fulltext_gin", "cvoya_rel_fulltext_gin"];
 
     private const int ConcurrentFirstUseCount = 8;
     private const int IndependentStoreCount = 4;
+
+    [Fact]
+    public async Task RecreateManagedIndexesAsync_OnUnprovisionedStore_DoesNotProvisionGraph()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var graphName = graphCleanup.CreateGraphName("cvoya_managed_index_noop");
+        await using var dataSource = CreateDataSource();
+        await using var store = new AgeGraphStore(dataSource, graphName);
+
+        try
+        {
+            Assert.Equal(0, await GraphCountAsync(dataSource, graphName, cancellationToken));
+            Assert.False(store.Graph.SchemaRegistry.IsInitialized);
+
+            await store.Graph.RecreateManagedIndexesAsync(cancellationToken);
+
+            Assert.Equal(0, await GraphCountAsync(dataSource, graphName, cancellationToken));
+            Assert.False(store.Graph.SchemaRegistry.IsInitialized);
+        }
+        finally
+        {
+            if (await GraphCountAsync(dataSource, graphName, CancellationToken.None) != 0)
+            {
+                graphCleanup.MarkGraphCreated(graphName);
+            }
+        }
+    }
 
     [Fact]
     public async Task ConcurrentFirstUse_OnOneStore_RunsOneProvisioningSequence()
@@ -325,7 +354,7 @@ public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graph
                     command.Parameters.AddWithValue("name", graphName);
                     command.Parameters.AddWithValue(
                         "indexes",
-                        new[] { AgeFullTextIndex.NodeIndexName, AgeFullTextIndex.RelationshipIndexName });
+                        RetiredManagedIndexNames);
                 },
                 cancellationToken));
     }

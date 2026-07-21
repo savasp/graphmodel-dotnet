@@ -35,7 +35,7 @@ Labels and relationship types come from attributes first:
 
 Runtime metadata properties are provider-populated. `INode.Labels` and `IRelationship.Type` are empty before persistence for base records and should be populated after create/read based on actual stored labels/types.
 
-`SchemaRegistry` reflects node and relationship schemas from CLR types and attributes. Providers are responsible for initializing schema and indexes before operations that require them. The Neo4j provider initializes schema lazily before mutations and exposes `RecreateIndexesAsync()`.
+`SchemaRegistry` reflects node and relationship schemas from CLR types and attributes. Providers are responsible for initializing schema and indexes before operations that require them. `RecreateManagedIndexesAsync()` may rebuild only artifacts whose ownership the provider can prove from deterministic names plus installed schema metadata; it must preserve unproven indexes and constraint-owned indexes, and successful completion means every rebuilt artifact is usable. A provider that owns no index artifacts implements the operation as a successful, cancellation-aware no-op. Neo4j owns current model-matching range indexes and two exact reserved full-text indexes; AGE and InMemory own none.
 
 ## Marker-Method Protocol
 

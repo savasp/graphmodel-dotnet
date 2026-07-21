@@ -92,6 +92,6 @@ internal sealed class FakeGraph : IGraph, IAsyncDisposable
     public IGraphQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : class, IRelationship =>
         throw new NotSupportedException();
 
-    public Task RecreateIndexesAsync(CancellationToken cancellationToken = default) =>
+    public Task RecreateManagedIndexesAsync(CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 }

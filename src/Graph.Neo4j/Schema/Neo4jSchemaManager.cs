@@ -18,6 +18,9 @@ using SchemaSnapshot = System.Collections.Generic.IReadOnlyDictionary<string, Ne
 /// </summary>
 internal class Neo4jSchemaManager
 {
+    private const string NodeFullTextIndexName = "node_fulltext_index";
+    private const string RelationshipFullTextIndexName = "rel_fulltext_index";
+
     private readonly GraphContext _context;
     private readonly ILogger _logger;
     private readonly SchemaRegistry _schemaRegistry;
@@ -109,39 +112,45 @@ internal class Neo4jSchemaManager
     }
 
     /// <summary>
-    /// Recreates all indexes in the Neo4j database.
+    /// Recreates only indexes whose deterministic name and installed schema metadata positively
+    /// identify them as managed by this provider.
     /// </summary>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
-    public async Task RecreateIndexesAsync(CancellationToken cancellationToken = default)
+    public async Task RecreateManagedIndexesAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         _logger.LogInformationNeo4jSchemaManager116();
 
+        await _initializationSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // Drop all existing indexes
-            await DropAllIndexesAsync(cancellationToken).ConfigureAwait(false);
+            await _schemaRegistry.InitializeAsync(cancellationToken).ConfigureAwait(false);
 
-            // Recreate indexes for all registered node types. No snapshot: the indexes were just
-            // dropped, so anything a create conflicts with came from a concurrent peer and is
-            // handled by the conflict path.
-            var nodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
-            foreach (var nodeLabel in nodeLabels)
+            var configuredIndexes = await GetConfiguredManagedIndexesAsync(cancellationToken).ConfigureAwait(false);
+            var installedSchema = await GetExistingSchemaSnapshotAsync(cancellationToken).ConfigureAwait(false)
+                ?? throw new GraphException(
+                    "Cannot recreate managed Neo4j indexes because their installed metadata could not be read safely.");
+            var ownedInstalledIndexes = installedSchema.Values
+                .Where(installed => IsPositivelyOwnedIndex(installed, configuredIndexes))
+                .OrderBy(installed => installed.Name, StringComparer.Ordinal)
+                .ToList();
+
+            await DropManagedIndexesAsync(ownedInstalledIndexes, cancellationToken).ConfigureAwait(false);
+
+            // No snapshot after the drops: a concurrent equivalent caller may already have
+            // recreated an index, and CreateSchemaObjectAsync resolves that race by comparing the
+            // installed definition before treating the conflict as success.
+            foreach (var configuredIndex in configuredIndexes)
             {
-                await CreateNodeIndexesAsync(nodeLabel, existingSchema: null, cancellationToken).ConfigureAwait(false);
+                await CreateSchemaObjectAsync(
+                    configuredIndex,
+                    existingSchema: null,
+                    cancellationToken).ConfigureAwait(false);
             }
 
-            // Recreate indexes for all registered relationship types
-            var relationshipTypes = await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken).ConfigureAwait(false);
-            foreach (var relationshipType in relationshipTypes)
-            {
-                await CreateRelationshipIndexesAsync(relationshipType, existingSchema: null, cancellationToken).ConfigureAwait(false);
-            }
-
-            // Recreate general full text indexes
-            await CreateGeneralFullTextIndexesAsync(existingSchema: null, cancellationToken).ConfigureAwait(false);
+            await WaitForManagedIndexesAsync(configuredIndexes, cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformationNeo4jSchemaManager140();
         }
@@ -152,7 +161,11 @@ internal class Neo4jSchemaManager
         catch (Exception ex)
         {
             _logger.LogErrorNeo4jSchemaManager148(ex);
-            throw new GraphException("Failed to recreate Neo4j indexes", ex);
+            throw new GraphException("Failed to recreate managed Neo4j indexes", ex);
+        }
+        finally
+        {
+            _initializationSemaphore.Release();
         }
     }
 
@@ -635,7 +648,7 @@ internal class Neo4jSchemaManager
         bool recreateIncompatibleIndex,
         Neo4jSchemaObjectDescriptor? installed)
     {
-        return recreateIncompatibleIndex && installed?.Kind == Neo4jSchemaObjectKind.FullTextIndex;
+        return recreateIncompatibleIndex && IsReservedManagedFullTextIndex(installed);
     }
 
     private async Task<bool> RecreateIncompatibleIndexAsync(
@@ -797,34 +810,18 @@ internal class Neo4jSchemaManager
         SchemaSnapshot? existingSchema,
         CancellationToken cancellationToken = default)
     {
-        var schema = await _schemaRegistry.GetNodeSchemaAsync(label, cancellationToken).ConfigureAwait(false);
-        if (schema == null) return;
-
-        foreach (var propertySchema in schema.Properties.Values)
+        foreach (var requested in await GetNodeIndexDefinitionsAsync(label, cancellationToken).ConfigureAwait(false))
         {
-            if (propertySchema.Ignore
-                || !propertySchema.IsIndexed
-                || propertySchema.IsUnique
-                || (propertySchema.IsKey && !schema.HasCompositeKey()))
-            {
-                continue;
-            }
-
-            var indexName = $"idx_{label}_{propertySchema.Name}".ToLowerInvariant();
             var created = await CreateSchemaObjectAsync(
-                new Neo4jSchemaObjectCreation(
-                    new Neo4jSchemaObjectDescriptor(
-                        indexName,
-                        Neo4jSchemaObjectKind.RangeIndex,
-                        Neo4jSchemaEntityType.Node,
-                        [label],
-                        [propertySchema.Name]),
-                    $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR (n:{EscapedLabel(label)}) ON ({EscapedProperty("n", propertySchema.Name)})"),
+                requested,
                 existingSchema,
                 cancellationToken).ConfigureAwait(false);
             if (created)
             {
-                _logger.LogDebugNeo4jSchemaManager521(indexName, propertySchema.Name, label);
+                _logger.LogDebugNeo4jSchemaManager521(
+                    requested.Descriptor.Name,
+                    requested.Descriptor.Properties[0],
+                    label);
             }
         }
     }
@@ -834,34 +831,18 @@ internal class Neo4jSchemaManager
         SchemaSnapshot? existingSchema,
         CancellationToken cancellationToken = default)
     {
-        var schema = await _schemaRegistry.GetRelationshipSchemaAsync(type, cancellationToken).ConfigureAwait(false);
-        if (schema == null) return;
-
-        foreach (var propertySchema in schema.Properties.Values)
+        foreach (var requested in await GetRelationshipIndexDefinitionsAsync(type, cancellationToken).ConfigureAwait(false))
         {
-            if (propertySchema.Ignore
-                || !propertySchema.IsIndexed
-                || propertySchema.IsUnique
-                || (propertySchema.IsKey && !schema.HasCompositeKey()))
-            {
-                continue;
-            }
-
-            var indexName = $"idx_{type}_{propertySchema.Name}".ToLowerInvariant();
             var created = await CreateSchemaObjectAsync(
-                new Neo4jSchemaObjectCreation(
-                    new Neo4jSchemaObjectDescriptor(
-                        indexName,
-                        Neo4jSchemaObjectKind.RangeIndex,
-                        Neo4jSchemaEntityType.Relationship,
-                        [type],
-                        [propertySchema.Name]),
-                    $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR ()-[r:{EscapedType(type)}]-() ON ({EscapedProperty("r", propertySchema.Name)})"),
+                requested,
                 existingSchema,
                 cancellationToken).ConfigureAwait(false);
             if (created)
             {
-                _logger.LogDebugNeo4jSchemaManager557(indexName, propertySchema.Name, type);
+                _logger.LogDebugNeo4jSchemaManager557(
+                    requested.Descriptor.Name,
+                    requested.Descriptor.Properties[0],
+                    type);
             }
         }
     }
@@ -874,48 +855,24 @@ internal class Neo4jSchemaManager
 
         try
         {
-            var nodeLabels = new HashSet<string>();
-            var nodeStringProps = new HashSet<string>();
+            var requestedIndexes = await GetGeneralFullTextIndexDefinitionsAsync(cancellationToken).ConfigureAwait(false);
+            var nodeIndex = requestedIndexes.SingleOrDefault(
+                requested => requested.Descriptor.EntityType == Neo4jSchemaEntityType.Node);
+            var relationshipIndex = requestedIndexes.SingleOrDefault(
+                requested => requested.Descriptor.EntityType == Neo4jSchemaEntityType.Relationship);
 
-            var registeredNodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
-            foreach (var nodeLabel in registeredNodeLabels)
+            if (nodeIndex is not null)
             {
-                nodeLabels.Add(nodeLabel);
-                var schema = await _schemaRegistry.GetNodeSchemaAsync(nodeLabel, cancellationToken).ConfigureAwait(false);
-                if (schema != null)
-                {
-                    foreach (var prop in schema.Properties.Values)
-                    {
-                        if (!prop.Ignore && prop.PropertyInfo.PropertyType == typeof(string) && prop.IncludeInFullTextSearch)
-                        {
-                            nodeStringProps.Add(prop.Name);
-                        }
-                    }
-                }
-            }
-
-            if (nodeLabels.Count > 0 && nodeStringProps.Count > 0)
-            {
-                var orderedLabels = nodeLabels.Order(StringComparer.Ordinal).ToList();
-                var orderedProperties = nodeStringProps.Order(StringComparer.Ordinal).ToList();
-                var labelList = string.Join("|", orderedLabels.Select(EscapedLabel));
-                var propList = string.Join(", ", orderedProperties.Select(property => EscapedProperty("n", property)));
-
-                var createdNodeIndex = await CreateSchemaObjectAsync(
-                    new Neo4jSchemaObjectCreation(
-                        new Neo4jSchemaObjectDescriptor(
-                            "node_fulltext_index",
-                            Neo4jSchemaObjectKind.FullTextIndex,
-                            Neo4jSchemaEntityType.Node,
-                            orderedLabels,
-                            orderedProperties),
-                        $"CREATE FULLTEXT INDEX node_fulltext_index FOR (n:{labelList}) ON EACH [{propList}]"),
+                var created = await CreateSchemaObjectAsync(
+                    nodeIndex,
                     existingSchema,
                     cancellationToken,
                     recreateIncompatibleIndex: true).ConfigureAwait(false);
-                if (createdNodeIndex)
+                if (created)
                 {
-                    _logger.LogDebugNeo4jSchemaManager609(nodeLabels.Count, nodeStringProps.Count);
+                    _logger.LogDebugNeo4jSchemaManager609(
+                        nodeIndex.Descriptor.LabelsOrTypes.Count,
+                        nodeIndex.Descriptor.Properties.Count);
                 }
             }
             else
@@ -923,48 +880,18 @@ internal class Neo4jSchemaManager
                 _logger.LogDebugNeo4jSchemaManager613();
             }
 
-            var relTypes = new HashSet<string>();
-            var relStringProps = new HashSet<string>();
-
-            var registeredRelationshipTypes = await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken).ConfigureAwait(false);
-            foreach (var relType in registeredRelationshipTypes)
+            if (relationshipIndex is not null)
             {
-                relTypes.Add(relType);
-                var schema = await _schemaRegistry.GetRelationshipSchemaAsync(relType, cancellationToken).ConfigureAwait(false);
-                if (schema != null)
-                {
-                    foreach (var prop in schema.Properties.Values)
-                    {
-                        if (!prop.Ignore && prop.PropertyInfo.PropertyType == typeof(string) && prop.IncludeInFullTextSearch)
-                        {
-                            relStringProps.Add(prop.Name);
-                        }
-                    }
-                }
-            }
-
-            if (relTypes.Count > 0 && relStringProps.Count > 0)
-            {
-                var orderedTypes = relTypes.Order(StringComparer.Ordinal).ToList();
-                var orderedProperties = relStringProps.Order(StringComparer.Ordinal).ToList();
-                var typeList = string.Join("|", orderedTypes.Select(EscapedType));
-                var propList = string.Join(", ", orderedProperties.Select(property => EscapedProperty("r", property)));
-
-                var createdRelationshipIndex = await CreateSchemaObjectAsync(
-                    new Neo4jSchemaObjectCreation(
-                        new Neo4jSchemaObjectDescriptor(
-                            "rel_fulltext_index",
-                            Neo4jSchemaObjectKind.FullTextIndex,
-                            Neo4jSchemaEntityType.Relationship,
-                            orderedTypes,
-                            orderedProperties),
-                        $"CREATE FULLTEXT INDEX rel_fulltext_index FOR ()-[r:{typeList}]-() ON EACH [{propList}]"),
+                var created = await CreateSchemaObjectAsync(
+                    relationshipIndex,
                     existingSchema,
                     cancellationToken,
                     recreateIncompatibleIndex: true).ConfigureAwait(false);
-                if (createdRelationshipIndex)
+                if (created)
                 {
-                    _logger.LogDebugNeo4jSchemaManager644(relTypes.Count, relStringProps.Count);
+                    _logger.LogDebugNeo4jSchemaManager644(
+                        relationshipIndex.Descriptor.LabelsOrTypes.Count,
+                        relationshipIndex.Descriptor.Properties.Count);
                 }
             }
             else
@@ -981,36 +908,239 @@ internal class Neo4jSchemaManager
         }
     }
 
-    private async Task DropAllIndexesAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<Neo4jSchemaObjectCreation>> GetConfiguredManagedIndexesAsync(
+        CancellationToken cancellationToken)
     {
-        var droppedCount = 0;
+        var configuredIndexes = new List<Neo4jSchemaObjectCreation>();
+        var nodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var nodeLabel in nodeLabels.Order(StringComparer.Ordinal))
+        {
+            configuredIndexes.AddRange(
+                await GetNodeIndexDefinitionsAsync(nodeLabel, cancellationToken).ConfigureAwait(false));
+        }
+
+        var relationshipTypes = await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var relationshipType in relationshipTypes.Order(StringComparer.Ordinal))
+        {
+            configuredIndexes.AddRange(
+                await GetRelationshipIndexDefinitionsAsync(relationshipType, cancellationToken).ConfigureAwait(false));
+        }
+
+        configuredIndexes.AddRange(
+            await GetGeneralFullTextIndexDefinitionsAsync(cancellationToken).ConfigureAwait(false));
+        return configuredIndexes
+            .OrderBy(configured => configured.Descriptor.Name, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<Neo4jSchemaObjectCreation>> GetNodeIndexDefinitionsAsync(
+        string label,
+        CancellationToken cancellationToken)
+    {
+        var schema = await _schemaRegistry.GetNodeSchemaAsync(label, cancellationToken).ConfigureAwait(false);
+        if (schema is null)
+        {
+            return [];
+        }
+
+        return schema.Properties.Values
+            .Where(property =>
+                !property.Ignore
+                && property.IsIndexed
+                && !property.IsUnique
+                && (!property.IsKey || schema.HasCompositeKey()))
+            .Select(property =>
+            {
+                var indexName = $"idx_{label}_{property.Name}".ToLowerInvariant();
+                return new Neo4jSchemaObjectCreation(
+                    new Neo4jSchemaObjectDescriptor(
+                        indexName,
+                        Neo4jSchemaObjectKind.RangeIndex,
+                        Neo4jSchemaEntityType.Node,
+                        [label],
+                        [property.Name]),
+                    $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR (n:{EscapedLabel(label)}) ON ({EscapedProperty("n", property.Name)})");
+            })
+            .OrderBy(index => index.Descriptor.Name, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<Neo4jSchemaObjectCreation>> GetRelationshipIndexDefinitionsAsync(
+        string type,
+        CancellationToken cancellationToken)
+    {
+        var schema = await _schemaRegistry.GetRelationshipSchemaAsync(type, cancellationToken).ConfigureAwait(false);
+        if (schema is null)
+        {
+            return [];
+        }
+
+        return schema.Properties.Values
+            .Where(property =>
+                !property.Ignore
+                && property.IsIndexed
+                && !property.IsUnique
+                && (!property.IsKey || schema.HasCompositeKey()))
+            .Select(property =>
+            {
+                var indexName = $"idx_{type}_{property.Name}".ToLowerInvariant();
+                return new Neo4jSchemaObjectCreation(
+                    new Neo4jSchemaObjectDescriptor(
+                        indexName,
+                        Neo4jSchemaObjectKind.RangeIndex,
+                        Neo4jSchemaEntityType.Relationship,
+                        [type],
+                        [property.Name]),
+                    $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR ()-[r:{EscapedType(type)}]-() ON ({EscapedProperty("r", property.Name)})");
+            })
+            .OrderBy(index => index.Descriptor.Name, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<Neo4jSchemaObjectCreation>> GetGeneralFullTextIndexDefinitionsAsync(
+        CancellationToken cancellationToken)
+    {
+        var requestedIndexes = new List<Neo4jSchemaObjectCreation>();
+        var nodeLabels = new HashSet<string>(StringComparer.Ordinal);
+        var nodeProperties = new HashSet<string>(StringComparer.Ordinal);
+        var registeredNodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var nodeLabel in registeredNodeLabels)
+        {
+            nodeLabels.Add(nodeLabel);
+            var schema = await _schemaRegistry.GetNodeSchemaAsync(nodeLabel, cancellationToken).ConfigureAwait(false);
+            if (schema is not null)
+            {
+                nodeProperties.UnionWith(schema.Properties.Values
+                    .Where(property =>
+                        !property.Ignore
+                        && property.PropertyInfo.PropertyType == typeof(string)
+                        && property.IncludeInFullTextSearch)
+                    .Select(property => property.Name));
+            }
+        }
+
+        if (nodeLabels.Count > 0 && nodeProperties.Count > 0)
+        {
+            var orderedLabels = nodeLabels.Order(StringComparer.Ordinal).ToList();
+            var orderedProperties = nodeProperties.Order(StringComparer.Ordinal).ToList();
+            var labelList = string.Join("|", orderedLabels.Select(EscapedLabel));
+            var propertyList = string.Join(", ", orderedProperties.Select(property => EscapedProperty("n", property)));
+            requestedIndexes.Add(new Neo4jSchemaObjectCreation(
+                new Neo4jSchemaObjectDescriptor(
+                    NodeFullTextIndexName,
+                    Neo4jSchemaObjectKind.FullTextIndex,
+                    Neo4jSchemaEntityType.Node,
+                    orderedLabels,
+                    orderedProperties),
+                $"CREATE FULLTEXT INDEX {NodeFullTextIndexName} FOR (n:{labelList}) ON EACH [{propertyList}]"));
+        }
+
+        var relationshipTypes = new HashSet<string>(StringComparer.Ordinal);
+        var relationshipProperties = new HashSet<string>(StringComparer.Ordinal);
+        var registeredRelationshipTypes = await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var relationshipType in registeredRelationshipTypes)
+        {
+            relationshipTypes.Add(relationshipType);
+            var schema = await _schemaRegistry.GetRelationshipSchemaAsync(relationshipType, cancellationToken).ConfigureAwait(false);
+            if (schema is not null)
+            {
+                relationshipProperties.UnionWith(schema.Properties.Values
+                    .Where(property =>
+                        !property.Ignore
+                        && property.PropertyInfo.PropertyType == typeof(string)
+                        && property.IncludeInFullTextSearch)
+                    .Select(property => property.Name));
+            }
+        }
+
+        if (relationshipTypes.Count > 0 && relationshipProperties.Count > 0)
+        {
+            var orderedTypes = relationshipTypes.Order(StringComparer.Ordinal).ToList();
+            var orderedProperties = relationshipProperties.Order(StringComparer.Ordinal).ToList();
+            var typeList = string.Join("|", orderedTypes.Select(EscapedType));
+            var propertyList = string.Join(", ", orderedProperties.Select(property => EscapedProperty("r", property)));
+            requestedIndexes.Add(new Neo4jSchemaObjectCreation(
+                new Neo4jSchemaObjectDescriptor(
+                    RelationshipFullTextIndexName,
+                    Neo4jSchemaObjectKind.FullTextIndex,
+                    Neo4jSchemaEntityType.Relationship,
+                    orderedTypes,
+                    orderedProperties),
+                $"CREATE FULLTEXT INDEX {RelationshipFullTextIndexName} FOR ()-[r:{typeList}]-() ON EACH [{propertyList}]"));
+        }
+
+        return requestedIndexes;
+    }
+
+    private static bool IsPositivelyOwnedIndex(
+        Neo4jSchemaObjectDescriptor installed,
+        IReadOnlyList<Neo4jSchemaObjectCreation> configuredIndexes)
+    {
+        return configuredIndexes.Any(configured => configured.Descriptor.IsEquivalentTo(installed))
+            || IsReservedManagedFullTextIndex(installed);
+    }
+
+    private static bool IsReservedManagedFullTextIndex(Neo4jSchemaObjectDescriptor? installed)
+    {
+        return installed is { Kind: Neo4jSchemaObjectKind.FullTextIndex }
+            && ((installed.EntityType == Neo4jSchemaEntityType.Node
+                    && string.Equals(installed.Name, NodeFullTextIndexName, StringComparison.Ordinal))
+                || (installed.EntityType == Neo4jSchemaEntityType.Relationship
+                    && string.Equals(installed.Name, RelationshipFullTextIndexName, StringComparison.Ordinal)));
+    }
+
+    private async Task DropManagedIndexesAsync(
+        List<Neo4jSchemaObjectDescriptor> managedIndexes,
+        CancellationToken cancellationToken)
+    {
+        if (managedIndexes.Count == 0)
+        {
+            _logger.LogInformationNeo4jSchemaManager695(0);
+            return;
+        }
+
         await ExecuteManagedWriteAsync(
             async transaction =>
             {
-                // Drop only the index types this schema manager creates, and skip indexes owned
-                // by constraints because Neo4j rejects dropping those directly.
-                const string dropIndexes = """
-                    SHOW INDEXES YIELD name, type, owningConstraint
-                    WHERE (type = 'RANGE' OR type = 'FULLTEXT') AND owningConstraint IS NULL
-                    RETURN name
-                    """;
-                var result = await transaction.RunAsync(dropIndexes).ConfigureAwait(false);
-                var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
-                droppedCount = records.Count;
-
-                foreach (var record in records)
+                foreach (var managedIndex in managedIndexes)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var indexName = record["name"].As<string>();
                     var dropIndex =
-                        $"DROP INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} IF EXISTS";
+                        $"DROP INDEX {CypherIdentifier.EscapeIfNeeded(managedIndex.Name, "index name")} IF EXISTS";
                     var dropResult = await transaction.RunAsync(dropIndex).ConfigureAwait(false);
                     await dropResult.ConsumeAsync().ConfigureAwait(false);
-                    _logger.LogDebugNeo4jSchemaManager690(indexName);
+                    _logger.LogDebugNeo4jSchemaManager690(managedIndex.Name);
                 }
             },
             cancellationToken).ConfigureAwait(false);
-        _logger.LogInformationNeo4jSchemaManager695(droppedCount);
+        _logger.LogInformationNeo4jSchemaManager695(managedIndexes.Count);
+    }
+
+    private async Task WaitForManagedIndexesAsync(
+        IReadOnlyList<Neo4jSchemaObjectCreation> configuredIndexes,
+        CancellationToken cancellationToken)
+    {
+        if (configuredIndexes.Count == 0)
+        {
+            return;
+        }
+
+        var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        await using var sessionLease = session.ConfigureAwait(false);
+        var executionTask = session.ExecuteReadAsync(
+            async transaction =>
+            {
+                foreach (var configuredIndex in configuredIndexes)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = await transaction.RunAsync(
+                        "CALL db.awaitIndex($indexName)",
+                        new { indexName = configuredIndex.Descriptor.Name }).ConfigureAwait(false);
+                    await result.ConsumeAsync().ConfigureAwait(false);
+                }
+            });
+
+        await executionTask.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     // Labels, relationship types, and constraint/index names come from user model metadata;

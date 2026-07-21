@@ -693,13 +693,10 @@ internal sealed class InMemoryGraph : IGraph
         where T : class, IRelationship =>
         SearchQuery<T>(query, SearchRootTarget.Relationships, transaction);
 
-    public async Task RecreateIndexesAsync(CancellationToken cancellationToken = default)
+    public Task RecreateManagedIndexesAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-
-        // The in-memory store has no indexes; ensuring the schema registry is initialized is the
-        // whole of index provisioning here.
-        await _schemaRegistry.InitializeAsync(cancellationToken).ConfigureAwait(false);
+        return Task.CompletedTask;
     }
 
     private InMemoryQueryable<T> Query<T>(IGraphTransaction? transaction)

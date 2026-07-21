@@ -36,16 +36,6 @@ internal static class AgeFullTextSearch
     /// </summary>
     internal const int MaxMatchedIds = 10_000;
 
-    /// <summary>
-    /// The unqualified name of the managed extraction function retained by the existing explicit
-    /// index-recreation API. Current full-text queries do not call or depend on this function.
-    /// </summary>
-    internal const string BlobFunctionName = "age_fulltext_blob";
-
-    /// <summary>The schema-qualified reference to the blob function for <paramref name="graphName"/>.</summary>
-    internal static string BlobFunctionRef(string graphName) =>
-        $"{AgeSqlIdentifier.Quote(graphName, "graph name")}.{BlobFunctionName}";
-
     internal enum FullTextTarget
     {
         Nodes,

@@ -117,8 +117,9 @@ Registered labels search exactly their included string properties, and a registe
 included property matches nothing. Global searches use the all-string fallback only for genuinely
 unregistered external labels; dynamic entities retain their public all-string-value contract.
 Ordinary reads inline the PostgreSQL text-search predicate and require no managed function, index,
-or DDL permission. The existing index-recreation API remains available, but current search neither
-consults nor depends on its managed artifacts.
+or DDL permission. The final native AGE provider owns no index artifacts, so
+`RecreateManagedIndexesAsync` is a successful no-op: it performs no discovery, function creation,
+index creation, drop, rebuild, or graph provisioning. Existing PostgreSQL artifacts are untouched.
 
 ## Local AGE
 
