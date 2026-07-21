@@ -324,7 +324,12 @@ Neo4j, AGE, or full lane. Benchmark projects remain separate.
 - `-v, --verbosity <level>`: Test verbosity (default: normal)
 - `--lane <fast|neo4j|age|all>`: Test lane (default: all)
 - `--fast`: Alias for `--lane fast`
+- `--project <name-or-path>`: Run one test project (repeatable)
+- `--filter <xUnit-query>`: Apply an xUnit query filter (repeatable, OR)
 - `--coverage`: Collect Cobertura coverage per test project
+- `--report-trx`: Write an xUnit TRX report per test project
+- `--results-directory <path>`: Root directory for coverage and test reports
+- `--keep-going`: Run every selected project after a test failure
 - `--neo4j`: Start Neo4j container before tests
 - `--age`: Start Apache AGE container before tests
 - `--seq`: Start Seq container before tests
@@ -343,6 +348,7 @@ Neo4j, AGE, or full lane. Benchmark projects remain separate.
 ./scripts/run-tests.sh --lane age --age                   # Start AGE and run its lane
 ./scripts/run-tests.sh --neo4j --age                      # Start both services and run all tests
 ./scripts/run-tests.sh --fast --coverage                  # Fast lane with coverage
+./scripts/run-tests.sh --lane all --no-build --coverage --report-trx --results-directory TestResults --keep-going
 ```
 
 ### `clean-all.sh` ⭐ **New**
