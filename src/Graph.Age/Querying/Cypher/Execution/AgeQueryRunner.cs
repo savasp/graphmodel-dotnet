@@ -355,6 +355,62 @@ internal sealed partial class AgeQueryRunner
         }
     }
 
+    /// <summary>
+    /// Locks the selected AGE graph rows until the current transaction completes, without issuing
+    /// a property update that could trigger external audit or synchronization behavior.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security",
+        "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "The graph schema is validated and quoted; the physical table name is a compile-time constant.")]
+    internal async Task AcquireElementLocksAsync(
+        IReadOnlyCollection<long> nativeIds,
+        bool relationship,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(nativeIds);
+        if (nativeIds.Count == 0)
+        {
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = BuildElementLockSql(graphName, relationship);
+        command.Parameters.Add(new NpgsqlParameter<long[]>("nativeIds", nativeIds.Distinct().Order().ToArray())
+        {
+            NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Bigint,
+        });
+        await using var commandLease = command.ConfigureAwait(false);
+
+        try
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsQueryExecutionFailure(exception))
+        {
+            throw WrapQueryExecutionFailure(exception);
+        }
+    }
+
+    internal static string BuildElementLockSql(string graphName, bool relationship)
+    {
+        var table = relationship ? "_ag_label_edge" : "_ag_label_vertex";
+        return $"""
+            SELECT id
+            FROM {AgeSqlIdentifier.Quote(graphName, "graph name")}.{AgeSqlIdentifier.Quote(table, "table name")}
+            WHERE id::text::bigint = ANY(@nativeIds)
+            ORDER BY id::text::bigint
+            FOR UPDATE
+            """;
+    }
+
     public async Task<AgeResultCursor> RunAsync(
         string cypher,
         IReadOnlyDictionary<string, object?> parameters,

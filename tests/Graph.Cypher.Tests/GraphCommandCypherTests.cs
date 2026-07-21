@@ -88,11 +88,16 @@ public sealed class GraphCommandCypherTests
         var planner = new CypherMutationPlanner(dialect);
 
         var preflight = new CypherRenderer(dialect).Render(
-            planner.PlanConstraintValues(mutation, ["native-1", "native-2"], [nameof(Person.Name)]));
+            planner.PlanConstraintValues(
+                mutation,
+                ["native-1", "native-2"],
+                [nameof(Person.Name)],
+                acquireWriteLock: true));
         var staged = new CypherRenderer(dialect).Render(
             planner.Plan(mutation, ["native-1", "native-2"], [nameof(Person.Name)]));
 
         Assert.Contains("RETURN nativeId(target) AS __nativeId", preflight.Text, StringComparison.Ordinal);
+        Assert.Contains("SET target.Name = target.Name", preflight.Text, StringComparison.Ordinal);
         Assert.Contains("AS __constraintValue0", preflight.Text, StringComparison.Ordinal);
         Assert.Contains("WITH target AS target", staged.Text, StringComparison.Ordinal);
         Assert.Contains("AS __finalValue0", staged.Text, StringComparison.Ordinal);

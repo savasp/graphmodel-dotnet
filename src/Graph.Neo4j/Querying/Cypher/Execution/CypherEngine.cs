@@ -156,9 +156,10 @@ internal sealed class CypherEngine
         var statement = new CypherMutationPlanner(Neo4jDialect.Instance).PlanConstraintValues(
             mutation,
             nativeIdentities,
-            constraintPlan.Properties.Select(property => property.StorageName).ToArray());
+            constraintPlan.Properties.Select(property => property.StorageName).ToArray(),
+            acquireWriteLock: true);
         var records = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
-        return records.Select(record => new GraphMutationConstraintRow(
+        var rows = records.Select(record => new GraphMutationConstraintRow(
             record["__nativeId"].As<string>(),
             constraintPlan.Properties.Select((property, index) => new
             {
@@ -167,6 +168,8 @@ internal sealed class CypherEngine
             })
                 .ToDictionary(item => item.StorageName, item => item.Value, StringComparer.Ordinal)))
             .ToArray();
+        GraphMutationConstraintPlan.ValidateTargetRows(nativeIdentities, rows);
+        return rows;
     }
 
     private async Task ValidateUnselectedConstraintsAsync(

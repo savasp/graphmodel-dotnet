@@ -7,6 +7,19 @@ using Cvoya.Graph.Age.Querying.Cypher.Execution;
 
 public sealed class AgeQueryRunnerTests
 {
+    [Theory]
+    [InlineData(false, "_ag_label_vertex")]
+    [InlineData(true, "_ag_label_edge")]
+    public void BuildElementLockSql_LocksThePhysicalBaseTable(bool relationship, string expectedTable)
+    {
+        var sql = AgeQueryRunner.BuildElementLockSql("graph_name", relationship);
+
+        Assert.Contains($"\"graph_name\".\"{expectedTable}\"", sql, StringComparison.Ordinal);
+        Assert.Contains("id::text::bigint = ANY(@nativeIds)", sql, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY id::text::bigint", sql, StringComparison.Ordinal);
+        Assert.EndsWith("FOR UPDATE", sql, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void MaskQuotedContent_PreservesLengthAndMasksEscapedDelimiterContent()
     {

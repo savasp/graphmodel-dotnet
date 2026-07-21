@@ -36,7 +36,7 @@ public sealed class CypherMutationPlanner
     /// <param name="nativeIdentities">The opaque native identities selected in the active transaction.</param>
     /// <param name="stagedStorageNames">Constrained storage properties that require staged replacement.</param>
     /// <returns>The typed mutation statement.</returns>
-    public CypherStatement Plan(
+    internal CypherStatement Plan(
         GraphMutationModel mutation,
         IReadOnlyList<object> nativeIdentities,
         IReadOnlyList<string> stagedStorageNames)
@@ -107,11 +107,15 @@ public sealed class CypherMutationPlanner
     /// <param name="mutation">The provider-neutral update mutation.</param>
     /// <param name="nativeIdentities">The opaque native identities selected in the active transaction.</param>
     /// <param name="storageNames">The constrained properties required by final-state validation.</param>
+    /// <param name="acquireWriteLock">
+    /// Whether the statement should take a dependent-property write lock before reading proposed values.
+    /// </param>
     /// <returns>The typed preflight statement.</returns>
-    public CypherStatement PlanConstraintValues(
+    internal CypherStatement PlanConstraintValues(
         GraphMutationModel mutation,
         IReadOnlyList<object> nativeIdentities,
-        IReadOnlyList<string> storageNames)
+        IReadOnlyList<string> storageNames,
+        bool acquireWriteLock)
     {
         ArgumentNullException.ThrowIfNull(mutation);
         ArgumentNullException.ThrowIfNull(nativeIdentities);
@@ -132,6 +136,12 @@ public sealed class CypherMutationPlanner
         var alias = mutation.Selection.ElementKind == GraphElementKind.Node ? "target" : "relationship";
         var target = new VariableRef(alias);
         var clauses = BuildTargetClauses(mutation, alias, target, identityParameter);
+        if (acquireWriteLock)
+        {
+            var lockProperty = new PropertyAccess(target, storageNames[0]);
+            clauses.Add(new SetClause([new SetItem(lockProperty, lockProperty)]));
+        }
+
         var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
         var assignments = mutation.Assignments.ToDictionary(
             assignment => assignment.StorageName,
@@ -168,7 +178,7 @@ public sealed class CypherMutationPlanner
     /// <summary>Gets the stable projection column for a constrained property index.</summary>
     /// <param name="index">The zero-based constrained property index.</param>
     /// <returns>The projection column name.</returns>
-    public static string ConstraintValueColumn(int index)
+    internal static string ConstraintValueColumn(int index)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         return $"__constraintValue{index}";

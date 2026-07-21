@@ -143,6 +143,24 @@ internal sealed class GraphMutationConstraintPlan
         return result;
     }
 
+    public static void ValidateTargetRows(
+        IReadOnlyList<object> expectedIdentities,
+        IReadOnlyList<GraphMutationConstraintRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(expectedIdentities);
+        ArgumentNullException.ThrowIfNull(rows);
+
+        var expected = expectedIdentities.ToHashSet();
+        var actual = rows.Select(row => row.NativeIdentity).ToHashSet();
+        if (expected.Count != expectedIdentities.Count ||
+            actual.Count != rows.Count ||
+            !expected.SetEquals(actual))
+        {
+            throw new GraphException(
+                "The constrained mutation target set changed before final-state validation could lock it.");
+        }
+    }
+
     public GraphException CreateViolation(GraphMutationConstraint constraint) =>
         new($"{char.ToUpperInvariant(ElementName[0])}{ElementName[1..]} '{LabelOrType}' violates {constraint.Description} uniqueness.");
 
@@ -153,7 +171,6 @@ internal sealed class GraphMutationConstraintPlan
         IReadOnlyDictionary<string, GraphPropertyAssignment> assignments) =>
         new(
             property.Name,
-            property.PropertyInfo.PropertyType,
             assignments.GetValueOrDefault(property.Name));
 
     private static Type GetEntityType(QueryRoot root) => root switch
@@ -183,7 +200,6 @@ internal sealed record GraphMutationConstraint(
 
 internal sealed record GraphMutationConstraintProperty(
     string StorageName,
-    Type PropertyType,
     GraphPropertyAssignment? Assignment);
 
 internal sealed record GraphMutationConstraintRow(

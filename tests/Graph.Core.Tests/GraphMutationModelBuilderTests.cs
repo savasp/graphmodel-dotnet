@@ -253,6 +253,25 @@ public sealed class GraphMutationModelBuilderTests
     }
 
     [Fact]
+    public void ConstraintTargetRows_RejectAChangedFrozenTargetSet()
+    {
+        var rows = new[]
+        {
+            new GraphMutationConstraintRow(
+                "native-1",
+                new Dictionary<string, object?>(StringComparer.Ordinal)),
+            new GraphMutationConstraintRow(
+                "native-3",
+                new Dictionary<string, object?>(StringComparer.Ordinal)),
+        };
+
+        var exception = Assert.Throws<GraphException>(() =>
+            GraphMutationConstraintPlan.ValidateTargetRows(["native-1", "native-2"], rows));
+
+        Assert.Contains("target set changed", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BuildUpdate_AcceptsDomainIdAsOrdinaryMutableData()
     {
         Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> setters = builder =>

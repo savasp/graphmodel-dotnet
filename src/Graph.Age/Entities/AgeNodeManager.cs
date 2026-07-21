@@ -146,6 +146,12 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
                 throw new EntityNotFoundException($"Node with ID {node.Id} not found for update");
             }
 
+            // Existing-row writers take the physical row lock before uniqueness locks. Set-based
+            // constrained updates use the same ordering, preventing cross-API lock inversion.
+            await transaction.Runner.AcquireElementLocksAsync(
+                [nativeId.Value],
+                relationship: false,
+                cancellationToken).ConfigureAwait(false);
             await ValidateNodeUniquenessAsync(node, transaction.Runner, nativeId, cancellationToken)
                 .ConfigureAwait(false);
 

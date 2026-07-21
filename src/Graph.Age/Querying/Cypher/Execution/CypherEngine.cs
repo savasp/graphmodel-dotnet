@@ -163,12 +163,17 @@ internal sealed class CypherEngine
         AgeGraphTransaction transaction,
         CancellationToken cancellationToken)
     {
+        await transaction.Runner.AcquireElementLocksAsync(
+            nativeIdentities.Cast<long>().ToArray(),
+            mutation.Selection.ElementKind == GraphElementKind.Relationship,
+            cancellationToken).ConfigureAwait(false);
         var statement = new CypherMutationPlanner(AgeDialect.PlanningInstance).PlanConstraintValues(
             mutation,
             nativeIdentities,
-            constraintPlan.Properties.Select(property => property.StorageName).ToArray());
+            constraintPlan.Properties.Select(property => property.StorageName).ToArray(),
+            acquireWriteLock: false);
         var records = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
-        return records.Select(record => new GraphMutationConstraintRow(
+        var rows = records.Select(record => new GraphMutationConstraintRow(
             record["__nativeId"].As<long>(),
             constraintPlan.Properties.Select((property, index) => new
             {
@@ -177,6 +182,8 @@ internal sealed class CypherEngine
             })
                 .ToDictionary(item => item.StorageName, item => item.Value, StringComparer.Ordinal)))
             .ToArray();
+        GraphMutationConstraintPlan.ValidateTargetRows(nativeIdentities, rows);
+        return rows;
     }
 
     private async Task ValidateUnselectedConstraintsAsync(
