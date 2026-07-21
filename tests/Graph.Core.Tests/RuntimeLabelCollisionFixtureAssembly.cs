@@ -102,7 +102,8 @@ internal static class RuntimeLabelCollisionFixtureAssembly
 
         var references = trustedAssemblies
             .Where(path => Path.GetFileName(path) is
-                "System.Private.CoreLib.dll" or "System.Runtime.dll" or "netstandard.dll")
+                "System.Private.CoreLib.dll" or "System.Runtime.dll" or "netstandard.dll" or
+                "System.Net.Primitives.dll")
             .Select(path => (MetadataReference)MetadataReference.CreateFromFile(path))
             .ToList();
 

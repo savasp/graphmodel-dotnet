@@ -163,7 +163,11 @@ internal sealed class CodeGenModelBuilder
             ? underlyingType
             : namedType;
 
-        if (IsNativeSizedInteger(type) || (elementType is not null && IsNativeSizedInteger(elementType)))
+        if (GraphDataModel.IsUnsupportedFrameworkType(type) ||
+            GraphDataModel.IsDictionaryType(type) ||
+            (elementType is not null &&
+             (GraphDataModel.IsUnsupportedFrameworkType(elementType) ||
+              GraphDataModel.IsDictionaryType(elementType))))
         {
             hasUnsupportedTypeShape = true;
         }
@@ -223,6 +227,7 @@ internal sealed class CodeGenModelBuilder
                 .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
                     property.GetMethod != null &&
                     !property.IsStatic &&
+                    !property.IsIndexer &&
                     seenProperties.Add(property.Name)))
             {
                 properties.Add(property);
@@ -235,6 +240,7 @@ internal sealed class CodeGenModelBuilder
                 .OfType<IPropertySymbol>()
                 .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
                     property.GetMethod != null &&
+                    !property.IsIndexer &&
                     seenProperties.Add(property.Name)))
             {
                 properties.Add(property);
@@ -423,12 +429,6 @@ internal sealed class CodeGenModelBuilder
                namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T
             ? namedType.TypeArguments[0]
             : type;
-    }
-
-    private static bool IsNativeSizedInteger(ITypeSymbol type)
-    {
-        type = UnwrapNullableValueType(type);
-        return type.SpecialType is SpecialType.System_IntPtr or SpecialType.System_UIntPtr;
     }
 
     private static IEnumerable<string> GetBaseTypeIdentities(INamedTypeSymbol type)

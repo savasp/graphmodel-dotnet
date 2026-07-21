@@ -60,11 +60,15 @@ internal class AnalyzerHelper
                 return true;
         }
 
-        // Check collections of INode or IRelationship
-        if (IsCollectionType(type))
+        // Check any generic/array element shape directly. Invalid collections such as List<INode>
+        // do not classify as supported collections, but CG003/CG006 must still identify their graph
+        // interface element without relying on an indexer as a serialized member.
+        var elementType = ImplementsIEnumerable(type)
+            ? GetCollectionElementType(type)
+            : null;
+        if (elementType is not null)
         {
-            var elementType = GetCollectionElementType(type);
-            if (elementType != null && IsGraphInterfaceType(elementType))
+            if (IsGraphInterfaceType(elementType))
                 return true;
         }
 
@@ -79,17 +83,9 @@ internal class AnalyzerHelper
         if (IsGraphInterfaceType(type))
             return false;
 
-        // Check for unsupported framework types early
-        if (IsUnsupportedFrameworkType(type))
+        // Reject unsupported shapes at any depth in a collection declaration.
+        if (FindUnsupportedSerializedType(type) is not null)
             return false;
-
-        // Check collections of unsupported framework types early
-        if (IsCollectionType(type))
-        {
-            var elementType = GetCollectionElementType(type);
-            if (elementType != null && IsUnsupportedFrameworkType(elementType))
-                return false;
-        }
 
         // Check if it's a simple type
         if (IsSimpleType(type))
@@ -162,17 +158,9 @@ internal class AnalyzerHelper
         if (IsGraphInterfaceType(type))
             return false;
 
-        // Check for unsupported framework types early
-        if (IsUnsupportedFrameworkType(type))
+        // Reject unsupported shapes at any depth in a collection declaration.
+        if (FindUnsupportedSerializedType(type) is not null)
             return false;
-
-        // Check collections of unsupported framework types early
-        if (IsCollectionType(type))
-        {
-            var elementType = GetCollectionElementType(type);
-            if (elementType != null && IsUnsupportedFrameworkType(elementType))
-                return false;
-        }
 
         // Check if it's a simple type
         if (IsSimpleType(type))
@@ -304,11 +292,12 @@ internal class AnalyzerHelper
 
     /// <summary>
     /// True when generated serialization includes <paramref name="property"/> in the effective
-    /// property set: a public instance property with a getter that is not explicitly ignored.
+    /// property set: a non-indexed public instance property with a getter that is not explicitly ignored.
     /// </summary>
     public static bool IsSerializedProperty(IPropertySymbol property)
     {
         return !property.IsStatic &&
+               !property.IsIndexer &&
                property.DeclaredAccessibility == Accessibility.Public &&
                property.GetMethod is not null &&
                !SerializationShouldIgnoreProperty(property);
@@ -409,6 +398,12 @@ internal class AnalyzerHelper
     {
         if (type is not INamedTypeSymbol namedType)
             return false;
+
+        if (namedType.Name == "IDictionary" &&
+            namedType.ContainingNamespace?.ToDisplayString() == "System.Collections")
+        {
+            return true;
+        }
 
         if (namedType.AllInterfaces.Any(i => i.Name == "IDictionary" && i.ContainingNamespace?.ToDisplayString() == "System.Collections"))
             return true;
@@ -564,26 +559,13 @@ internal class AnalyzerHelper
                 false);
         }
 
-        var properties = type.GetMembers()
-            .OfType<IPropertySymbol>()
-            .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
-                property.GetMethod is not null &&
-                !property.IsStatic &&
-                !SerializationShouldIgnoreProperty(property));
-        foreach (var property in properties)
+        foreach (var property in GetSerializedProperties(type))
         {
-            // Native-sized integers would otherwise classify as valid empty complex structs and the
-            // generator would silently drop the entity's serializers. Indexers are exempt because
-            // serialization never includes them.
-            if (!property.IsIndexer &&
-                (IsNativeSizedInteger(property.Type) ||
-                 (IsCollectionType(property.Type) &&
-                  GetCollectionElementType(property.Type) is { } nativeElement &&
-                  IsNativeSizedInteger(nativeElement))))
+            if (FindUnsupportedSerializedType(property.Type) is { } unsupportedType)
             {
                 return new ComplexTypeValidationResult(
                     false,
-                    $"Property {property.Name} uses an unsupported native-sized integer type",
+                    $"Property {property.Name} uses unsupported serialized type {unsupportedType.ToDisplayString()}",
                     false);
             }
 
@@ -658,13 +640,8 @@ internal class AnalyzerHelper
         if (type.GetMembers().OfType<IFieldSymbol>().Any(field => field.IsRequired))
             return false;
 
-        var constructorOnlyProperties = type.GetMembers()
-            .OfType<IPropertySymbol>()
-            .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
-                property.GetMethod is not null &&
-                !property.IsStatic &&
-                !SerializationShouldIgnoreProperty(property) &&
-                property.SetMethod?.DeclaredAccessibility != Accessibility.Public)
+        var constructorOnlyProperties = GetSerializedProperties(type)
+            .Where(property => property.SetMethod?.DeclaredAccessibility != Accessibility.Public)
             .ToList();
 
         if (constructorOnlyProperties.Count == 0)
@@ -676,6 +653,55 @@ internal class AnalyzerHelper
                 constructor.Parameters.Any(parameter =>
                     string.Equals(parameter.Name, property.Name, StringComparison.OrdinalIgnoreCase) &&
                     SymbolEqualityComparer.Default.Equals(parameter.Type, property.Type))));
+    }
+
+    private static ITypeSymbol? FindUnsupportedSerializedType(ITypeSymbol type)
+    {
+        var visited = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+        while (visited.Add(type))
+        {
+            if (IsUnsupportedFrameworkType(type) || IsDictionaryType(type))
+            {
+                return type;
+            }
+
+            if (!ImplementsIEnumerable(type) ||
+                GetCollectionElementType(type) is not { } elementType)
+            {
+                return null;
+            }
+
+            type = elementType;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Mirrors reflection and generated serialization: public instance getters from the effective
+    /// inheritance chain, with the most-derived declaration winning even when it is ignored.
+    /// </summary>
+    private static IEnumerable<IPropertySymbol> GetSerializedProperties(INamedTypeSymbol type)
+    {
+        var seenProperties = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            foreach (var property in current.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (property.IsStatic ||
+                    property.DeclaredAccessibility != Accessibility.Public ||
+                    property.GetMethod is null ||
+                    !seenProperties.Add(property.Name))
+                {
+                    continue;
+                }
+
+                if (IsSerializedProperty(property))
+                {
+                    yield return property;
+                }
+            }
+        }
     }
 
     private static bool SerializationShouldIgnoreProperty(IPropertySymbol property)

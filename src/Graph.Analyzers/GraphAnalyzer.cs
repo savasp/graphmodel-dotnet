@@ -841,7 +841,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeNodePropertyTypes(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
-        var properties = GetAllProperties(namedType);
+        var properties = GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {
@@ -934,7 +934,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeRelationshipPropertyTypes(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
-        var properties = GetAllProperties(namedType);
+        var properties = GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {

@@ -547,6 +547,71 @@ public class CG004_InvalidPropertyTypeForNodeTests
         await VerifyAnalyzerAsync(test, expected);
     }
 
+    [Theory]
+    [InlineData("System.Threading.Tasks.Task")]
+    [InlineData("System.Threading.Tasks.ValueTask")]
+    [InlineData("System.Action")]
+    [InlineData("System.Collections.Generic.Dictionary<string, string>")]
+    [InlineData("System.Collections.IDictionary")]
+    [InlineData("System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, string>>")]
+    [InlineData("System.Collections.Generic.List<System.Collections.Generic.List<System.Threading.Tasks.Task>>")]
+    [InlineData("System.IO.Stream")]
+    [InlineData("System.Net.IPAddress")]
+    [InlineData("System.Reflection.MemberInfo")]
+    [InlineData("System.Runtime.InteropServices.GCHandle")]
+    public async Task NodeWithComplexTypeContainingUnsupportedShape_ProducesDiagnostic(string propertyType)
+    {
+        var test = $$"""
+            using Cvoya.Graph;
+
+            public sealed class UnsupportedHolder
+            {
+                public {{propertyType}} Unsupported { get; set; }
+            }
+
+            public sealed class TestNode : Node
+            {
+                public UnsupportedHolder {|#0:Holder|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Holder", "TestNode", "UnsupportedHolder");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithComplexTypeContainingInheritedUnsupportedMember_ProducesDiagnostic()
+    {
+        var test = """
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            public abstract class UnsupportedHolderBase
+            {
+                public Task Unsupported { get; set; } = null!;
+            }
+
+            public sealed class DerivedUnsupportedHolder : UnsupportedHolderBase
+            {
+                public string Name { get; set; } = string.Empty;
+            }
+
+            public sealed class TestNode : Node
+            {
+                public DerivedUnsupportedHolder {|#0:Holder|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Holder", "TestNode", "DerivedUnsupportedHolder");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
     [Fact]
     public async Task NodeWithComplexTypeContainingIgnoredNativeSizedInteger_ProducesNoDiagnostics()
     {
@@ -565,6 +630,44 @@ public class CG004_InvalidPropertyTypeForNodeTests
             public class TestNode : Node
             {
                 public NativeHandleHolder Holder { get; set; } = new();
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NodeWithRecursiveComplexTypeAndExcludedUnsupportedMembers_ProducesNoDiagnostics()
+    {
+        var test = """
+            #nullable enable
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            public abstract class SupportedHolderBase
+            {
+                public string Name { get; set; } = string.Empty;
+                public Task Hidden { get; set; } = null!;
+            }
+
+            public sealed class RecursiveSupportedHolder : SupportedHolderBase
+            {
+                public RecursiveSupportedHolder? Next { get; set; }
+
+                [Property(Ignore = true)]
+                public Task Ignored { get; set; } = null!;
+
+                [Property(Ignore = true)]
+                public new Task Hidden { get; set; } = null!;
+
+                public static Task Static { get; } = Task.CompletedTask;
+
+                public Task this[int index] => Task.CompletedTask;
+            }
+
+            public sealed class TestNode : Node
+            {
+                public RecursiveSupportedHolder Holder { get; set; } = new();
             }
             """;
 

@@ -400,7 +400,7 @@ public class SchemaRegistry : IDisposable
     private static EntitySchemaInfo CreateEntitySchemaInfo(Type entityType, string label, List<string> collisions)
     {
         var properties = new Dictionary<string, PropertySchemaInfo>();
-        var allProperties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var allProperties = GetEffectivePublicInstanceProperties(entityType);
 
         // CG007 mirror: within one entity type's full inheritance chain, two properties must not resolve
         // to the same storage label (case-sensitive, matching the analyzer's StringComparer.Ordinal use).
@@ -502,11 +502,17 @@ public class SchemaRegistry : IDisposable
             return;
         }
 
-        if (FindNativeSizedInteger(property.PropertyType) is { } unsupportedType)
+        if (FindUnsupportedPropertyShape(property.PropertyType) is { } unsupported)
         {
+            var memberPath = string.IsNullOrEmpty(unsupported.MemberPath)
+                ? property.Name
+                : $"{property.Name}.{unsupported.MemberPath}";
+            var nativeIntegerExplanation = unsupported.Reason == "native-sized integer type"
+                ? " IntPtr and UIntPtr cannot be stored as graph property values."
+                : string.Empty;
             throw new GraphException(
-                $"Property '{property.DeclaringType?.FullName}.{property.Name}' uses unsupported native-sized integer " +
-                $"type '{unsupportedType}'. IntPtr and UIntPtr cannot be stored as graph property values.");
+                $"Property '{property.DeclaringType?.FullName}.{property.Name}' contains unsupported serialized member " +
+                $"'{memberPath}' using {unsupported.Reason} '{unsupported.Type}'.{nativeIntegerExplanation}");
         }
 
         if (attribute is null || !attribute.IsKey)
@@ -532,17 +538,25 @@ public class SchemaRegistry : IDisposable
         }
     }
 
-    private static Type? FindNativeSizedInteger(Type type)
+    private static UnsupportedPropertyShape? FindUnsupportedPropertyShape(Type type)
     {
-        return FindNativeSizedInteger(type, []);
+        return FindUnsupportedPropertyShape(type, string.Empty, []);
     }
 
-    private static Type? FindNativeSizedInteger(Type type, HashSet<Type> visited)
+    private static UnsupportedPropertyShape? FindUnsupportedPropertyShape(
+        Type type,
+        string memberPath,
+        HashSet<Type> visited)
     {
         var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
-        if (underlyingType == typeof(IntPtr) || underlyingType == typeof(UIntPtr))
+        if (GetUnsupportedTypeReason(underlyingType) is { } reason)
         {
-            return underlyingType;
+            return new UnsupportedPropertyShape(underlyingType, memberPath, reason);
+        }
+
+        if (GraphDataModel.IsDictionary(underlyingType))
+        {
+            return new UnsupportedPropertyShape(underlyingType, memberPath, "dictionary type");
         }
 
         if (GraphDataModel.IsSimple(underlyingType) || !visited.Add(underlyingType))
@@ -558,23 +572,19 @@ public class SchemaRegistry : IDisposable
                     ? underlyingType.GetGenericArguments().FirstOrDefault()
                     : null;
 
-            return elementType is null ? null : FindNativeSizedInteger(elementType, visited);
+            return elementType is null
+                ? null
+                : FindUnsupportedPropertyShape(elementType, memberPath, visited);
         }
 
-        // Any other shape serializes as a complex value whose effective property set is walked the
-        // same way here as by serialization (public instance getters, no indexers, not ignored): a
-        // native-sized integer nested in a complex value is equally unstorable, and the generator
-        // already refuses to emit serializers for it.
-        foreach (var property in underlyingType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        // Any other shape serializes as a complex value. Reflection already returns inherited
+        // public instance properties here, matching the analyzer and generator's effective walk.
+        foreach (var property in GetSerializedProperties(underlyingType))
         {
-            if (property.GetMethod is null ||
-                property.GetIndexParameters().Length > 0 ||
-                property.GetCustomAttribute<PropertyAttribute>()?.Ignore == true)
-            {
-                continue;
-            }
-
-            if (FindNativeSizedInteger(property.PropertyType, visited) is { } nested)
+            var nestedPath = string.IsNullOrEmpty(memberPath)
+                ? property.Name
+                : $"{memberPath}.{property.Name}";
+            if (FindUnsupportedPropertyShape(property.PropertyType, nestedPath, visited) is { } nested)
             {
                 return nested;
             }
@@ -582,6 +592,57 @@ public class SchemaRegistry : IDisposable
 
         return null;
     }
+
+    private static IEnumerable<PropertyInfo> GetSerializedProperties(Type type) =>
+        GetEffectivePublicInstanceProperties(type)
+            .Where(property => property.GetCustomAttribute<PropertyAttribute>()?.Ignore != true);
+
+    private static IEnumerable<PropertyInfo> GetEffectivePublicInstanceProperties(Type type)
+    {
+        var seenProperties = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            foreach (var property in current.GetProperties(
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            {
+                if (property.GetMethod is null ||
+                    property.GetIndexParameters().Length > 0 ||
+                    !seenProperties.Add(property.Name))
+                {
+                    continue;
+                }
+
+                yield return property;
+            }
+        }
+    }
+
+    private static string? GetUnsupportedTypeReason(Type type)
+    {
+        if (type == typeof(IntPtr) || type == typeof(UIntPtr))
+        {
+            return "native-sized integer type";
+        }
+
+        if (typeof(Delegate).IsAssignableFrom(type))
+        {
+            return "delegate type";
+        }
+
+        var fullName = type.FullName ?? type.ToString();
+        if (fullName.StartsWith("System.Threading.Tasks.", StringComparison.Ordinal) ||
+            fullName.StartsWith("System.IO.", StringComparison.Ordinal) ||
+            fullName.StartsWith("System.Net.", StringComparison.Ordinal) ||
+            fullName.StartsWith("System.Reflection.", StringComparison.Ordinal) ||
+            fullName.StartsWith("System.Runtime.", StringComparison.Ordinal))
+        {
+            return "framework type";
+        }
+
+        return null;
+    }
+
+    private sealed record UnsupportedPropertyShape(Type Type, string MemberPath, string Reason);
 
     private static string GetLabelFromType(Type type)
     {
