@@ -121,6 +121,9 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
     protected override void LogRollbackFailure(Exception exception) =>
         logger.LogWarningGraphQueryProvider83(exception);
 
+    protected override void LogEnumeratorDisposalFailure(Exception exception) =>
+        logger.LogWarningGraphQueryProviderEnumeratorDisposalFailure(exception);
+
     protected override void LogDisposalFailure(Exception exception) =>
         logger.LogWarningGraphQueryProviderTransactionDisposalFailure(exception);
 

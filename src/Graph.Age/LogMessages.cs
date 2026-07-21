@@ -253,6 +253,9 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back streaming query transaction during cleanup")]
     internal static partial void LogWarningGraphQueryProvider89(this ILogger logger, Exception exception);
 
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to dispose streaming query enumerator during cleanup")]
+    internal static partial void LogWarningGraphQueryProviderEnumeratorDisposalFailure(this ILogger logger, Exception exception);
+
     [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to dispose streaming query transaction during cleanup")]
     internal static partial void LogWarningGraphQueryProviderTransactionDisposalFailure(this ILogger logger, Exception exception);
 

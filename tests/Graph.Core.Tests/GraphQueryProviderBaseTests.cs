@@ -101,6 +101,36 @@ public sealed class GraphQueryProviderBaseTests
     }
 
     [Fact]
+    public async Task StreamFailureIsPreservedWhenEnumeratorAndTransactionCleanupFail()
+    {
+        var streamException = new TestStreamException();
+        var transaction = new RecordingTransaction
+        {
+            RollbackException = new TestRollbackException(),
+            DisposeException = new TestDisposeException(),
+        };
+        var provider = new RecordingProvider(transaction, [])
+        {
+            StreamException = streamException,
+            EnumeratorDisposeException = new TestEnumeratorDisposeException(),
+        };
+
+        var exception = await Assert.ThrowsAsync<TestStreamException>(
+            () => ConsumeAsync(provider.StreamAsync<int>(
+                Expression.Constant(0),
+                TestContext.Current.CancellationToken)));
+
+        Assert.Same(streamException, exception);
+        Assert.Equal(1, provider.EnumeratorDisposeCount);
+        Assert.Equal(1, provider.EnumeratorDisposalFailureCount);
+        Assert.Equal(1, transaction.RollbackCount);
+        Assert.Equal(1, transaction.DisposeCount);
+        Assert.Equal(1, provider.RollbackFailureCount);
+        Assert.Equal(1, provider.DisposalFailureCount);
+        Assert.Equal(["Rollback", "Dispose"], transaction.Events);
+    }
+
+    [Fact]
     public async Task CancellationIsPreservedWhenDisposalFails()
     {
         var cancellationException = new OperationCanceledException(TestContext.Current.CancellationToken);
@@ -224,9 +254,15 @@ public sealed class GraphQueryProviderBaseTests
     {
         public int RollbackFailureCount { get; private set; }
 
+        public int EnumeratorDisposalFailureCount { get; private set; }
+
         public int DisposalFailureCount { get; private set; }
 
         public Exception? StreamException { get; init; }
+
+        public Exception? EnumeratorDisposeException { get; init; }
+
+        public int EnumeratorDisposeCount { get; private set; }
 
         protected override Task<TResult> ExecuteCoreAsync<TResult>(
             Expression expression,
@@ -236,9 +272,18 @@ public sealed class GraphQueryProviderBaseTests
         protected override Task<RecordingTransaction> GetOrCreateTransactionAsync(
             CancellationToken cancellationToken) => Task.FromResult(transaction);
 
-        protected override async IAsyncEnumerable<TResult> StreamCoreAsync<TResult>(
+        protected override IAsyncEnumerable<TResult> StreamCoreAsync<TResult>(
             Expression expression,
             RecordingTransaction transaction,
+            CancellationToken cancellationToken) =>
+            EnumeratorDisposeException is null
+                ? StreamValuesAsync<TResult>(cancellationToken)
+                : new FaultingAsyncEnumerable<TResult>(
+                    StreamException!,
+                    EnumeratorDisposeException,
+                    () => EnumeratorDisposeCount++);
+
+        private async IAsyncEnumerable<TResult> StreamValuesAsync<TResult>(
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             foreach (var value in values)
@@ -266,7 +311,28 @@ public sealed class GraphQueryProviderBaseTests
 
         protected override void LogRollbackFailure(Exception exception) => RollbackFailureCount++;
 
+        protected override void LogEnumeratorDisposalFailure(Exception exception) =>
+            EnumeratorDisposalFailureCount++;
+
         protected override void LogDisposalFailure(Exception exception) => DisposalFailureCount++;
+    }
+
+    private sealed class FaultingAsyncEnumerable<T>(
+        Exception streamException,
+        Exception disposeException,
+        Action onDispose) : IAsyncEnumerable<T>, IAsyncEnumerator<T>
+    {
+        public T Current => throw new InvalidOperationException("The faulting stream never produces a value.");
+
+        public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) => this;
+
+        public ValueTask<bool> MoveNextAsync() => ValueTask.FromException<bool>(streamException);
+
+        public ValueTask DisposeAsync()
+        {
+            onDispose();
+            return ValueTask.FromException(disposeException);
+        }
     }
 
     private sealed class RecordingTransaction : IGraphTransaction
@@ -337,6 +403,8 @@ public sealed class GraphQueryProviderBaseTests
     private sealed class TestRollbackException : Exception;
 
     private sealed class TestDisposeException : Exception;
+
+    private sealed class TestEnumeratorDisposeException : Exception;
 
     private static async Task ConsumeAsync<T>(IAsyncEnumerable<T> stream)
     {

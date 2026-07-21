@@ -36,23 +36,32 @@ public sealed class TransactionLifecycleTests
     [Fact]
     public async Task BeginCancellationClosesSessionAndPreservesCancellation()
     {
-        var cancellationException = new OperationCanceledException(TestContext.Current.CancellationToken);
+        var beginCompletion = new TaskCompletionSource<IAsyncTransaction>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
         var lifecycle = new RecordingLifecycle
         {
-            BeginException = cancellationException,
+            BeginTask = beginCompletion.Task,
             CloseException = new TestCloseException(),
         };
         var context = CreateContext(lifecycle);
 
-        var exception = await Assert.ThrowsAsync<OperationCanceledException>(
-            () => TransactionHelpers.GetOrCreateTransactionAsync(
-                context,
-                cancellationToken: TestContext.Current.CancellationToken));
+        var beginTask = TransactionHelpers.GetOrCreateTransactionAsync(
+            context,
+            cancellationToken: cancellationSource.Token);
+        Assert.Equal(1, lifecycle.BeginCount);
 
-        Assert.Same(cancellationException, exception);
+        cancellationSource.Cancel();
+        var exception = await Assert.ThrowsAsync<TaskCanceledException>(
+            () => beginTask);
+
+        Assert.Equal(cancellationSource.Token, exception.CancellationToken);
         Assert.Equal(1, lifecycle.BeginCount);
         Assert.Equal(1, lifecycle.CloseCount);
         Assert.Equal(["Session", "Begin", "Close"], lifecycle.Events);
+
+        beginCompletion.TrySetCanceled(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -299,6 +308,8 @@ public sealed class TransactionLifecycleTests
 
         public Exception? BeginException { get; init; }
 
+        public Task<IAsyncTransaction>? BeginTask { get; init; }
+
         public Exception? CommitException { get; init; }
 
         public Exception? RollbackException { get; set; }
@@ -329,6 +340,11 @@ public sealed class TransactionLifecycleTests
         {
             BeginCount++;
             Events.Add("Begin");
+            if (BeginTask is not null)
+            {
+                return BeginTask;
+            }
+
             return BeginException is null
                 ? Task.FromResult(Transaction)
                 : Task.FromException<IAsyncTransaction>(BeginException);

@@ -212,6 +212,8 @@ internal abstract class GraphQueryProviderBase<TTransaction> : IStreamingGraphQu
 
     protected abstract void LogRollbackFailure(Exception exception);
 
+    protected abstract void LogEnumeratorDisposalFailure(Exception exception);
+
     protected abstract void LogDisposalFailure(Exception exception);
 
     IQueryable<TElement> IQueryProvider.CreateQuery<TElement>(Expression expression) =>
@@ -282,7 +284,7 @@ internal abstract class GraphQueryProviderBase<TTransaction> : IStreamingGraphQu
         }
     }
 
-    private static async ValueTask DisposeEnumeratorWithFailureTrackingAsync<TResult>(
+    private async ValueTask DisposeEnumeratorWithFailureTrackingAsync<TResult>(
         IAsyncEnumerator<TResult> enumerator,
         StreamFailureState failureState)
     {
@@ -290,8 +292,14 @@ internal abstract class GraphQueryProviderBase<TTransaction> : IStreamingGraphQu
         {
             await enumerator.DisposeAsync().ConfigureAwait(false);
         }
-        catch
+        catch (Exception exception)
         {
+            if (failureState.HasPrimaryFailure)
+            {
+                LogEnumeratorDisposalFailure(exception);
+                return;
+            }
+
             failureState.HasPrimaryFailure = true;
             throw;
         }
