@@ -8,7 +8,6 @@ using Cvoya.Graph.Querying;
 using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Serialization;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 /// <summary>
 /// The in-memory <see cref="IGraph"/>: CRUD over decomposed serialized snapshots, buffered-write
@@ -22,7 +21,6 @@ internal sealed class InMemoryGraph : IGraph
     private readonly EntityFactory _entityFactory;
     private readonly EntityReader _reader;
     private readonly EntityValidator _validator;
-    private readonly ILogger _logger;
 
     public InMemoryGraph(InMemoryStore store, SchemaRegistry schemaRegistry, ILoggerFactory? loggerFactory)
     {
@@ -31,7 +29,6 @@ internal sealed class InMemoryGraph : IGraph
         _entityFactory = new EntityFactory(loggerFactory);
         _reader = new EntityReader(_entityFactory);
         _validator = new EntityValidator(schemaRegistry);
-        _logger = loggerFactory?.CreateLogger<InMemoryGraph>() ?? NullLogger<InMemoryGraph>.Instance;
     }
 
     public SchemaRegistry SchemaRegistry => _schemaRegistry;
