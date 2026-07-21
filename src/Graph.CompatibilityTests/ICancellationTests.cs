@@ -42,7 +42,7 @@ public interface ICancellationTests : IGraphTest
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => Graph.GetDynamicRelationshipAsync(relationship.Id, null, cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => Graph.RecreateIndexesAsync(cts.Token));
+            () => Graph.RecreateManagedIndexesAsync(cts.Token));
     }
 
     [Fact]

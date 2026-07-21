@@ -81,11 +81,10 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
           queries: ${{ matrix.query-suite }}
 
-      - name: Build LocalFeed packages
-        if: matrix.language == 'csharp'
-        run: dotnet build --configuration LocalFeed --no-restore
-
-      - name: Build
+      # Release compiles every C# project in the solution. Package behavior is
+      # covered by CI's package-validation matrix and does not need a second
+      # full LocalFeed compilation inside the CodeQL trace.
+      - name: Build C# solution once
         if: matrix.language == 'csharp'
         run: dotnet build --configuration Release --no-restore
 
