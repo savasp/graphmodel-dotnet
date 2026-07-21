@@ -30,6 +30,10 @@ dotnet build --configuration Debug
 ./scripts/run-tests.sh --configuration Debug --lane all --disable-diff-engine
 ```
 
+During iteration, narrow the runner with repeatable `--project <name-or-path>` selectors and optional repeatable `--filter <xUnit-query>` expressions. A project selector limits both the build and test pass; use `--no-build` to reuse a compatible existing build. Once the diff is stable, run the complete relevant lane once on the final patch.
+
+Run local Neo4j and AGE lanes serially. Their provider suites create, mutate, and clean database state and are not documented as isolated from concurrent local runs, even when the services themselves are separate.
+
 The runner discovers test projects under `tests/`, separates service-free and provider-backed lanes, and rejects projects that report zero tests. The full lane needs both Neo4j and AGE; use configured services, the repository container scripts, or the runner's `--neo4j --age` options.
 
 The test projects have different requirements — get this right:

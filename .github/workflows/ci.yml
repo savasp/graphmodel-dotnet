@@ -29,6 +29,7 @@ jobs:
       pull-requests: read
     outputs:
       dotnet: ${{ steps.filter.outputs.dotnet }}
+      packages: ${{ steps.filter.outputs.packages }}
       workflow_files: ${{ steps.filter.outputs.workflow_files }}
 
     steps:
@@ -58,6 +59,18 @@ jobs:
               - 'global.json'
               - '.config/dotnet-tools.json'
               - 'VERSION'
+              - '.github/workflows/ci.yml'
+            packages:
+              - 'src/**'
+              - 'Directory.Build.props'
+              - 'Directory.Packages.props'
+              - 'cvoya-graph.sln'
+              - 'eng/PackageValidation.proj'
+              - 'nuget.config'
+              - 'scripts/setup-local-feed-msbuild.sh'
+              - 'scripts/verify-package-set.sh'
+              - 'VERSION'
+              - 'assets/icon.png'
               - '.github/workflows/ci.yml'
             workflow_files:
               - '.github/workflows/**'
@@ -89,12 +102,25 @@ jobs:
           advanced-security: false
           annotations: true
 
-      - name: Test repository hooks and release orchestration
+  repository-tests:
+    name: Test repository automation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Test repository hooks, runners, and release orchestration
         shell: bash
         run: |
           bash eng/agent-hooks/hooks.test.sh
           ruby scripts/docs-deployment.test.rb
           bash scripts/release.test.sh
+          bash scripts/run-tests.test.sh
 
   validation:
     name: Build, format, and test
@@ -233,7 +259,7 @@ jobs:
     name: Package validation (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     needs: changes
-    if: needs.changes.outputs.dotnet == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.changes.outputs.packages == 'true' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
     permissions:
       contents: read
@@ -258,7 +284,7 @@ jobs:
   required-checks:
     name: Required checks
     runs-on: ubuntu-latest
-    needs: [changes, validation, package-validation]
+    needs: [changes, repository-tests, validation, package-validation]
     if: ${{ always() }}
     timeout-minutes: 5
     permissions:
@@ -270,14 +296,20 @@ jobs:
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           PACKAGE_VALIDATION_RESULT: ${{ needs.package-validation.result }}
+          REPOSITORY_TESTS_RESULT: ${{ needs.repository-tests.result }}
           VALIDATION_RESULT: ${{ needs.validation.result }}
         run: |
           echo "changes=$CHANGES_RESULT"
           echo "package-validation=$PACKAGE_VALIDATION_RESULT"
+          echo "repository-tests=$REPOSITORY_TESTS_RESULT"
           echo "validation=$VALIDATION_RESULT"
 
           [[ "$CHANGES_RESULT" == "success" ]] || {
             echo "::error::validation scope or workflow audit failed"
+            exit 1
+          }
+          [[ "$REPOSITORY_TESTS_RESULT" == "success" ]] || {
+            echo "::error::repository automation tests failed"
             exit 1
           }
           [[ "$VALIDATION_RESULT" == "success" || "$VALIDATION_RESULT" == "skipped" ]] || {
