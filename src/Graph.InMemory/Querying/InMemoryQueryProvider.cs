@@ -93,7 +93,11 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider, IGraphCommand
             _store,
             _transaction,
             transaction => command(
-                new Commands.InMemoryGraphCommandExecutionContext(transaction, _reader, Graph.SchemaRegistry),
+                new Commands.InMemoryGraphCommandExecutionContext(
+                    transaction,
+                    (InMemoryGraph)Graph,
+                    _reader,
+                    Graph.SchemaRegistry),
                 cancellationToken),
             "Failed to execute an in-memory graph command",
             cancellationToken);
@@ -149,6 +153,14 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider, IGraphCommand
 
     private static void EnsureSupported(GraphQueryModel model)
     {
+        if (model.Ordering.Concat(model.PostPaging?.Ordering ?? []).Any(ordering =>
+            typeof(IEntity).IsAssignableFrom(ordering.KeySelector.ReturnType)))
+        {
+            throw new GraphQueryTranslationException(
+                "Whole-entity ordering is not supported by the in-memory provider. " +
+                "Order by one or more mapped scalar properties instead.");
+        }
+
         if (model.SelectMany is not null)
         {
             throw new NotSupportedException(

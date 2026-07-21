@@ -300,4 +300,311 @@ public sealed class GraphCommandTests
             (context, token) => context.SelectAsync(selection, query.Expression, token),
             TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task DuplicatePublicIdsRemainDistinctGraphElements()
+    {
+        await using var store = new InMemoryGraphStore();
+        var sharedNodeId = Guid.NewGuid().ToString("N");
+        var first = new Person { Id = sharedNodeId, FirstName = "same", LastName = "same" };
+        var second = first with { };
+        await store.Graph.CreateNodeAsync(first, cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateNodeAsync(second, cancellationToken: TestContext.Current.CancellationToken);
+
+        var nodeQuery = store.Graph.Nodes<Person>().Where(person => person.Id == sharedNodeId);
+        Assert.Equal(2, await nodeQuery.CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(2, (await nodeQuery.Distinct().ToListAsync(TestContext.Current.CancellationToken)).Count);
+
+        var source = new Person { FirstName = "source" };
+        var target = new Person { FirstName = "target" };
+        await store.Graph.CreateNodeAsync(source, cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateNodeAsync(target, cancellationToken: TestContext.Current.CancellationToken);
+        var sharedRelationshipId = Guid.NewGuid().ToString("N");
+        var relationship = new Knows(source, target)
+        {
+            Id = sharedRelationshipId,
+            Since = DateTime.UnixEpoch,
+        };
+        await store.Graph.CreateRelationshipAsync(
+            relationship,
+            cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateRelationshipAsync(
+            relationship with { },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var relationshipQuery = store.Graph.Relationships<Knows>()
+            .Where(candidate => candidate.Id == sharedRelationshipId);
+        Assert.Equal(2, await relationshipQuery.CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(
+            2,
+            (await relationshipQuery.Distinct().ToListAsync(TestContext.Current.CancellationToken)).Count);
+        Assert.Equal(
+            2,
+            await GraphCommandExtensions.DeleteAsync(
+                relationshipQuery,
+                cascadeDelete: false,
+                TestContext.Current.CancellationToken));
+        Assert.Equal(0, await relationshipQuery.CountAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(
+            2,
+            await GraphCommandExtensions.DeleteAsync(
+                nodeQuery,
+                cascadeDelete: false,
+                TestContext.Current.CancellationToken));
+        Assert.Equal(0, await nodeQuery.CountAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task TraversalNeverCrossesValueEqualNodeRecords()
+    {
+        await using var store = new InMemoryGraphStore();
+        var sourceId = Guid.NewGuid().ToString("N");
+        var targetId = Guid.NewGuid().ToString("N");
+        var sourceA = new Person { Id = sourceId, FirstName = "source-a" };
+        var sourceB = new Person { Id = sourceId, FirstName = "source-b" };
+        var targetA = new Person { Id = targetId, FirstName = "target-a" };
+        var targetB = new Person { Id = targetId, FirstName = "target-b" };
+        foreach (var node in new[] { sourceA, sourceB, targetA, targetB })
+        {
+            await store.Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        await CreateSelectedRelationshipAsync(
+            store.Graph.Nodes<Person>().Where(person => person.FirstName == sourceA.FirstName),
+            new Knows(),
+            store.Graph.Nodes<Person>().Where(person => person.FirstName == targetA.FirstName));
+        await CreateSelectedRelationshipAsync(
+            store.Graph.Nodes<Person>().Where(person => person.FirstName == sourceB.FirstName),
+            new Knows(),
+            store.Graph.Nodes<Person>().Where(person => person.FirstName == targetB.FirstName));
+
+        _ = await GraphCommandExtensions.UpdateAsync(
+            store.Graph.Nodes<Person>().Where(person => person.Id == sourceId),
+            setters => setters.SetProperty(person => person.FirstName, "same-source"),
+            TestContext.Current.CancellationToken);
+        _ = await GraphCommandExtensions.UpdateAsync(
+            store.Graph.Nodes<Person>().Where(person => person.Id == targetId),
+            setters => setters.SetProperty(person => person.FirstName, "same-target"),
+            TestContext.Current.CancellationToken);
+
+        var reached = await store.Graph.Nodes<Person>()
+            .Where(person => person.Id == sourceId)
+            .Traverse<Knows, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, reached.Count);
+        Assert.All(reached, person => Assert.Equal(targetId, person.Id));
+    }
+
+    [Fact]
+    public async Task EndpointIntentCreationSupportsSelectedNewAndSelfLoopForms()
+    {
+        await using var store = new InMemoryGraphStore();
+        var selectedSource = new Person { FirstName = "selected-source" };
+        var selectedTarget = new Person { FirstName = "selected-target" };
+        await store.Graph.CreateNodeAsync(
+            selectedSource,
+            cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateNodeAsync(
+            selectedTarget,
+            cancellationToken: TestContext.Current.CancellationToken);
+        var sourceQuery = store.Graph.Nodes<Person>()
+            .Where(person => person.FirstName == selectedSource.FirstName);
+        var targetQuery = store.Graph.Nodes<Person>()
+            .Where(person => person.FirstName == selectedTarget.FirstName);
+
+        await CreateSelectedRelationshipAsync(sourceQuery, new Knows(), targetQuery);
+        await CreateSelectedNewRelationshipAsync(
+            sourceQuery,
+            new Knows(),
+            new Person { FirstName = "new-target" });
+        await CreateNewSelectedRelationshipAsync(
+            store.Graph,
+            new Person { FirstName = "new-source" },
+            new Knows(),
+            targetQuery);
+
+        var equalNode = new Person { FirstName = "equal-new" };
+        await CreateNewRelationshipAsync(
+            store.Graph,
+            equalNode,
+            new Knows(),
+            equalNode,
+            GraphRelationshipCreationMode.Standard);
+        await CreateSelectedRelationshipAsync(sourceQuery, new Knows(), sourceQuery);
+
+        var selfLoop = new Person { FirstName = "new-self-loop" };
+        await CreateNewRelationshipAsync(
+            store.Graph,
+            selfLoop,
+            new Knows(),
+            selfLoop,
+            GraphRelationshipCreationMode.SelfLoop);
+
+        Assert.Equal(7, await store.Graph.Nodes<Person>().CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(6, await store.Graph.Relationships<Knows>().CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(
+            2,
+            await store.Graph.Nodes<Person>()
+                .Where(person => person.FirstName == equalNode.FirstName)
+                .CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(
+            1,
+            await store.Graph.Nodes<Person>()
+                .Where(person => person.FirstName == selfLoop.FirstName)
+                .CountAsync(TestContext.Current.CancellationToken));
+        Assert.Single(await store.Graph.Nodes<Person>()
+            .Where(person => person.FirstName == selfLoop.FirstName)
+            .Traverse<Knows, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken));
+
+        var cardinalityFailure = await Assert.ThrowsAsync<GraphCardinalityException>(() =>
+            CreateSelectedRelationshipAsync(
+                sourceQuery,
+                new Knows(),
+                store.Graph.Nodes<Person>().Where(person => person.FirstName == "missing-target")));
+        Assert.Equal(GraphEndpointRole.Target, cardinalityFailure.Role);
+        Assert.Equal(GraphCardinalityFailure.Empty, cardinalityFailure.Failure);
+        Assert.Equal(6, await store.Graph.Relationships<Knows>().CountAsync(TestContext.Current.CancellationToken));
+
+        var ambiguousMarker = $"ambiguous-{Guid.NewGuid():N}";
+        await store.Graph.CreateNodeAsync(
+            new Person { FirstName = "first-ambiguous-target", LastName = ambiguousMarker },
+            cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateNodeAsync(
+            new Person { FirstName = "second-ambiguous-target", LastName = ambiguousMarker },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var multipleFailure = await Assert.ThrowsAsync<GraphCardinalityException>(() =>
+            CreateSelectedRelationshipAsync(
+                sourceQuery,
+                new Knows(),
+                store.Graph.Nodes<Person>().Where(person => person.LastName == ambiguousMarker)));
+        Assert.Equal(GraphEndpointRole.Target, multipleFailure.Role);
+        Assert.Equal(GraphCardinalityFailure.Multiple, multipleFailure.Failure);
+        Assert.Equal(6, await store.Graph.Relationships<Knows>().CountAsync(TestContext.Current.CancellationToken));
+    }
+
+    private static async Task CreateSelectedRelationshipAsync<TSource, TTarget>(
+        IGraphQueryable<TSource> source,
+        IRelationship relationship,
+        IGraphQueryable<TTarget> target)
+        where TSource : class, INode
+        where TTarget : class, INode
+    {
+        var sourceProvider = Assert.IsAssignableFrom<IGraphCommandProvider>(source.Provider);
+        var targetProvider = Assert.IsAssignableFrom<IGraphCommandProvider>(target.Provider);
+        GraphCommandProviderScope.Validate(sourceProvider, targetProvider);
+        await sourceProvider.InWriteTransactionAsync(
+            async (context, token) =>
+            {
+                var selectedSource = await SelectEndpointAsync(
+                    context,
+                    source,
+                    GraphEndpointRole.Source,
+                    token);
+                var selectedTarget = await SelectEndpointAsync(
+                    context,
+                    target,
+                    GraphEndpointRole.Target,
+                    token);
+                await context.CreateRelationshipAsync(
+                    new SelectedGraphCommandEndpoint(selectedSource),
+                    relationship,
+                    new SelectedGraphCommandEndpoint(selectedTarget),
+                    RelationshipDirection.Outgoing,
+                    GraphRelationshipCreationMode.Standard,
+                    token);
+                return true;
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    private static async Task CreateSelectedNewRelationshipAsync<TSource>(
+        IGraphQueryable<TSource> source,
+        IRelationship relationship,
+        INode target)
+        where TSource : class, INode
+    {
+        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(source.Provider);
+        await provider.InWriteTransactionAsync(
+            async (context, token) =>
+            {
+                var selected = await SelectEndpointAsync(context, source, GraphEndpointRole.Source, token);
+                await context.CreateRelationshipAsync(
+                    new SelectedGraphCommandEndpoint(selected),
+                    relationship,
+                    new NewGraphCommandEndpoint(target),
+                    RelationshipDirection.Outgoing,
+                    GraphRelationshipCreationMode.Standard,
+                    token);
+                return true;
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    private static async Task CreateNewSelectedRelationshipAsync<TTarget>(
+        IGraph graph,
+        INode source,
+        IRelationship relationship,
+        IGraphQueryable<TTarget> target)
+        where TTarget : class, INode
+    {
+        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(target.Provider);
+        var graphProvider = Assert.IsAssignableFrom<IGraphCommandProvider>(graph.Nodes<INode>().Provider);
+        GraphCommandProviderScope.Validate(provider, graphProvider);
+        await provider.InWriteTransactionAsync(
+            async (context, token) =>
+            {
+                var selected = await SelectEndpointAsync(context, target, GraphEndpointRole.Target, token);
+                await context.CreateRelationshipAsync(
+                    new NewGraphCommandEndpoint(source),
+                    relationship,
+                    new SelectedGraphCommandEndpoint(selected),
+                    RelationshipDirection.Outgoing,
+                    GraphRelationshipCreationMode.Standard,
+                    token);
+                return true;
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    private static async Task CreateNewRelationshipAsync(
+        IGraph graph,
+        INode source,
+        IRelationship relationship,
+        INode target,
+        GraphRelationshipCreationMode mode)
+    {
+        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(graph.Nodes<INode>().Provider);
+        await provider.InWriteTransactionAsync(
+            async (context, token) =>
+            {
+                await context.CreateRelationshipAsync(
+                    new NewGraphCommandEndpoint(source),
+                    relationship,
+                    new NewGraphCommandEndpoint(target),
+                    RelationshipDirection.Outgoing,
+                    mode,
+                    token);
+                return true;
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    private static Task<SelectedGraphElement> SelectEndpointAsync<TEntity>(
+        IGraphCommandExecutionContext context,
+        IGraphQueryable<TEntity> query,
+        GraphEndpointRole role,
+        CancellationToken cancellationToken)
+        where TEntity : class, INode =>
+        GraphCommandSelection.SelectExactOneAsync(
+            context,
+            new GraphElementSelectionModel(
+                GraphQueryModelBuilder.Build(query.Expression),
+                GraphElementSelectionMode.ExactOne),
+            query.Expression,
+            role,
+            cancellationToken);
 }

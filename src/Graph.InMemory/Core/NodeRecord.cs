@@ -4,12 +4,12 @@
 namespace Cvoya.Graph.InMemory;
 
 /// <summary>
-/// The at-rest form of one node. <paramref name="Key"/> is the store-internal identity (complex
-/// property edges link parent to child by key, never by the caller-visible <paramref name="Id"/>,
-/// which is unique only per label). Property values are isolated snapshots.
+/// The at-rest form of one node. <paramref name="Key"/> is the only element identity. The optional
+/// <paramref name="CompatibilityId"/> exists solely for the transitional direct-ID APIs and is
+/// otherwise ordinary modeled data. Property values are isolated snapshots.
 /// </summary>
 /// <param name="Key">Store-internal identity of this record.</param>
-/// <param name="Id">The caller-visible opaque entity id.</param>
+/// <param name="CompatibilityId">The transitional caller-visible entity id, when present.</param>
 /// <param name="Label">The primary label.</param>
 /// <param name="Labels">All labels stored for the node.</param>
 /// <param name="ActualType">The concrete CLR type the node was serialized from.</param>
@@ -18,7 +18,7 @@ namespace Cvoya.Graph.InMemory;
 /// another node; such records are never counted as user-deletable roots.</param>
 internal sealed record NodeRecord(
     Guid Key,
-    string Id,
+    string? CompatibilityId,
     string Label,
     IReadOnlyList<string> Labels,
     Type ActualType,

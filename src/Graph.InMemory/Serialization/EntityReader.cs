@@ -116,7 +116,6 @@ internal sealed class EntityReader(EntityFactory entityFactory)
         }
         else
         {
-            simpleProperties.Remove(nameof(IEntity.Id));
             simpleProperties.Remove(nameof(INode.Labels));
         }
 
@@ -152,7 +151,7 @@ internal sealed class EntityReader(EntityFactory entityFactory)
 
     private EntityInfo? DynamicChildInfo(RelationshipRecord edge, StoreState state)
     {
-        if (edge.EndKey is not { } childKey || !state.Nodes.TryGetValue(childKey, out var child))
+        if (!state.Nodes.TryGetValue(edge.EndKey, out var child))
         {
             return null;
         }
@@ -167,18 +166,16 @@ internal sealed class EntityReader(EntityFactory entityFactory)
         bool includeLegacyEndpointState = false)
     {
         var simpleProperties = SnapshotToProperties(record.Properties);
+        simpleProperties[nameof(IRelationship.Type)] = new Property(
+            PropertyInfo: null!,
+            nameof(IRelationship.Type),
+            IsNullable: false,
+            new SimpleValue(record.Type, typeof(string)));
 
-        // Bare relationship query results carry only modeled relationship data. Legacy direct-ID
-        // APIs can still request the transitional endpoint state until the coordinated removal.
-        SetSimple(simpleProperties, "Id", record.Id, typeof(string));
-        SetSimple(simpleProperties, "Type", record.Type, typeof(string));
-        if (includeLegacyEndpointState)
-        {
-            SetSimple(simpleProperties, "StartNodeId", record.StartNodeId, typeof(string));
-            SetSimple(simpleProperties, "EndNodeId", record.EndNodeId, typeof(string));
-            SetSimple(simpleProperties, "Direction", record.Direction, typeof(RelationshipDirection));
-        }
-        else if (typeof(Relationship).IsAssignableFrom(actualType))
+        // Record identity and endpoint keys are never materialized. Transitional direct-ID writes
+        // already retain their legacy members as modeled properties; bare relationship queries
+        // deliberately omit the endpoint tuple.
+        if (!includeLegacyEndpointState && typeof(Relationship).IsAssignableFrom(actualType))
         {
             simpleProperties.Remove(nameof(IRelationship.StartNodeId));
             simpleProperties.Remove(nameof(IRelationship.EndNodeId));
@@ -248,7 +245,7 @@ internal sealed class EntityReader(EntityFactory entityFactory)
 
     private EntityInfo? ChildInfo(RelationshipRecord edge, StoreState state)
     {
-        if (edge.EndKey is not { } childKey || !state.Nodes.TryGetValue(childKey, out var child))
+        if (!state.Nodes.TryGetValue(edge.EndKey, out var child))
         {
             return null;
         }
@@ -294,8 +291,4 @@ internal sealed class EntityReader(EntityFactory entityFactory)
             new SimpleCollection([.. labels.Select(l => new SimpleValue(l, typeof(string)))], typeof(string)));
     }
 
-    private static void SetSimple(Dictionary<string, Property> properties, string name, object value, Type type)
-    {
-        properties[name] = new Property(PropertyInfo: null!, name, IsNullable: false, new SimpleValue(value, type));
-    }
 }

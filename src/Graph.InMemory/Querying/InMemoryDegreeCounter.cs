@@ -18,10 +18,15 @@ internal static class InMemoryDegreeCounter
     internal static int Count(
         StoreState state,
         INode node,
+        IReadOnlyDictionary<object, Guid> nodeKeys,
         Type relationshipType,
         GraphTraversalDirection direction)
     {
-        var id = node.Id;
+        if (!nodeKeys.TryGetValue(node, out var key))
+        {
+            throw new GraphException("The in-memory degree projection lost its private node binding.");
+        }
+
         var count = 0;
 
         foreach (var relationship in state.Relationships.Values)
@@ -40,10 +45,10 @@ internal static class InMemoryDegreeCounter
             // RelationshipDirection.Incoming. An undirected Cypher pattern returns a self-loop once.
             count += direction switch
             {
-                GraphTraversalDirection.Outgoing => relationship.PhysicalSourceId == id ? 1 : 0,
-                GraphTraversalDirection.Incoming => relationship.PhysicalTargetId == id ? 1 : 0,
+                GraphTraversalDirection.Outgoing => relationship.PhysicalSourceKey == key ? 1 : 0,
+                GraphTraversalDirection.Incoming => relationship.PhysicalTargetKey == key ? 1 : 0,
                 GraphTraversalDirection.Both =>
-                    relationship.PhysicalSourceId == id || relationship.PhysicalTargetId == id ? 1 : 0,
+                    relationship.PhysicalSourceKey == key || relationship.PhysicalTargetKey == key ? 1 : 0,
                 _ => throw new ArgumentOutOfRangeException(nameof(direction)),
             };
         }

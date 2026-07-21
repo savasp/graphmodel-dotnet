@@ -19,4 +19,14 @@ internal interface IGraphCommandExecutionContext
         GraphMutationModel mutation,
         Expression mutationExpression,
         CancellationToken cancellationToken);
+
+    Task CreateRelationshipAsync(
+        GraphCommandEndpoint source,
+        IRelationship relationship,
+        GraphCommandEndpoint target,
+        RelationshipDirection direction,
+        GraphRelationshipCreationMode mode,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException(
+            "The graph provider does not implement native-bound relationship creation.");
 }

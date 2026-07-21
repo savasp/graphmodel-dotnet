@@ -12,22 +12,22 @@ using System.Collections.Immutable;
 /// </summary>
 /// <param name="Nodes">All node records keyed by store-internal key.</param>
 /// <param name="Relationships">All relationship records (user relationships and internal
-/// complex-property edges) keyed by relationship id.</param>
+/// complex-property edges) keyed by private record key.</param>
 internal sealed record StoreState(
     ImmutableDictionary<Guid, NodeRecord> Nodes,
-    ImmutableDictionary<string, RelationshipRecord> Relationships)
+    ImmutableDictionary<Guid, RelationshipRecord> Relationships)
 {
     /// <summary>Gets the empty store.</summary>
     public static StoreState Empty { get; } = new(
         ImmutableDictionary<Guid, NodeRecord>.Empty,
-        ImmutableDictionary<string, RelationshipRecord>.Empty);
+        ImmutableDictionary<Guid, RelationshipRecord>.Empty);
 
     /// <summary>
     /// Gets the user-deletable root records (everything except decomposed complex-property value
     /// nodes) carrying the given caller-visible id.
     /// </summary>
     public IReadOnlyList<NodeRecord> RootNodes(string id) =>
-        [.. Nodes.Values.Where(n => !n.IsComplexValue && n.Id == id)];
+        [.. Nodes.Values.Where(n => !n.IsComplexValue && n.CompatibilityId == id)];
 
     /// <summary>
     /// Gets the internal complex-property edges leaving the given parent record, for the given
@@ -46,19 +46,13 @@ internal sealed record StoreState(
         Relationships.Values.Where(r => r.IsComplexProperty && r.StartKey == parentKey);
 
     /// <summary>
-    /// Adds a node together with its decomposed complex-property subtree. Throws when a node
-    /// with the same id and primary label already exists.
+    /// Adds a node together with its decomposed complex-property subtree.
     /// </summary>
     public StoreState AddNode(
         NodeRecord node,
         IReadOnlyList<NodeRecord> complexValueNodes,
         IReadOnlyList<RelationshipRecord> complexEdges)
     {
-        if (Nodes.Values.Any(n => n.Id == node.Id && string.Equals(n.Label, node.Label, StringComparison.Ordinal)))
-        {
-            throw new GraphException($"A node with ID {node.Id} and label {node.Label} already exists.");
-        }
-
         var nodes = Nodes.Add(node.Key, node);
         foreach (var child in complexValueNodes)
         {
@@ -68,27 +62,27 @@ internal sealed record StoreState(
         var relationships = Relationships;
         foreach (var edge in complexEdges)
         {
-            relationships = relationships.Add(edge.Id, edge);
+            relationships = relationships.Add(edge.Key, edge);
         }
 
         return new StoreState(nodes, relationships);
     }
 
     /// <summary>
-    /// Replaces the node with the given id and primary label: its simple properties are replaced
-    /// and its complex-property subtree is deleted and recreated. User relationships attached to
-    /// the node are untouched. Throws <see cref="EntityNotFoundException"/> when no such node
-    /// exists.
+    /// Replaces the node selected by private record key: its simple properties are replaced and
+    /// its complex-property subtree is deleted and recreated. User relationships attached to the
+    /// node are untouched. Throws <see cref="EntityNotFoundException"/> when the selected record
+    /// no longer exists.
     /// </summary>
     public StoreState UpdateNode(
         NodeRecord replacement,
         IReadOnlyList<NodeRecord> complexValueNodes,
         IReadOnlyList<RelationshipRecord> complexEdges)
     {
-        var existing = Nodes.Values.FirstOrDefault(n =>
-            !n.IsComplexValue && n.Id == replacement.Id &&
-            string.Equals(n.Label, replacement.Label, StringComparison.Ordinal))
-            ?? throw new EntityNotFoundException($"Node with ID {replacement.Id} not found for update");
+        if (!Nodes.TryGetValue(replacement.Key, out var existing) || existing.IsComplexValue)
+        {
+            throw new EntityNotFoundException("The node selected for update no longer exists.");
+        }
 
         var state = RemoveComplexSubtree(existing.Key);
         var nodes = state.Nodes.Remove(existing.Key).Add(replacement.Key, replacement);
@@ -100,18 +94,17 @@ internal sealed record StoreState(
         var relationships = state.Relationships;
         foreach (var edge in complexEdges)
         {
-            relationships = relationships.Add(edge.Id, edge);
+            relationships = relationships.Add(edge.Key, edge);
         }
 
         return new StoreState(nodes, relationships);
     }
 
     /// <summary>
-    /// Deletes the node with the given id, applying the public cascade contract: missing node
-    /// throws <see cref="EntityNotFoundException"/>, the same id under more than one label
-    /// throws and leaves everything untouched, user relationships block the delete unless
-    /// <paramref name="cascadeDelete"/> is set, and the complex-property subtree always goes
-    /// with the node.
+    /// Deletes the node resolved by the transitional public-ID API, applying the public cascade
+    /// contract: a missing or ambiguous ID throws and leaves everything untouched, user
+    /// relationships block the delete unless <paramref name="cascadeDelete"/> is set, and the
+    /// complex-property subtree always goes with the node.
     /// </summary>
     public StoreState DeleteNode(string id, bool cascadeDelete)
     {
@@ -129,7 +122,7 @@ internal sealed record StoreState(
 
         var root = roots[0];
         var userRelationships = Relationships.Values
-            .Where(r => !r.IsComplexProperty && (r.StartNodeId == id || r.EndNodeId == id))
+            .Where(r => !r.IsComplexProperty && (r.StartKey == root.Key || r.EndKey == root.Key))
             .ToList();
 
         if (userRelationships.Count > 0 && !cascadeDelete)
@@ -142,7 +135,7 @@ internal sealed record StoreState(
         var relationships = state.Relationships;
         foreach (var relationship in userRelationships)
         {
-            relationships = relationships.Remove(relationship.Id);
+            relationships = relationships.Remove(relationship.Key);
         }
 
         return new StoreState(state.Nodes.Remove(root.Key), relationships);
@@ -157,10 +150,10 @@ internal sealed record StoreState(
             ? node
             : throw new GraphException("A frozen in-memory node target no longer exists in the transaction view."))
             .ToArray();
-        var targetIds = targets.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
+        var targetKeys = targets.Select(node => node.Key).ToHashSet();
         var userRelationships = Relationships.Values
             .Where(relationship => !relationship.IsComplexProperty &&
-                (targetIds.Contains(relationship.StartNodeId) || targetIds.Contains(relationship.EndNodeId)))
+                (targetKeys.Contains(relationship.StartKey) || targetKeys.Contains(relationship.EndKey)))
             .ToArray();
         if (!cascadeDelete && userRelationships.Length > 0)
         {
@@ -179,17 +172,17 @@ internal sealed record StoreState(
         var relationships = state.Relationships;
         if (cascadeDelete)
         {
-            relationships = relationships.RemoveRange(userRelationships.Select(relationship => relationship.Id));
+            relationships = relationships.RemoveRange(userRelationships.Select(relationship => relationship.Key));
         }
 
         return new StoreState(nodes, relationships);
     }
 
     /// <summary>Deletes one frozen set of relationships addressed by private record key.</summary>
-    public StoreState DeleteRelationships(IReadOnlyCollection<string> keys)
+    public StoreState DeleteRelationships(IReadOnlyCollection<Guid> keys)
     {
         ArgumentNullException.ThrowIfNull(keys);
-        var distinctKeys = keys.Distinct(StringComparer.Ordinal).ToArray();
+        var distinctKeys = keys.Distinct().ToArray();
         if (distinctKeys.Any(key => !Relationships.ContainsKey(key)))
         {
             throw new GraphException("A frozen in-memory relationship target no longer exists in the transaction view.");
@@ -199,41 +192,34 @@ internal sealed record StoreState(
     }
 
     /// <summary>
-    /// Adds a user relationship. Throws when the id already exists or either endpoint does not.
+    /// Adds a relationship whose endpoint keys must already exist.
     /// </summary>
     public StoreState AddRelationship(RelationshipRecord relationship)
     {
-        if (Relationships.ContainsKey(relationship.Id))
+        if (!Nodes.TryGetValue(relationship.StartKey, out var start) || start.IsComplexValue)
         {
-            throw new GraphException($"A relationship with ID {relationship.Id} already exists.");
+            throw new GraphException("Cannot create a relationship because its source endpoint does not exist.");
         }
 
-        if (RootNodes(relationship.StartNodeId).Count == 0)
+        if (!Nodes.TryGetValue(relationship.EndKey, out var end) || end.IsComplexValue)
         {
-            throw new GraphException(
-                $"Cannot create relationship {relationship.Id}: start node {relationship.StartNodeId} does not exist.");
+            throw new GraphException("Cannot create a relationship because its target endpoint does not exist.");
         }
 
-        if (RootNodes(relationship.EndNodeId).Count == 0)
-        {
-            throw new GraphException(
-                $"Cannot create relationship {relationship.Id}: end node {relationship.EndNodeId} does not exist.");
-        }
-
-        return this with { Relationships = Relationships.Add(relationship.Id, relationship) };
+        return this with { Relationships = Relationships.Add(relationship.Key, relationship) };
     }
 
     /// <summary>
-    /// Replaces the properties of the user relationship with the given id. The stored endpoints,
-    /// type, concrete CLR type, and direction are identity: an identity change throws, and
-    /// endpoints are kept as stored. Throws <see cref="EntityNotFoundException"/> when no such
-    /// relationship exists.
+    /// Replaces the properties of the user relationship selected by private record key. The
+    /// stored endpoints, type, concrete CLR type, and direction are immutable: changing one
+    /// throws. Throws <see cref="EntityNotFoundException"/> when the selected record no longer
+    /// exists.
     /// </summary>
     public StoreState UpdateRelationship(RelationshipRecord replacement)
     {
-        if (!Relationships.TryGetValue(replacement.Id, out var existing) || existing.IsComplexProperty)
+        if (!Relationships.TryGetValue(replacement.Key, out var existing) || existing.IsComplexProperty)
         {
-            throw new EntityNotFoundException($"Relationship with ID {replacement.Id} not found for update");
+            throw new EntityNotFoundException("The relationship selected for update no longer exists.");
         }
 
         if (existing.Direction != replacement.Direction)
@@ -252,22 +238,37 @@ internal sealed record StoreState(
                 $"incoming relationship type is '{replacement.Type}' and CLR type is '{replacement.ActualType?.FullName}'.");
         }
 
+        if (existing.StartKey != replacement.StartKey || existing.EndKey != replacement.EndKey)
+        {
+            throw new GraphException(
+                "Relationship endpoints cannot be changed on update; delete and recreate the relationship.");
+        }
+
         var updated = existing with { Properties = replacement.Properties };
-        return this with { Relationships = Relationships.SetItem(existing.Id, updated) };
+        return this with { Relationships = Relationships.SetItem(existing.Key, updated) };
     }
 
     /// <summary>
-    /// Deletes the user relationship with the given id. Throws
-    /// <see cref="EntityNotFoundException"/> when no such relationship exists.
+    /// Deletes the user relationship resolved by the transitional public-ID API. A missing or
+    /// ambiguous ID throws and leaves the state untouched.
     /// </summary>
     public StoreState DeleteRelationship(string id)
     {
-        if (!Relationships.TryGetValue(id, out var existing) || existing.IsComplexProperty)
+        var matches = Relationships.Values
+            .Where(relationship => !relationship.IsComplexProperty && relationship.CompatibilityId == id)
+            .ToArray();
+        if (matches.Length == 0)
         {
             throw new EntityNotFoundException($"Relationship with ID {id} not found for deletion");
         }
 
-        return this with { Relationships = Relationships.Remove(id) };
+        if (matches.Length > 1)
+        {
+            throw new GraphException(
+                $"Relationship ID {id} matches {matches.Length} relationships; refusing an ambiguous delete.");
+        }
+
+        return this with { Relationships = Relationships.Remove(matches[0].Key) };
     }
 
     private StoreState RemoveComplexSubtree(Guid parentKey)
@@ -282,11 +283,11 @@ internal sealed record StoreState(
             var key = pending.Pop();
             foreach (var edge in relationships.Values.Where(r => r.IsComplexProperty && r.StartKey == key).ToList())
             {
-                relationships = relationships.Remove(edge.Id);
-                if (edge.EndKey is { } childKey && nodes.ContainsKey(childKey))
+                relationships = relationships.Remove(edge.Key);
+                if (nodes.ContainsKey(edge.EndKey))
                 {
-                    nodes = nodes.Remove(childKey);
-                    pending.Push(childKey);
+                    nodes = nodes.Remove(edge.EndKey);
+                    pending.Push(edge.EndKey);
                 }
             }
         }

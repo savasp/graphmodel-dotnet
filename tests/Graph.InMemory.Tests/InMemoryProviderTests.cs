@@ -134,6 +134,22 @@ public sealed class InMemoryProviderTests
     }
 
     [Fact]
+    public async Task WholeEntityOrderingIsRejected()
+    {
+        await using var store = new InMemoryGraphStore();
+        await store.Graph.CreateNodeAsync(
+            new Person { FirstName = "unordered" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphQueryTranslationException>(() =>
+            store.Graph.Nodes<Person>()
+                .OrderBy(person => person)
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("Whole-entity ordering", exception.Message);
+    }
+
+    [Fact]
     public void Harness_DeclaresOnlyImplementedOptionalCapabilities()
     {
         var capabilities = new InMemoryHarness().Capabilities;
@@ -152,7 +168,7 @@ public sealed class InMemoryProviderTests
         // Scalar-key aggregation grouping runs natively over compiled grouping lambdas; see #306.
         Assert.True(capabilities.Has(GraphCapability.GroupByAggregation));
         Assert.False(capabilities.Has(GraphCapability.NestedTransactions));
-        Assert.True(capabilities.Has(GraphCapability.OrderByEntity));
+        Assert.False(capabilities.Has(GraphCapability.OrderByEntity));
         Assert.True(capabilities.Has(GraphCapability.ShortestPath));
         Assert.True(capabilities.Has(GraphCapability.SetOperations));
     }
