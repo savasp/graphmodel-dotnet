@@ -45,10 +45,8 @@ public sealed class SchemaInitializationTests : Neo4jTest
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await DropManagedIndexesAsync();
-        await Graph.CreateNodeAsync(
-            new Class1 { Property1 = "managed rebuild token" },
-            null,
-            cancellationToken);
+        var indexedNode = new Class1 { Property1 = "managed rebuild token" };
+        await Graph.CreateNodeAsync(indexedNode, null, cancellationToken);
 
         const string staleIndexName = "idx_retiredmodel_value";
         const string externalRangeIndexName = "external_range_index";
@@ -88,6 +86,8 @@ public sealed class SchemaInitializationTests : Neo4jTest
         var recreatedIndexes = await GetManagedIndexNamesAsync();
         var afterIndexIds = await GetIndexIdsAsync();
         Assert.All(configuredIndexes, indexName => Assert.NotEqual(beforeIndexIds[indexName], afterIndexIds[indexName]));
+        var indexStates = await GetIndexStatesAsync();
+        Assert.All(configuredIndexes, indexName => Assert.Equal("ONLINE", indexStates[indexName]));
         Assert.Equal(beforeIndexIds[staleIndexName], afterIndexIds[staleIndexName]);
         Assert.Equal(beforeIndexIds[externalRangeIndexName], afterIndexIds[externalRangeIndexName]);
         Assert.Equal(beforeIndexIds[externalFullTextIndexName], afterIndexIds[externalFullTextIndexName]);
@@ -99,6 +99,42 @@ public sealed class SchemaInitializationTests : Neo4jTest
         var fullTextLabels = await GetIndexLabelsOrTypesAsync("node_fulltext_index");
         Assert.DoesNotContain("StaleLabel", fullTextLabels);
         Assert.Contains("Class1", fullTextLabels);
+
+        var searchResults = await Graph.SearchNodes<Class1>("managed rebuild token").ToListAsync(cancellationToken);
+        Assert.Contains(indexedNode.Id, searchResults.Select(node => node.Id));
+    }
+
+    [Theory]
+    [InlineData(
+        "idx_configtestperson_firstname",
+        "CREATE INDEX idx_configtestperson_firstname FOR (n:ExternalLabel) ON (n.ExternalProperty)")]
+    [InlineData(
+        "node_fulltext_index",
+        "CREATE FULLTEXT INDEX node_fulltext_index FOR ()-[r:ExternalType]-() ON EACH [r.ExternalProperty]")]
+    public async Task RecreateManagedIndexesAsync_SameNamedIncompatibleIndex_PreservesIndexAndFails(
+        string indexName,
+        string createCypher)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await DropManagedSchemaAsync();
+
+        try
+        {
+            await Graph.CreateNodeAsync(new Class1(), null, cancellationToken);
+            var escapedIndexName = CypherIdentifier.Escape(indexName, "index name");
+            await ExecuteSchemaCommandAsync($"DROP INDEX {escapedIndexName}");
+            await ExecuteSchemaCommandAsync(createCypher);
+            var externalIndexId = (await GetIndexIdsAsync())[indexName];
+
+            await Assert.ThrowsAsync<GraphException>(
+                () => Graph.RecreateManagedIndexesAsync(cancellationToken));
+
+            Assert.Equal(externalIndexId, (await GetIndexIdsAsync())[indexName]);
+        }
+        finally
+        {
+            await DropManagedSchemaAsync();
+        }
     }
 
     [Fact]
@@ -339,6 +375,21 @@ public sealed class SchemaInitializationTests : Neo4jTest
         return records.ToDictionary(
             record => record["name"].As<string>(),
             record => record["id"].As<long>(),
+            StringComparer.Ordinal);
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> GetIndexStatesAsync()
+    {
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
+        var neo4jTransaction = (GraphTransaction)transaction;
+
+        const string cypher = "SHOW INDEXES YIELD name, state RETURN name, state";
+        var result = await neo4jTransaction.Transaction.RunAsync(cypher);
+        var records = await result.ToListAsync(TestContext.Current.CancellationToken);
+
+        return records.ToDictionary(
+            record => record["name"].As<string>(),
+            record => record["state"].As<string>(),
             StringComparer.Ordinal);
     }
 

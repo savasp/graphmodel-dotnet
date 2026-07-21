@@ -79,8 +79,9 @@ same-named incompatible range indexes, and every uniqueness-backed index are pre
 
 Calls on one graph instance are serialized. Independent equivalent callers converge on the same
 installed definitions through metadata-checked conflict handling. Callers using different models
-against the same database must coordinate their maintenance operations. Cancellation or failure
-can leave only a positively owned index absent; retrying the operation restores the configured
+against the same database must coordinate their maintenance operations. Successful completion
+means every configured managed index is online and usable. Cancellation or failure can leave only
+a positively owned index absent or not yet online; retrying the operation restores the configured
 managed set without expanding the ownership boundary.
 
 ## 📚 Documentation

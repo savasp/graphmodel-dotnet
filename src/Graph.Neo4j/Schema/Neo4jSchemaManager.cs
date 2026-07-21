@@ -150,6 +150,8 @@ internal class Neo4jSchemaManager
                     cancellationToken).ConfigureAwait(false);
             }
 
+            await WaitForManagedIndexesAsync(configuredIndexes, cancellationToken).ConfigureAwait(false);
+
             _logger.LogInformationNeo4jSchemaManager140();
         }
         catch (OperationCanceledException)
@@ -1112,6 +1114,33 @@ internal class Neo4jSchemaManager
             },
             cancellationToken).ConfigureAwait(false);
         _logger.LogInformationNeo4jSchemaManager695(managedIndexes.Count);
+    }
+
+    private async Task WaitForManagedIndexesAsync(
+        IReadOnlyList<Neo4jSchemaObjectCreation> configuredIndexes,
+        CancellationToken cancellationToken)
+    {
+        if (configuredIndexes.Count == 0)
+        {
+            return;
+        }
+
+        var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        await using var sessionLease = session.ConfigureAwait(false);
+        var executionTask = session.ExecuteReadAsync(
+            async transaction =>
+            {
+                foreach (var configuredIndex in configuredIndexes)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = await transaction.RunAsync(
+                        "CALL db.awaitIndex($indexName)",
+                        new { indexName = configuredIndex.Descriptor.Name }).ConfigureAwait(false);
+                    await result.ConsumeAsync().ConfigureAwait(false);
+                }
+            });
+
+        await executionTask.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     // Labels, relationship types, and constraint/index names come from user model metadata;

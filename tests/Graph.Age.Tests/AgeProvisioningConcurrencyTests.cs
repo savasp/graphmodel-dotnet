@@ -35,6 +35,33 @@ public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graph
     private const int IndependentStoreCount = 4;
 
     [Fact]
+    public async Task RecreateManagedIndexesAsync_OnUnprovisionedStore_DoesNotProvisionGraph()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var graphName = graphCleanup.CreateGraphName("cvoya_managed_index_noop");
+        await using var dataSource = CreateDataSource();
+        await using var store = new AgeGraphStore(dataSource, graphName);
+
+        try
+        {
+            Assert.Equal(0, await GraphCountAsync(dataSource, graphName, cancellationToken));
+            Assert.False(store.Graph.SchemaRegistry.IsInitialized);
+
+            await store.Graph.RecreateManagedIndexesAsync(cancellationToken);
+
+            Assert.Equal(0, await GraphCountAsync(dataSource, graphName, cancellationToken));
+            Assert.False(store.Graph.SchemaRegistry.IsInitialized);
+        }
+        finally
+        {
+            if (await GraphCountAsync(dataSource, graphName, CancellationToken.None) != 0)
+            {
+                graphCleanup.MarkGraphCreated(graphName);
+            }
+        }
+    }
+
+    [Fact]
     public async Task ConcurrentFirstUse_OnOneStore_RunsOneProvisioningSequence()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

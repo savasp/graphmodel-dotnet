@@ -322,8 +322,9 @@ public interface IGraph
     /// </summary>
     /// <remarks>
     /// Managed-index ownership is provider-specific. A provider with no managed index artifacts
-    /// completes successfully without issuing schema DDL. Cancellation or a provider failure may
-    /// leave a managed artifact absent until this method is retried, but must never broaden the
+    /// completes successfully without issuing schema DDL. Successful completion means every
+    /// configured managed index is usable. Cancellation or a provider failure may leave a managed
+    /// artifact absent or not yet usable until this method is retried, but must never broaden the
     /// operation to an index whose ownership is unproven.
     /// </remarks>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
