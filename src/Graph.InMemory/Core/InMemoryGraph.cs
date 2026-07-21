@@ -5,6 +5,7 @@ namespace Cvoya.Graph.InMemory;
 
 using Cvoya.Graph.InMemory.Querying;
 using Cvoya.Graph.Querying;
+using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -206,8 +207,9 @@ internal sealed class InMemoryGraph : IGraph
         GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
         _validator.ValidateRelationship(relationship);
 
-        var record = EntityWriter.DecomposeRelationship(_entityFactory.Serialize(relationship), relationship);
-        var constraints = ConstraintChecker.From(_schemaRegistry.GetRelationshipSchema(record.Type));
+        var entity = _entityFactory.Serialize(relationship);
+        var constraints = ConstraintChecker.From(_schemaRegistry.GetRelationshipSchema(entity.Label));
+        RelationshipRecord? record = null;
         await TransactionRunner.ExecuteAsync(
             _store,
             transaction,
@@ -215,19 +217,30 @@ internal sealed class InMemoryGraph : IGraph
             {
                 tx.Apply(state =>
                 {
-                    if (constraints is not null)
+                    if (record is null)
                     {
-                        ConstraintChecker.CheckRelationship(state, record, constraints);
+                        var start = ResolveLegacyEndpoint(state, relationship.StartNodeId, "start");
+                        var end = ResolveLegacyEndpoint(state, relationship.EndNodeId, "end");
+                        record = EntityWriter.DecomposeRelationship(
+                            entity,
+                            start.Key,
+                            end.Key,
+                            LegacyRelationshipEndpoints.LegacyDirection(relationship));
                     }
 
-                    return state.AddRelationship(record);
+                    if (constraints is not null)
+                    {
+                        ConstraintChecker.CheckRelationship(state, record!, constraints);
+                    }
+
+                    return state.AddRelationship(record!);
                 });
                 return true;
             },
             $"Failed to create relationship of type {typeof(R).Name}",
             cancellationToken).ConfigureAwait(false);
 
-        RuntimeMetadata.PopulateRelationshipType(relationship, record.Type);
+        RuntimeMetadata.PopulateRelationshipType(relationship, record!.Type);
         _logger.LogDebugInMemoryGraph225(relationship.Id, typeof(R).Name);
     }
 
@@ -258,7 +271,11 @@ internal sealed class InMemoryGraph : IGraph
 
         var decomposedSource = EntityWriter.DecomposeNode(_entityFactory.Serialize(source));
         var decomposedTarget = EntityWriter.DecomposeNode(_entityFactory.Serialize(target));
-        var relationshipRecord = EntityWriter.DecomposeRelationship(_entityFactory.Serialize(relationship), relationship);
+        var relationshipRecord = EntityWriter.DecomposeRelationship(
+            _entityFactory.Serialize(relationship),
+            decomposedSource.Node.Key,
+            decomposedTarget.Node.Key,
+            LegacyRelationshipEndpoints.LegacyDirection(relationship));
 
         var sourceConstraints = ConstraintChecker.From(_schemaRegistry.GetNodeSchema(decomposedSource.Node.Label));
         var targetConstraints = ConstraintChecker.From(_schemaRegistry.GetNodeSchema(decomposedTarget.Node.Label));
@@ -274,12 +291,12 @@ internal sealed class InMemoryGraph : IGraph
             {
                 tx.Apply(state =>
                 {
-                    state = AddOrMergeEndpoint(
+                    (state, var sourceKey) = AddOrMergeEndpoint(
                         state,
                         decomposedSource,
                         sourceConstraints,
                         createMissingEndpoints);
-                    state = AddOrMergeEndpoint(
+                    (state, var targetKey) = AddOrMergeEndpoint(
                         state,
                         decomposedTarget,
                         targetConstraints,
@@ -287,10 +304,14 @@ internal sealed class InMemoryGraph : IGraph
 
                     if (relationshipConstraints is not null)
                     {
-                        ConstraintChecker.CheckRelationship(state, relationshipRecord, relationshipConstraints);
+                        ConstraintChecker.CheckRelationship(
+                            state,
+                            relationshipRecord with { StartKey = sourceKey, EndKey = targetKey },
+                            relationshipConstraints);
                     }
 
-                    return state.AddRelationship(relationshipRecord);
+                    return state.AddRelationship(
+                        relationshipRecord with { StartKey = sourceKey, EndKey = targetKey });
                 });
                 return true;
             },
@@ -302,7 +323,7 @@ internal sealed class InMemoryGraph : IGraph
         RuntimeMetadata.PopulateRelationshipType(relationship, relationshipRecord.Type);
     }
 
-    private static StoreState AddOrMergeEndpoint(
+    private static (StoreState State, Guid Key) AddOrMergeEndpoint(
         StoreState state,
         EntityWriter.DecomposedNode decomposed,
         ConstraintChecker.Constraints? constraints,
@@ -310,9 +331,25 @@ internal sealed class InMemoryGraph : IGraph
     {
         // MERGE-by-id semantics: if the endpoint already exists, reuse it as-is (no clobber,
         // no duplicate, no new complex-property subtree).
-        if (createMissingEndpoints && state.RootNodes(decomposed.Node.Id).Count > 0)
+        var compatibilityId = decomposed.Node.CompatibilityId;
+        var existing = compatibilityId is not null
+            ? state.RootNodes(compatibilityId)
+            : [];
+        if (createMissingEndpoints && existing.Count > 0)
         {
-            return state;
+            if (existing.Count > 1)
+            {
+                throw new GraphException(
+                    $"Node ID {compatibilityId} matches {existing.Count} nodes; refusing an ambiguous merge.");
+            }
+
+            return (state, existing[0].Key);
+        }
+
+        if (!createMissingEndpoints && existing.Count > 0)
+        {
+            throw new GraphException(
+                $"A node with ID {compatibilityId} already exists for this legacy create-only operation.");
         }
 
         if (constraints is not null)
@@ -320,7 +357,179 @@ internal sealed class InMemoryGraph : IGraph
             ConstraintChecker.CheckNode(state, decomposed.Node, constraints);
         }
 
-        return state.AddNode(decomposed.Node, decomposed.ComplexValueNodes, decomposed.ComplexEdges);
+        return (
+            state.AddNode(decomposed.Node, decomposed.ComplexValueNodes, decomposed.ComplexEdges),
+            decomposed.Node.Key);
+    }
+
+    internal async Task CreateCommandRelationshipAsync(
+        InMemoryTransaction transaction,
+        GraphCommandEndpoint source,
+        IRelationship relationship,
+        GraphCommandEndpoint target,
+        RelationshipDirection direction,
+        GraphRelationshipCreationMode mode,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(relationship);
+        ArgumentNullException.ThrowIfNull(target);
+        if (!Enum.IsDefined(direction))
+        {
+            throw new ArgumentOutOfRangeException(nameof(direction));
+        }
+
+        if (!Enum.IsDefined(mode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mode));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await _schemaRegistry.InitializeAsync(cancellationToken).ConfigureAwait(false);
+
+        var newSource = PrepareNewEndpoint(source);
+        var newTarget = mode == GraphRelationshipCreationMode.SelfLoop
+            ? PrepareSelfLoopTarget(source, target, newSource)
+            : PrepareNewEndpoint(target);
+        var sourceKey = EndpointKey(source, newSource, GraphEndpointRole.Source);
+        var targetKey = mode == GraphRelationshipCreationMode.SelfLoop
+            ? sourceKey
+            : EndpointKey(target, newTarget, GraphEndpointRole.Target);
+
+        relationship.EnsureNoReferenceCycle();
+        relationship.EnsureComplexPropertyDepth();
+        _validator.ValidateRelationship(relationship);
+        var relationshipRecord = EntityWriter.DecomposeRelationship(
+            _entityFactory.Serialize(relationship),
+            sourceKey,
+            targetKey,
+            mode == GraphRelationshipCreationMode.SelfLoop
+                ? RelationshipDirection.Outgoing
+                : direction);
+        var relationshipConstraints = ConstraintChecker.From(
+            _schemaRegistry.GetRelationshipSchema(relationshipRecord.Type));
+        var sourceConstraints = newSource is null
+            ? null
+            : ConstraintChecker.From(_schemaRegistry.GetNodeSchema(newSource.Node.Label));
+        var targetConstraints = newTarget is null || ReferenceEquals(newSource, newTarget)
+            ? null
+            : ConstraintChecker.From(_schemaRegistry.GetNodeSchema(newTarget.Node.Label));
+
+        transaction.Apply(state =>
+        {
+            state = AddCommandEndpoint(
+                state,
+                source,
+                newSource,
+                sourceConstraints,
+                GraphEndpointRole.Source);
+            if (mode != GraphRelationshipCreationMode.SelfLoop)
+            {
+                state = AddCommandEndpoint(
+                    state,
+                    target,
+                    newTarget,
+                    targetConstraints,
+                    GraphEndpointRole.Target);
+            }
+
+            if (relationshipConstraints is not null)
+            {
+                ConstraintChecker.CheckRelationship(state, relationshipRecord, relationshipConstraints);
+            }
+
+            return state.AddRelationship(relationshipRecord);
+        });
+
+        if (source is NewGraphCommandEndpoint sourceEndpoint)
+        {
+            RuntimeMetadata.PopulateNodeLabels(sourceEndpoint.Node, newSource!.Node.Labels);
+        }
+
+        if (mode != GraphRelationshipCreationMode.SelfLoop && target is NewGraphCommandEndpoint targetEndpoint)
+        {
+            RuntimeMetadata.PopulateNodeLabels(targetEndpoint.Node, newTarget!.Node.Labels);
+        }
+
+        RuntimeMetadata.PopulateRelationshipType(relationship, relationshipRecord.Type);
+    }
+
+    private EntityWriter.DecomposedNode? PrepareNewEndpoint(GraphCommandEndpoint endpoint)
+    {
+        if (endpoint is not NewGraphCommandEndpoint newEndpoint)
+        {
+            return null;
+        }
+
+        ArgumentNullException.ThrowIfNull(newEndpoint.Node);
+        newEndpoint.Node.EnsureNoReferenceCycle();
+        newEndpoint.Node.EnsureComplexPropertyDepth();
+        _validator.ValidateNode(newEndpoint.Node);
+        return EntityWriter.DecomposeNode(_entityFactory.Serialize(newEndpoint.Node));
+    }
+
+    private static EntityWriter.DecomposedNode? PrepareSelfLoopTarget(
+        GraphCommandEndpoint source,
+        GraphCommandEndpoint target,
+        EntityWriter.DecomposedNode? newSource)
+    {
+        if (source is not NewGraphCommandEndpoint sourceEndpoint ||
+            target is not NewGraphCommandEndpoint targetEndpoint ||
+            !ReferenceEquals(sourceEndpoint.Node, targetEndpoint.Node) ||
+            newSource is null)
+        {
+            throw new GraphException(
+                "Explicit self-loop creation requires the same new node as both endpoint operands.");
+        }
+
+        return newSource;
+    }
+
+    private static Guid EndpointKey(
+        GraphCommandEndpoint endpoint,
+        EntityWriter.DecomposedNode? newEndpoint,
+        GraphEndpointRole role) => endpoint switch
+        {
+            SelectedGraphCommandEndpoint { Element.Kind: GraphElementKind.Node, Element.NativeIdentity: Guid key } => key,
+            NewGraphCommandEndpoint when newEndpoint is not null => newEndpoint.Node.Key,
+            SelectedGraphCommandEndpoint => throw new GraphException(
+                $"The {role.ToString().ToLowerInvariant()} endpoint selection is not a private node binding."),
+            _ => throw new GraphException(
+                $"The {role.ToString().ToLowerInvariant()} endpoint operand is invalid."),
+        };
+
+    private static StoreState AddCommandEndpoint(
+        StoreState state,
+        GraphCommandEndpoint endpoint,
+        EntityWriter.DecomposedNode? newEndpoint,
+        ConstraintChecker.Constraints? constraints,
+        GraphEndpointRole role)
+    {
+        if (endpoint is SelectedGraphCommandEndpoint selected)
+        {
+            var key = EndpointKey(selected, newEndpoint: null, role);
+            if (!state.Nodes.TryGetValue(key, out var record) || record.IsComplexValue)
+            {
+                throw new GraphException(
+                    $"The selected {role.ToString().ToLowerInvariant()} endpoint no longer exists in the transaction view.");
+            }
+
+            return state;
+        }
+
+        if (endpoint is not NewGraphCommandEndpoint || newEndpoint is null)
+        {
+            throw new GraphException(
+                $"The {role.ToString().ToLowerInvariant()} endpoint operand is invalid.");
+        }
+
+        if (constraints is not null)
+        {
+            ConstraintChecker.CheckNode(state, newEndpoint.Node, constraints);
+        }
+
+        return state.AddNode(newEndpoint.Node, newEndpoint.ComplexValueNodes, newEndpoint.ComplexEdges);
     }
 
     public async Task UpdateNodeAsync<N>(
@@ -354,12 +563,17 @@ internal sealed class InMemoryGraph : IGraph
             {
                 tx.Apply(state =>
                 {
+                    var existing = ResolveLegacyNodeForUpdate(state, node.Id, decomposed.Node.Label);
+                    var replacement = decomposed.WithRootKey(existing.Key);
                     if (constraints is not null)
                     {
-                        ConstraintChecker.CheckNode(state, decomposed.Node, constraints);
+                        ConstraintChecker.CheckNode(state, replacement.Node, constraints);
                     }
 
-                    return state.UpdateNode(decomposed.Node, decomposed.ComplexValueNodes, decomposed.ComplexEdges);
+                    return state.UpdateNode(
+                        replacement.Node,
+                        replacement.ComplexValueNodes,
+                        replacement.ComplexEdges);
                 });
                 return true;
             },
@@ -389,8 +603,8 @@ internal sealed class InMemoryGraph : IGraph
         GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
         _validator.ValidateRelationship(relationship);
 
-        var record = EntityWriter.DecomposeRelationship(_entityFactory.Serialize(relationship), relationship);
-        var constraints = ConstraintChecker.From(_schemaRegistry.GetRelationshipSchema(record.Type));
+        var entity = _entityFactory.Serialize(relationship);
+        var constraints = ConstraintChecker.From(_schemaRegistry.GetRelationshipSchema(entity.Label));
         await TransactionRunner.ExecuteAsync(
             _store,
             transaction,
@@ -398,6 +612,20 @@ internal sealed class InMemoryGraph : IGraph
             {
                 tx.Apply(state =>
                 {
+                    var existing = ResolveLegacyRelationshipForUpdate(state, relationship.Id);
+
+                    // Endpoints are immutable on update, so the caller-supplied IDs are validated
+                    // against the stored endpoints instead of re-resolved globally: duplicate
+                    // public IDs elsewhere in the graph must not fail an unambiguous property
+                    // update on a keyed record.
+                    EnsureLegacyEndpointUnchanged(state, existing.StartKey, relationship.StartNodeId);
+                    EnsureLegacyEndpointUnchanged(state, existing.EndKey, relationship.EndNodeId);
+                    var record = EntityWriter.DecomposeRelationship(
+                        entity,
+                        existing.StartKey,
+                        existing.EndKey,
+                        LegacyRelationshipEndpoints.LegacyDirection(relationship),
+                        existing.Key);
                     if (constraints is not null)
                     {
                         ConstraintChecker.CheckRelationship(state, record, constraints);
@@ -495,7 +723,7 @@ internal sealed class InMemoryGraph : IGraph
     private static NodeRecord? FindNodeRecord(StoreState state, string id, Type targetType)
     {
         return state.Nodes.Values.FirstOrDefault(record =>
-            record.Id == id &&
+            record.CompatibilityId == id &&
             (targetType == typeof(DynamicNode) ||
              (!record.IsComplexValue &&
               targetType.IsAssignableFrom(EntityReader.ResolveNodeType(record, targetType)))));
@@ -503,11 +731,64 @@ internal sealed class InMemoryGraph : IGraph
 
     private static RelationshipRecord? FindRelationshipRecord(StoreState state, string id, Type targetType)
     {
-        return state.Relationships.TryGetValue(id, out var record) &&
+        return state.Relationships.Values.FirstOrDefault(record =>
+            record.CompatibilityId == id &&
+            !record.IsComplexProperty &&
             (targetType == typeof(DynamicRelationship) ||
-             (!record.IsComplexProperty &&
-              targetType.IsAssignableFrom(EntityReader.ResolveRelationshipType(record, targetType))))
-            ? record
-            : null;
+             targetType.IsAssignableFrom(EntityReader.ResolveRelationshipType(record, targetType))));
+    }
+
+    private static NodeRecord ResolveLegacyEndpoint(StoreState state, string id, string role)
+    {
+        var matches = state.RootNodes(id);
+        return matches.Count switch
+        {
+            0 => throw new GraphException(
+                $"Cannot create relationship: {role} node {id} does not exist."),
+            1 => matches[0],
+            _ => throw new GraphException(
+                $"Cannot create relationship: {role} node ID {id} matches {matches.Count} nodes."),
+        };
+    }
+
+    private static NodeRecord ResolveLegacyNodeForUpdate(StoreState state, string id, string label)
+    {
+        var matches = state.RootNodes(id)
+            .Where(node => string.Equals(node.Label, label, StringComparison.Ordinal))
+            .ToArray();
+        return matches.Length switch
+        {
+            0 => throw new EntityNotFoundException($"Node with ID {id} not found for update"),
+            1 => matches[0],
+            _ => throw new GraphException(
+                $"Node ID {id} and label {label} match {matches.Length} nodes; refusing an ambiguous update."),
+        };
+    }
+
+    private static void EnsureLegacyEndpointUnchanged(StoreState state, Guid storedKey, string requestedId)
+    {
+        if (!string.Equals(state.Nodes[storedKey].CompatibilityId, requestedId, StringComparison.Ordinal))
+        {
+            throw new GraphException(
+                "Relationship endpoints cannot be changed on update; delete and recreate the relationship.");
+        }
+    }
+
+    private static RelationshipRecord ResolveLegacyRelationshipForUpdate(
+        StoreState state,
+        string id)
+    {
+        var matches = state.Relationships.Values
+            .Where(relationship =>
+                !relationship.IsComplexProperty &&
+                relationship.CompatibilityId == id)
+            .ToArray();
+        return matches.Length switch
+        {
+            0 => throw new EntityNotFoundException($"Relationship with ID {id} not found for update"),
+            1 => matches[0],
+            _ => throw new GraphException(
+                $"Relationship ID {id} matches {matches.Length} relationships; refusing an ambiguous update."),
+        };
     }
 }

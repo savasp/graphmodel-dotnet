@@ -134,6 +134,108 @@ public sealed class InMemoryProviderTests
     }
 
     [Fact]
+    public async Task WholeEntityOrderingIsRejected()
+    {
+        await using var store = new InMemoryGraphStore();
+        await store.Graph.CreateNodeAsync(
+            new Person { FirstName = "unordered" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphQueryTranslationException>(() =>
+            store.Graph.Nodes<Person>()
+                .OrderBy(person => person)
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("Whole-entity ordering", exception.Message);
+    }
+
+    [Fact]
+    public async Task GenericRelationshipQueries_ExcludeComplexPropertyMarkerEdges()
+    {
+        await using var store = new InMemoryGraphStore();
+        var owner = new PersonWithComplexProperty
+        {
+            FirstName = "owner",
+            Address = new AddressValue { Street = "123 Main St", City = "Somewhere" },
+        };
+        var other = new Person { FirstName = "other" };
+        await store.Graph.CreateNodeAsync(owner, cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateNodeAsync(other, cancellationToken: TestContext.Current.CancellationToken);
+        var relationship = new Knows(owner, other) { Since = DateTime.UnixEpoch };
+        await store.Graph.CreateRelationshipAsync(
+            relationship,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var relationships = await store.Graph.Relationships<IRelationship>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var dynamicRelationships = await store.Graph.DynamicRelationships()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(relationships);
+        Assert.Equal(relationship.Id, Assert.IsType<Knows>(relationships[0]).Id);
+        Assert.Single(dynamicRelationships);
+        Assert.Equal(relationship.Id, dynamicRelationships[0].Id);
+    }
+
+    [Fact]
+    public async Task LegacyRelationshipUpdate_IgnoresDuplicateEndpointIdsElsewhere()
+    {
+        await using var store = new InMemoryGraphStore();
+        var source = new Person { FirstName = "source" };
+        var target = new Person { FirstName = "target" };
+        await store.Graph.CreateNodeAsync(source, cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateNodeAsync(target, cancellationToken: TestContext.Current.CancellationToken);
+        var relationship = new Knows(source, target) { Since = DateTime.UnixEpoch };
+        await store.Graph.CreateRelationshipAsync(
+            relationship,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // A later duplicate of the target's public ID must not affect a keyed property update
+        // whose endpoints are unchanged.
+        await store.Graph.CreateNodeAsync(
+            new Person { Id = target.Id, FirstName = "duplicate-target" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        var replacement = DateTime.UnixEpoch.AddDays(1);
+
+        await store.Graph.UpdateRelationshipAsync(
+            relationship with { Since = replacement },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var stored = await store.Graph.GetRelationshipAsync<Knows>(
+            relationship.Id,
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(replacement, stored.Since);
+    }
+
+    [Fact]
+    public async Task LegacyRelationshipUpdate_RejectsEndpointChange()
+    {
+        await using var store = new InMemoryGraphStore();
+        var source = new Person { FirstName = "source" };
+        var target = new Person { FirstName = "target" };
+        var other = new Person { FirstName = "other" };
+        foreach (var node in new[] { source, target, other })
+        {
+            await store.Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        var relationship = new Knows(source, target) { Since = DateTime.UnixEpoch };
+        await store.Graph.CreateRelationshipAsync(
+            relationship,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() => store.Graph.UpdateRelationshipAsync(
+            relationship with { EndNodeId = other.Id, Since = DateTime.UnixEpoch.AddDays(1) },
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("endpoints cannot be changed", exception.Message);
+        var stored = await store.Graph.GetRelationshipAsync<Knows>(
+            relationship.Id,
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(DateTime.UnixEpoch, stored.Since);
+    }
+
+    [Fact]
     public void Harness_DeclaresOnlyImplementedOptionalCapabilities()
     {
         var capabilities = new InMemoryHarness().Capabilities;
@@ -152,7 +254,7 @@ public sealed class InMemoryProviderTests
         // Scalar-key aggregation grouping runs natively over compiled grouping lambdas; see #306.
         Assert.True(capabilities.Has(GraphCapability.GroupByAggregation));
         Assert.False(capabilities.Has(GraphCapability.NestedTransactions));
-        Assert.True(capabilities.Has(GraphCapability.OrderByEntity));
+        Assert.False(capabilities.Has(GraphCapability.OrderByEntity));
         Assert.True(capabilities.Has(GraphCapability.ShortestPath));
         Assert.True(capabilities.Has(GraphCapability.SetOperations));
     }

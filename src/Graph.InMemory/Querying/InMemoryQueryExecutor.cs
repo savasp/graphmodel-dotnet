@@ -31,6 +31,13 @@ internal sealed class InMemoryQueryExecutor(
     private readonly CancellationToken _cancellationToken = cancellationToken;
     private readonly InMemoryFullTextMatcher _fullTextMatcher = new(schemaRegistry);
     private readonly Dictionary<LambdaExpression, Delegate> _compiled = [];
+    private readonly Dictionary<object, ElementBinding> _elementBindings =
+        new(GraphDataModel.ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<object, Guid> _nodeKeys =
+        new(GraphDataModel.ReferenceEqualityComparer.Instance);
+    private GraphValueComparer? _graphValueComparer;
+
+    private GraphValueComparer ValueComparer => _graphValueComparer ??= new GraphValueComparer(_elementBindings);
 
     /// <summary>Executes the model and returns the raw terminal result.</summary>
     public object? Execute(GraphQueryModel model, TerminalHints hints)
@@ -44,7 +51,7 @@ internal sealed class InMemoryQueryExecutor(
             var combined = first.Concat(second);
             if (setOperation.Operation == SetOperationKind.Union)
             {
-                combined = combined.Distinct(GraphValueComparer.Instance);
+                combined = combined.Distinct(ValueComparer);
             }
 
             return ApplyTerminal(combined.ToList(), model, hints);
@@ -346,6 +353,11 @@ internal sealed class InMemoryQueryExecutor(
         };
     }
 
+    private sealed record ElementBinding(
+        GraphElementKind Kind,
+        Guid Key,
+        IReadOnlyDictionary<string, StoredProperty> Properties);
+
     private sealed record StepTrace(
         INode Start,
         IRelationship LastRelationship,
@@ -461,7 +473,7 @@ internal sealed class InMemoryQueryExecutor(
             }
 
             var entity = _reader.MaterializeNode(record, _state, elementType);
-            yield return NewRow(alias, entity, record.Properties, record.Key);
+            yield return NewRow(alias, entity, GraphElementKind.Node, record.Properties, record.Key);
         }
     }
 
@@ -470,6 +482,11 @@ internal sealed class InMemoryQueryExecutor(
         foreach (var record in _state.Relationships.Values)
         {
             _cancellationToken.ThrowIfCancellationRequested();
+            if (record.IsComplexProperty)
+            {
+                continue;
+            }
+
             var resolved = EntityReader.ResolveRelationshipType(record, elementType);
             if (!elementType.IsAssignableFrom(resolved))
             {
@@ -477,25 +494,48 @@ internal sealed class InMemoryQueryExecutor(
             }
 
             var entity = _reader.MaterializeRelationship(record, elementType);
-            yield return NewRow(alias, entity, record.Properties, record.Id);
+            yield return NewRow(alias, entity, GraphElementKind.Relationship, record.Properties, record.Key);
         }
     }
 
-    private static Row NewRow(
+    private Row NewRow(
         string alias,
         object entity,
+        GraphElementKind kind,
         IReadOnlyDictionary<string, StoredProperty> source,
-        object nativeIdentity) => new()
+        Guid nativeIdentity)
+    {
+        TrackEntity(entity, kind, nativeIdentity, source);
+        return new()
         {
             Bindings = new Dictionary<string, object?>(StringComparer.Ordinal) { [alias] = entity },
             Current = entity,
             NativeIdentity = nativeIdentity,
             Sources = new Dictionary<object, IReadOnlyDictionary<string, StoredProperty>>(
-            GraphDataModel.ReferenceEqualityComparer.Instance)
+                GraphDataModel.ReferenceEqualityComparer.Instance)
             {
                 [entity] = source,
             },
         };
+    }
+
+    private void TrackEntity(
+        object entity,
+        GraphElementKind kind,
+        Guid key,
+        IReadOnlyDictionary<string, StoredProperty> properties)
+    {
+        _elementBindings[entity] = new ElementBinding(kind, key, properties);
+        if (kind == GraphElementKind.Node)
+        {
+            _nodeKeys[entity] = key;
+        }
+    }
+
+    private Guid RequireNodeKey(INode node) =>
+        _elementBindings.TryGetValue(node, out var binding) && binding.Kind == GraphElementKind.Node
+            ? binding.Key
+            : throw new GraphException("The in-memory query row lost its private node binding.");
 
     // ---- traversal ----
 
@@ -535,6 +575,8 @@ internal sealed class InMemoryQueryExecutor(
             sourceNode = fallbackNode;
         }
 
+        var sourceKey = RequireNodeKey(sourceNode);
+
         // Depth bounds are validated to be positive and ordered before a model reaches a provider,
         // so there is no zero-hop branch to expand here.
         var minDepth = step.Depth.Min;
@@ -569,9 +611,15 @@ internal sealed class InMemoryQueryExecutor(
             var lastRelationship = (IRelationship)_reader.MaterializeRelationship(
                 path[^1].Relationship,
                 step.RelationshipClrType ?? typeof(IRelationship));
+            TrackEntity(
+                lastRelationship,
+                GraphElementKind.Relationship,
+                path[^1].Relationship.Key,
+                path[^1].Relationship.Properties);
+            TrackEntity(targetEntity, GraphElementKind.Node, finalRecord.Key, finalRecord.Properties);
             var lastHopStart = path.Count == 1
                 ? sourceNode
-                : _reader.MaterializeNode<INode>(path[^2].Target, _state);
+                : MaterializeTrackedNode(path[^2].Target);
             var segmentDirection = GetPathSegmentDirection(
                 path[^1].Relationship,
                 lastHopStart,
@@ -606,11 +654,8 @@ internal sealed class InMemoryQueryExecutor(
         IEnumerable<(List<Hop> Path, NodeRecord TargetRecord, INode TargetEntity)> Candidates()
         {
             // Shortest-path selection never returns the source itself, matching the shared contract.
-            var sourceRecordKey = step.PathSelection == TraversalPathSelection.All
-                ? null
-                : NodeRecordsById(sourceNode.Id)
-                    .FirstOrDefault(record => record.ActualType == sourceNode.GetType())?.Key;
-            foreach (var path in ExpandPaths(sourceNode.Id, step, maxDepth))
+            Guid? sourceRecordKey = step.PathSelection == TraversalPathSelection.All ? null : sourceKey;
+            foreach (var path in ExpandPaths(sourceKey, step, maxDepth))
             {
                 _cancellationToken.ThrowIfCancellationRequested();
                 if (path.Count < Math.Max(minDepth, 1))
@@ -631,6 +676,7 @@ internal sealed class InMemoryQueryExecutor(
                 }
 
                 var targetEntity = (INode)_reader.MaterializeNode(finalRecord, _state, step.TargetType ?? typeof(INode));
+                TrackEntity(targetEntity, GraphElementKind.Node, finalRecord.Key, finalRecord.Properties);
                 if (step.TargetPredicates.Any(predicate => !EvaluatePredicate(predicate.Predicate, targetEntity)))
                 {
                     continue;
@@ -647,10 +693,15 @@ internal sealed class InMemoryQueryExecutor(
         INode current = start;
         foreach (var hop in path)
         {
-            var end = _reader.MaterializeNode<INode>(hop.Target, _state);
+            var end = MaterializeTrackedNode(hop.Target);
             var relationship = (IRelationship)_reader.MaterializeRelationship(
                 hop.Relationship,
                 step.RelationshipClrType ?? typeof(IRelationship));
+            TrackEntity(
+                relationship,
+                GraphElementKind.Relationship,
+                hop.Relationship.Key,
+                hop.Relationship.Properties);
             segments.Add(new InMemoryPathHopSegment(
                 current,
                 relationship,
@@ -669,38 +720,14 @@ internal sealed class InMemoryQueryExecutor(
         INode start,
         INode end)
     {
-        var startRecord = NodeRecordsById(start.Id)
-            .FirstOrDefault(record => start is DynamicNode || record.ActualType == start.GetType());
-        var endRecord = NodeRecordsById(end.Id)
-            .FirstOrDefault(record => end is DynamicNode || record.ActualType == end.GetType());
-
-        if (startRecord is not null && endRecord is not null &&
-            relationship.StartKey is { } logicalStartKey && relationship.EndKey is { } logicalEndKey)
-        {
-            var physicalStartKey = relationship.Direction == RelationshipDirection.Outgoing
-                ? logicalStartKey
-                : logicalEndKey;
-            var physicalEndKey = relationship.Direction == RelationshipDirection.Outgoing
-                ? logicalEndKey
-                : logicalStartKey;
-
-            if (physicalStartKey == startRecord.Key && physicalEndKey == endRecord.Key)
-            {
-                return RelationshipDirection.Outgoing;
-            }
-
-            if (physicalStartKey == endRecord.Key && physicalEndKey == startRecord.Key)
-            {
-                return RelationshipDirection.Incoming;
-            }
-        }
-
-        if (relationship.PhysicalSourceId == start.Id && relationship.PhysicalTargetId == end.Id)
+        var startKey = RequireNodeKey(start);
+        var endKey = RequireNodeKey(end);
+        if (relationship.PhysicalSourceKey == startKey && relationship.PhysicalTargetKey == endKey)
         {
             return RelationshipDirection.Outgoing;
         }
 
-        if (relationship.PhysicalSourceId == end.Id && relationship.PhysicalTargetId == start.Id)
+        if (relationship.PhysicalSourceKey == endKey && relationship.PhysicalTargetKey == startKey)
         {
             return RelationshipDirection.Incoming;
         }
@@ -708,15 +735,15 @@ internal sealed class InMemoryQueryExecutor(
         throw new GraphException("Relationship endpoints do not match the materialized path segment.");
     }
 
-    private IEnumerable<List<Hop>> ExpandPaths(string sourceId, TraversalStep step, int maxDepth)
+    private IEnumerable<List<Hop>> ExpandPaths(Guid sourceKey, TraversalStep step, int maxDepth)
     {
-        var stack = new Stack<(string NodeId, List<Hop> Path)>();
-        stack.Push((sourceId, []));
+        var stack = new Stack<(Guid NodeKey, List<Hop> Path)>();
+        stack.Push((sourceKey, []));
 
         while (stack.Count > 0)
         {
             _cancellationToken.ThrowIfCancellationRequested();
-            var (nodeId, path) = stack.Pop();
+            var (nodeKey, path) = stack.Pop();
             if (path.Count >= maxDepth)
             {
                 continue;
@@ -734,26 +761,30 @@ internal sealed class InMemoryQueryExecutor(
                     continue;
                 }
 
-                if (path.Any(h => h.Relationship.Id == relationship.Id))
+                if (path.Any(h => h.Relationship.Key == relationship.Key))
                 {
                     continue;
                 }
 
-                foreach (var neighborId in Neighbors(relationship, nodeId, step.Direction))
+                foreach (var neighborKey in Neighbors(relationship, nodeKey, step.Direction))
                 {
-                    foreach (var neighbor in NodeRecordsById(neighborId))
+                    if (_state.Nodes.TryGetValue(neighborKey, out var neighbor))
                     {
                         var extended = new List<Hop>(path) { new(relationship, neighbor) };
                         yield return extended;
-                        stack.Push((neighbor.Id, extended));
+                        stack.Push((neighbor.Key, extended));
                     }
                 }
             }
         }
     }
 
-    private IEnumerable<NodeRecord> NodeRecordsById(string id) =>
-        _state.Nodes.Values.Where(n => n.Id == id);
+    private INode MaterializeTrackedNode(NodeRecord record)
+    {
+        var entity = _reader.MaterializeNode<INode>(record, _state);
+        TrackEntity(entity, GraphElementKind.Node, record.Key, record.Properties);
+        return entity;
+    }
 
     private IEnumerable<Row> ApplyLabelFilters(
         IEnumerable<Row> rows,
@@ -777,21 +808,23 @@ internal sealed class InMemoryQueryExecutor(
             return false;
         }
 
-        var records = NodeRecordsById(node.Id)
-            .Where(record => !record.IsComplexValue &&
-                (node is DynamicNode || record.ActualType == node.GetType()));
-        return records.Any(record =>
+        if (!_elementBindings.TryGetValue(node, out var binding) ||
+            binding.Kind != GraphElementKind.Node ||
+            !_state.Nodes.TryGetValue(binding.Key, out var record) ||
+            record.IsComplexValue)
         {
-            IReadOnlyList<string> storedLabels = record.ActualType == typeof(DynamicNode)
-                ? record.Labels
-                : [record.Label];
-            return filter.Match switch
-            {
-                GraphLabelMatch.Any => filter.Labels.Any(label => storedLabels.Contains(label, StringComparer.Ordinal)),
-                GraphLabelMatch.All => filter.Labels.All(label => storedLabels.Contains(label, StringComparer.Ordinal)),
-                _ => false,
-            };
-        });
+            return false;
+        }
+
+        IReadOnlyList<string> storedLabels = record.ActualType == typeof(DynamicNode)
+            ? record.Labels
+            : [record.Label];
+        return filter.Match switch
+        {
+            GraphLabelMatch.Any => filter.Labels.Any(label => storedLabels.Contains(label, StringComparer.Ordinal)),
+            GraphLabelMatch.All => filter.Labels.All(label => storedLabels.Contains(label, StringComparer.Ordinal)),
+            _ => false,
+        };
     }
 
     private static bool RelationshipMatches(RelationshipRecord relationship, TraversalStep step)
@@ -863,6 +896,8 @@ internal sealed class InMemoryQueryExecutor(
         if (sourceNode is null)
             return false;
 
+        var sourceKey = RequireNodeKey(sourceNode);
+
         var step = new TraversalStep(
             Labels.GetLabelFromType(filter.RelationshipType),
             filter.Direction,
@@ -873,31 +908,31 @@ internal sealed class InMemoryQueryExecutor(
         return _state.Relationships.Values.Any(relationship =>
             RelationshipMatches(relationship, step) &&
             RelationshipPredicatesMatch(relationship, step.RelationshipPredicates, filter.RelationshipType) &&
-            Neighbors(relationship, sourceNode.Id, filter.Direction).Any());
+            Neighbors(relationship, sourceKey, filter.Direction).Any());
     }
 
-    private static IEnumerable<string> Neighbors(
+    private static IEnumerable<Guid> Neighbors(
         RelationshipRecord relationship,
-        string nodeId,
+        Guid nodeKey,
         GraphTraversalDirection direction)
     {
         var matchesOutgoing = direction is GraphTraversalDirection.Outgoing or GraphTraversalDirection.Both &&
-            relationship.PhysicalSourceId == nodeId;
+            relationship.PhysicalSourceKey == nodeKey;
         var matchesIncoming = direction is GraphTraversalDirection.Incoming or GraphTraversalDirection.Both &&
-            relationship.PhysicalTargetId == nodeId;
+            relationship.PhysicalTargetKey == nodeKey;
 
         if (matchesOutgoing)
         {
-            yield return relationship.PhysicalTargetId;
+            yield return relationship.PhysicalTargetKey;
         }
 
-        // Both matches can only be true together when the relationship is a self-loop on nodeId, and
+        // Both matches can only be true together when the relationship is a self-loop on nodeKey, and
         // that is one physical edge, not two. Emitting it once keeps Both traversal consistent with the
         // degree projection, which already counts a self-loop once for Both. Parallel relationships stay
         // distinct because this is scoped to a single relationship record, not to neighbor identity.
         if (matchesIncoming && !matchesOutgoing)
         {
-            yield return relationship.PhysicalSourceId;
+            yield return relationship.PhysicalSourceKey;
         }
     }
 
@@ -925,7 +960,8 @@ internal sealed class InMemoryQueryExecutor(
                 joined.Current = Invoke(result, ResolveInput(row, null, join.ResultSelector.Parameters[0].Type), item);
                 joined.Bindings["joined"] = item;
                 return joined;
-            });
+            },
+            ValueComparer);
     }
 
     // ---- predicates ----
@@ -973,7 +1009,7 @@ internal sealed class InMemoryQueryExecutor(
             return false;
         }
 
-        var replacements = new Dictionary<(string SourceId, Type SourceType, PropertyInfo Property), object>();
+        var replacements = new Dictionary<(Guid SourceKey, Type SourceType, PropertyInfo Property), object>();
         return EvaluateCombinations(slotIndex: 0);
 
         bool EvaluateCombinations(int slotIndex)
@@ -984,7 +1020,7 @@ internal sealed class InMemoryQueryExecutor(
             }
 
             var slot = slots[slotIndex];
-            var key = (slot.SourceId, slot.SourceType, slot.Property);
+            var key = (slot.SourceKey, slot.SourceType, slot.Property);
             foreach (var value in slot.Values)
             {
                 replacements[key] = value;
@@ -1005,8 +1041,11 @@ internal sealed class InMemoryQueryExecutor(
                 return EvaluatePredicate(predicate.Predicate, predicate.Input);
             }
 
+            var sourceKey = RequireNodeKey(sourceNode);
             var propertyReplacements = replacements
-                .Where(pair => pair.Key.SourceId == sourceNode.Id && pair.Key.SourceType == predicate.Input.GetType())
+                .Where(pair =>
+                    pair.Key.SourceKey == sourceKey &&
+                    pair.Key.SourceType == predicate.Input.GetType())
                 .ToDictionary(pair => pair.Key.Property, pair => pair.Value);
             var rewrittenBody = new ComplexPropertyValueRewriter(
                 predicate.Predicate.Parameters[0],
@@ -1020,7 +1059,7 @@ internal sealed class InMemoryQueryExecutor(
         IReadOnlyList<BoundPredicate> predicates,
         IReadOnlyList<TraversalStep> complexTraversals)
     {
-        var slots = new Dictionary<(string SourceId, Type SourceType, PropertyInfo Property), ComplexTargetSlot>();
+        var slots = new Dictionary<(Guid SourceKey, Type SourceType, PropertyInfo Property), ComplexTargetSlot>();
         foreach (var predicate in predicates)
         {
             if (predicate.Input is not INode sourceNode)
@@ -1029,6 +1068,7 @@ internal sealed class InMemoryQueryExecutor(
             }
 
             var sourceType = predicate.Input.GetType();
+            var sourceKey = RequireNodeKey(sourceNode);
             foreach (var step in complexTraversals)
             {
                 if (step.RelationshipType is not { } relationshipType || step.TargetType is not { } targetType)
@@ -1047,19 +1087,19 @@ internal sealed class InMemoryQueryExecutor(
                     continue;
                 }
 
-                var key = (sourceNode.Id, sourceType, property);
+                var key = (sourceKey, sourceType, property);
                 if (slots.ContainsKey(key))
                 {
                     continue;
                 }
 
                 var targetLabel = Labels.GetLabelFromType(targetType);
-                var values = CollidingComplexTargets(sourceNode.Id, relationshipType, targetLabel)
+                var values = CollidingComplexTargets(sourceKey, relationshipType, targetLabel)
                     .Select(target => _reader.MaterializeComplexValue(target, _state, targetType))
                     .ToList();
                 if (values.Count > 0)
                 {
-                    slots.Add(key, new ComplexTargetSlot(sourceNode.Id, sourceType, property, values));
+                    slots.Add(key, new ComplexTargetSlot(sourceKey, sourceType, property, values));
                 }
             }
         }
@@ -1075,21 +1115,21 @@ internal sealed class InMemoryQueryExecutor(
     }
 
     private IEnumerable<NodeRecord> CollidingComplexTargets(
-        string sourceId,
+        Guid sourceKey,
         string relationshipType,
         string targetLabel)
     {
         foreach (var relationship in _state.Relationships.Values)
         {
             if (!string.Equals(relationship.Type, relationshipType, StringComparison.Ordinal) ||
-                relationship.PhysicalSourceId != sourceId)
+                relationship.PhysicalSourceKey != sourceKey)
             {
                 continue;
             }
 
-            var targets = relationship.EndKey is { } targetKey && _state.Nodes.TryGetValue(targetKey, out var target)
-                ? [target]
-                : NodeRecordsById(relationship.PhysicalTargetId);
+            var targets = _state.Nodes.TryGetValue(relationship.PhysicalTargetKey, out var target)
+                ? new[] { target }
+                : [];
             foreach (var candidate in targets)
             {
                 if (candidate.Labels.Contains(targetLabel, StringComparer.Ordinal))
@@ -1132,7 +1172,7 @@ internal sealed class InMemoryQueryExecutor(
     private sealed record BoundPredicate(LambdaExpression Predicate, object? Input);
 
     private sealed record ComplexTargetSlot(
-        string SourceId,
+        Guid SourceKey,
         Type SourceType,
         PropertyInfo Property,
         IReadOnlyList<object> Values);
@@ -1287,7 +1327,7 @@ internal sealed class InMemoryQueryExecutor(
 
         var order = new List<object>();
         var groups = new Dictionary<object, (object? Key, System.Collections.IList Elements, Row Row)>(
-            GraphValueComparer.Instance);
+            ValueComparer);
 
         foreach (var row in rows)
         {
@@ -1452,17 +1492,16 @@ internal sealed class InMemoryQueryExecutor(
         return expression;
     }
 
-    private static IEnumerable<(Row Row, object? Value)> DistinctByValue(
+    private IEnumerable<(Row Row, object? Value)> DistinctByValue(
         IEnumerable<(Row Row, object? Value)> pairs)
     {
-        var seen = new HashSet<object?>(GraphValueComparer.Instance);
+        var seen = new HashSet<object?>(ValueComparer);
         return pairs.Where(pair => seen.Add(pair.Value));
     }
 
-    private sealed class GraphValueComparer : IEqualityComparer<object?>
+    private sealed class GraphValueComparer(
+        IReadOnlyDictionary<object, ElementBinding> elementBindings) : IEqualityComparer<object?>
     {
-        public static GraphValueComparer Instance { get; } = new();
-
         public new bool Equals(object? x, object? y)
         {
             if (ReferenceEquals(x, y))
@@ -1470,28 +1509,37 @@ internal sealed class InMemoryQueryExecutor(
                 return true;
             }
 
-            return (x, y) switch
+            if (x is null || y is null)
             {
-                (INode left, INode right) =>
-                    string.Equals(left.Id, right.Id, StringComparison.Ordinal) &&
-                    string.Equals(PrimaryLabel(left), PrimaryLabel(right), StringComparison.Ordinal),
-                (IRelationship left, IRelationship right) =>
-                    string.Equals(left.Id, right.Id, StringComparison.Ordinal),
-                _ => EqualityComparer<object?>.Default.Equals(x, y),
-            };
+                return false;
+            }
+
+            var leftIsElement = elementBindings.TryGetValue(x, out var left);
+            var rightIsElement = elementBindings.TryGetValue(y, out var right);
+            if (leftIsElement != rightIsElement)
+            {
+                // A bound graph element hashes by its private key, so it can never equal a
+                // detached value hashing by CLR semantics.
+                return false;
+            }
+
+            if (leftIsElement)
+            {
+                return left!.Kind == right!.Kind && left.Key == right.Key;
+            }
+
+            return EqualityComparer<object?>.Default.Equals(x, y);
         }
 
-        public int GetHashCode(object? value) => value switch
+        public int GetHashCode(object? value)
         {
-            INode node => HashCode.Combine(
-                StringComparer.Ordinal.GetHashCode(node.Id),
-                StringComparer.Ordinal.GetHashCode(PrimaryLabel(node))),
-            IRelationship relationship => StringComparer.Ordinal.GetHashCode(relationship.Id),
-            null => 0,
-            _ => value.GetHashCode(),
-        };
+            if (value is not null && elementBindings.TryGetValue(value, out var binding))
+            {
+                return HashCode.Combine(binding.Kind, binding.Key);
+            }
 
-        private static string PrimaryLabel(INode node) => node.Labels.Count == 0 ? string.Empty : node.Labels[0];
+            return value?.GetHashCode() ?? 0;
+        }
     }
 
     private sealed class GraphOrderingComparer : Comparer<object?>
@@ -1509,12 +1557,9 @@ internal sealed class InMemoryQueryExecutor(
             {
                 (null, _) => -1,
                 (_, null) => 1,
-                (INode left, INode right) =>
-                    StringComparer.Ordinal.Compare(left.Id, right.Id),
-                (IRelationship left, IRelationship right) =>
-                    StringComparer.Ordinal.Compare(left.Id, right.Id),
-                (INode, IRelationship) => -1,
-                (IRelationship, INode) => 1,
+                (IEntity, _) or (_, IEntity) => throw new GraphQueryTranslationException(
+                    "Whole-entity ordering is not supported by the in-memory provider. " +
+                    "Order by one or more mapped scalar properties instead."),
                 _ => Comparer<object?>.Default.Compare(x, y),
             };
         }
@@ -1564,7 +1609,7 @@ internal sealed class InMemoryQueryExecutor(
         {
             // CountRelationships is a translation marker whose body throws; rewrite each call into a
             // degree computation over the store snapshot before the lambda is compiled and invoked.
-            var rewritten = (LambdaExpression)new CountRelationshipsRewriter(_state).Visit(lambda)!;
+            var rewritten = (LambdaExpression)new CountRelationshipsRewriter(_state, _nodeKeys).Visit(lambda)!;
             var nullPropagating = (LambdaExpression)new NullPropagatingMemberAccessVisitor().Visit(rewritten)!;
             compiled = nullPropagating.Compile();
             _compiled[lambda] = compiled;
@@ -1573,7 +1618,9 @@ internal sealed class InMemoryQueryExecutor(
         return compiled;
     }
 
-    private sealed class CountRelationshipsRewriter(StoreState state) : ExpressionVisitor
+    private sealed class CountRelationshipsRewriter(
+        StoreState state,
+        IReadOnlyDictionary<object, Guid> nodeKeys) : ExpressionVisitor
     {
         private static readonly MethodInfo CountMethod =
             typeof(InMemoryDegreeCounter).GetMethod(
@@ -1607,6 +1654,7 @@ internal sealed class InMemoryQueryExecutor(
                 CountMethod,
                 Expression.Constant(state),
                 Expression.Convert(Visit(node.Arguments[0]), typeof(INode)),
+                Expression.Constant(nodeKeys),
                 Expression.Constant(relationshipType, typeof(Type)),
                 Expression.Constant(direction));
         }

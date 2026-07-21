@@ -18,18 +18,30 @@ internal static class EntityWriter
     public sealed record DecomposedNode(
         NodeRecord Node,
         IReadOnlyList<NodeRecord> ComplexValueNodes,
-        IReadOnlyList<RelationshipRecord> ComplexEdges);
+        IReadOnlyList<RelationshipRecord> ComplexEdges)
+    {
+        /// <summary>Retargets the decomposed root to an existing private key for legacy updates.</summary>
+        public DecomposedNode WithRootKey(Guid key)
+        {
+            var previous = Node.Key;
+            return this with
+            {
+                Node = Node with { Key = key },
+                ComplexEdges = [.. ComplexEdges.Select(edge =>
+                    edge.StartKey == previous ? edge with { StartKey = key } : edge)],
+            };
+        }
+    }
 
     /// <summary>Decomposes a serialized node into its store records.</summary>
     public static DecomposedNode DecomposeNode(EntityInfo entity)
     {
-        var id = RequireId(entity);
         var labels = EffectiveLabels(entity);
         var properties = SnapshotSimpleProperties(entity, labels);
 
         var node = new NodeRecord(
             Guid.NewGuid(),
-            id,
+            CompatibilityId(entity),
             labels.Count > 0 ? labels[0] : entity.Label,
             labels,
             entity.ActualType,
@@ -47,7 +59,12 @@ internal static class EntityWriter
     /// Decomposes a serialized relationship into its store record. Relationships may only carry
     /// simple properties, matching the reference provider's contract.
     /// </summary>
-    public static RelationshipRecord DecomposeRelationship(EntityInfo entity, IRelationship relationship)
+    public static RelationshipRecord DecomposeRelationship(
+        EntityInfo entity,
+        Guid startKey,
+        Guid endKey,
+        RelationshipDirection direction,
+        Guid? key = null)
     {
         if (entity.ComplexProperties.Any(p => p.Value.Value is not null))
         {
@@ -56,11 +73,12 @@ internal static class EntityWriter
         }
 
         return new RelationshipRecord(
-            RequireId(entity),
+            key ?? Guid.NewGuid(),
+            CompatibilityId(entity),
             entity.Label,
-            relationship.StartNodeId,
-            relationship.EndNodeId,
-            LegacyRelationshipEndpoints.LegacyDirection(relationship),
+            startKey,
+            endKey,
+            direction,
             entity.ActualType,
             SnapshotSimpleProperties(entity, labels: null),
             IsComplexProperty: false,
@@ -118,15 +136,11 @@ internal static class EntityWriter
         List<RelationshipRecord> edges,
         int depth)
     {
-        var id = Guid.NewGuid().ToString("N");
-        var properties = new Dictionary<string, StoredProperty>(SnapshotSimpleProperties(entity, labels: null))
-        {
-            ["Id"] = new StoredProperty("Id", id, typeof(string), IsNullable: false, IsCollection: false, ElementType: null),
-        };
+        var properties = SnapshotSimpleProperties(entity, labels: null);
 
         var valueNode = new NodeRecord(
             Guid.NewGuid(),
-            id,
+            CompatibilityId: null,
             entity.Label,
             [entity.Label],
             entity.ActualType,
@@ -135,17 +149,16 @@ internal static class EntityWriter
 
         valueNodes.Add(valueNode);
         edges.Add(new RelationshipRecord(
-            Guid.NewGuid().ToString("N"),
+            Guid.NewGuid(),
+            CompatibilityId: null,
             relationshipType,
-            parent.Id,
-            valueNode.Id,
+            parent.Key,
+            valueNode.Key,
             RelationshipDirection.Outgoing,
             ActualType: null,
             Properties: new Dictionary<string, StoredProperty>(),
             IsComplexProperty: true,
-            SequenceNumber: sequenceNumber,
-            StartKey: parent.Key,
-            EndKey: valueNode.Key));
+            SequenceNumber: sequenceNumber));
 
         DecomposeComplexProperties(entity, valueNode, valueNodes, edges, depth + 1);
     }
@@ -214,7 +227,7 @@ internal static class EntityWriter
         return compatible.Count > 0 ? [.. compatible] : [entity.Label];
     }
 
-    private static string RequireId(EntityInfo entity)
+    private static string? CompatibilityId(EntityInfo entity)
     {
         if (entity.SimpleProperties.TryGetValue("Id", out var property) &&
             property.Value is SimpleValue { Object: string id } &&
@@ -223,6 +236,6 @@ internal static class EntityWriter
             return id;
         }
 
-        throw new ArgumentException("Entity ID cannot be null or empty.");
+        return null;
     }
 }

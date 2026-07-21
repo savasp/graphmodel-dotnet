@@ -34,8 +34,6 @@ public sealed class InMemoryHarness : IGraphProviderTestHarness
         // semantics as their Cypher counterparts even though the interpreter uses CLR objects.
         GraphCapability.MultiLabelMatch,
         GraphCapability.LabelFiltering,
-        // Bare entity ordering uses a stable comparison over the public entity identity.
-        GraphCapability.OrderByEntity,
         GraphCapability.OptionalTraversal,
         GraphCapability.RelationshipPredicates,
         GraphCapability.ShortestPath,

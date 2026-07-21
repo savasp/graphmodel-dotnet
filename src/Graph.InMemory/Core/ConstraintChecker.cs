@@ -50,7 +50,7 @@ internal static class ConstraintChecker
         var others = state.Nodes.Values.Where(n =>
             !n.IsComplexValue &&
             string.Equals(n.Label, record.Label, StringComparison.Ordinal) &&
-            n.Id != record.Id);
+            n.Key != record.Key);
 
         Check(others.Select(n => n.Properties), record.Properties, constraints, record.Label);
     }
@@ -61,7 +61,7 @@ internal static class ConstraintChecker
         var others = state.Relationships.Values.Where(r =>
             !r.IsComplexProperty &&
             string.Equals(r.Type, record.Type, StringComparison.Ordinal) &&
-            r.Id != record.Id);
+            r.Key != record.Key);
 
         Check(others.Select(r => r.Properties), record.Properties, constraints, record.Type);
     }

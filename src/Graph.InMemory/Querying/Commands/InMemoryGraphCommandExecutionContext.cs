@@ -12,6 +12,7 @@ using Cvoya.Graph.Serialization;
 /// <summary>Executes in-memory graph commands against one active transaction view.</summary>
 internal sealed class InMemoryGraphCommandExecutionContext(
     InMemoryTransaction transaction,
+    InMemoryGraph graph,
     EntityReader reader,
     SchemaRegistry schemaRegistry) : IGraphCommandExecutionContext
 {
@@ -55,6 +56,22 @@ internal sealed class InMemoryGraphCommandExecutionContext(
         return Task.FromResult(selected.Count);
     }
 
+    public Task CreateRelationshipAsync(
+        GraphCommandEndpoint source,
+        IRelationship relationship,
+        GraphCommandEndpoint target,
+        RelationshipDirection direction,
+        GraphRelationshipCreationMode mode,
+        CancellationToken cancellationToken) =>
+        graph.CreateCommandRelationshipAsync(
+            transaction,
+            source,
+            relationship,
+            target,
+            direction,
+            mode,
+            cancellationToken);
+
     private void ApplyDelete(GraphMutationModel mutation, IReadOnlyList<SelectedGraphElement> selected)
     {
         if (mutation.Selection.ElementKind == GraphElementKind.Node)
@@ -64,7 +81,7 @@ internal sealed class InMemoryGraphCommandExecutionContext(
             return;
         }
 
-        var relationshipKeys = selected.Select(item => RequireIdentity<string>(item)).ToArray();
+        var relationshipKeys = selected.Select(item => RequireIdentity<Guid>(item)).ToArray();
         transaction.Apply(state => state.DeleteRelationships(relationshipKeys));
     }
 
@@ -110,7 +127,7 @@ internal sealed class InMemoryGraphCommandExecutionContext(
             GraphElementKind.Node => reader.MaterializeNode(
                 state.Nodes[RequireIdentity<Guid>(selected)], state, entityType),
             GraphElementKind.Relationship => reader.MaterializeRelationship(
-                state.Relationships[RequireIdentity<string>(selected)], entityType),
+                state.Relationships[RequireIdentity<Guid>(selected)], entityType),
             _ => throw new GraphException($"Graph element kind '{selected.Kind}' is not supported."),
         };
 
@@ -136,7 +153,7 @@ internal sealed class InMemoryGraphCommandExecutionContext(
             }
             else
             {
-                var key = RequireIdentity<string>(update.Target);
+                var key = RequireIdentity<Guid>(update.Target);
                 if (!state.Relationships.TryGetValue(key, out var relationship) || relationship.IsComplexProperty)
                 {
                     throw new GraphException(
