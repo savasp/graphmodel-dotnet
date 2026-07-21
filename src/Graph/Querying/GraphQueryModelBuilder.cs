@@ -573,7 +573,8 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         var index = EvaluateArgument<int>(node, 1, "element index");
         if (index < 0)
         {
-            throw new GraphQueryTranslationException("ElementAt index must be non-negative.");
+            throw new GraphQueryTranslationException(
+                $"{terminal} index must be non-negative in provider expressions.");
         }
 
         _terminalOperand = index;

@@ -148,27 +148,6 @@ public class LinqOperatorDispatchTests
         }
     }
 
-    /// <summary>
-    /// Confirms the #74 members are present on GraphQueryableBase&lt;T&gt;; behavior is covered by
-    /// the provider contract tests.
-    /// </summary>
-    [Fact]
-    public void Issue74MemberBodiesAreImplementedOnGraphQueryableBase()
-    {
-        var methodNames = new[]
-        {
-            nameof(GraphQueryableBase<object>.LastAsync),
-            nameof(GraphQueryableBase<object>.LastOrDefaultAsync),
-        };
-
-        foreach (var name in methodNames)
-        {
-            var method = typeof(GraphQueryableBase<Person>).GetMethod(name, BindingFlags.Public | BindingFlags.Instance)
-                ?? throw new InvalidOperationException($"Could not find {name} on GraphQueryableBase<T>.");
-            Assert.NotNull(method);
-        }
-    }
-
     [Fact]
     public void QueryableWhereResolvesToWhereOperator()
     {

@@ -582,6 +582,24 @@ public class GraphQueryModelBuilderTests
     }
 
     [Theory]
+    [InlineData("ElementAtAsyncMarker")]
+    [InlineData("ElementAtOrDefaultAsyncMarker")]
+    public void NegativeElementAtMarker_IsRejectedBeforeProviderPlanning(string markerName)
+    {
+        var source = Root<Person>();
+        var expression = MarkerCall(
+            markerName,
+            [typeof(Person)],
+            source.Expression,
+            [Expression.Constant(-1)]);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(
+            () => GraphQueryModelBuilder.Build(expression));
+
+        Assert.Contains("non-negative", exception.Message);
+    }
+
+    [Theory]
     [InlineData("FirstAsyncMarker", TerminalOperation.First)]
     [InlineData("SingleAsyncMarker", TerminalOperation.Single)]
     [InlineData("AnyAsyncMarker", TerminalOperation.Any)]

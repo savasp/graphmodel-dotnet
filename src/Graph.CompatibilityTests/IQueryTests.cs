@@ -729,6 +729,32 @@ public interface IQueryTests : IGraphTest
     }
 
     [Fact]
+    public async Task ElementAtNegativeIndex_MatchesLinqAcrossSourceAndResultShapes()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"ElementAt-negative-{Guid.NewGuid():N}";
+        await this.Graph.CreateNodeAsync(
+            new Person { FirstName = "Present", LastName = group, Age = 42 },
+            cancellationToken: cancellationToken);
+
+        var nonEmpty = this.Graph.Nodes<Person>().Where(person => person.LastName == group);
+        var empty = this.Graph.Nodes<Person>().Where(person => person.LastName == group + "-missing");
+
+        foreach (var source in new[] { nonEmpty, empty })
+        {
+            Assert.Null(await source.ElementAtOrDefaultAsync(-1, cancellationToken));
+            Assert.Equal(0, await source.Select(person => person.Age)
+                .ElementAtOrDefaultAsync(-1, cancellationToken));
+            Assert.Null(await source.Select(person => (int?)person.Age)
+                .ElementAtOrDefaultAsync(-1, cancellationToken));
+        }
+
+        var exception = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => nonEmpty.ElementAtAsync(-1, cancellationToken));
+        Assert.Equal("index", exception.ParamName);
+    }
+
+    [Fact]
     public async Task CanQueryWithContainsOnScalarProjection()
     {
         var p1 = new Person { FirstName = "Contains-A", Bio = "alpha" };

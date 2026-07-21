@@ -216,6 +216,7 @@ public static class QueryableAsyncExtensions
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(predicate);
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
@@ -597,12 +598,17 @@ public static class QueryableAsyncExtensions
     /// <summary>
     /// Asynchronously returns the element at the specified index.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="index"/> is negative.
+    /// </exception>
     public static async Task<T> ElementAtAsync<T>(
         this IGraphQueryable<T> source,
         int index,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
@@ -621,12 +627,19 @@ public static class QueryableAsyncExtensions
     /// <summary>
     /// Asynchronously returns the element at the specified index, or default if out of range.
     /// </summary>
+    /// <remarks>A negative <paramref name="index"/> returns the default value without executing the query.</remarks>
     public static async Task<T?> ElementAtOrDefaultAsync<T>(
         this IGraphQueryable<T> source,
         int index,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (index < 0)
+        {
+            return default;
+        }
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {

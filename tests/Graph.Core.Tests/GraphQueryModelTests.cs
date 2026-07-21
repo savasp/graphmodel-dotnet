@@ -456,10 +456,12 @@ public class GraphQueryModelTests
         Assert.Contains("requires an integer index", exception.Message);
     }
 
-    [Fact]
-    public void Validator_RejectsElementAtWithNegativeIndex()
+    [Theory]
+    [InlineData(TerminalOperation.ElementAt)]
+    [InlineData(TerminalOperation.ElementAtOrDefault)]
+    public void Validator_RejectsElementAtWithNegativeIndex(TerminalOperation terminal)
     {
-        var model = CreateModelWithTerminal(TerminalOperation.ElementAt, terminalOperand: -1);
+        var model = CreateModelWithTerminal(terminal, terminalOperand: -1);
 
         var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
 

@@ -56,21 +56,15 @@ internal static class AgeMixedSearchEvaluator
 
             if (node.Method.DeclaringType == typeof(QueryTerminals))
             {
-                return TranslateTerminal(node, node.Method.Name[..^"AsyncMarker".Length], stripCancellation: false);
-            }
-
-            if (node.Method.DeclaringType == typeof(GraphQueryableAsyncExtensions))
-            {
-                return TranslateTerminal(node, node.Method.Name[..^"Async".Length], stripCancellation: true);
+                return TranslateTerminal(node, node.Method.Name[..^"AsyncMarker".Length]);
             }
 
             return base.VisitMethodCall(node);
         }
 
-        private MethodCallExpression TranslateTerminal(MethodCallExpression node, string name, bool stripCancellation)
+        private MethodCallExpression TranslateTerminal(MethodCallExpression node, string name)
         {
             var arguments = node.Arguments
-                .Take(stripCancellation ? node.Arguments.Count - 1 : node.Arguments.Count)
                 .Select(argument => Visit(argument)!)
                 .ToArray();
 
