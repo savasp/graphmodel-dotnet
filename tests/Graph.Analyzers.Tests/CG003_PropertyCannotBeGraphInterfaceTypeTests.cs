@@ -294,6 +294,57 @@ public class CG003_PropertyCannotBeGraphInterfaceTypeTests
     }
 
     [Fact]
+    public async Task NonSerializedGraphInterfaceProperties_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public sealed class TestNode : Node
+            {
+                [Property(Ignore = true)]
+                public INode IgnoredNode { get; set; } = null!;
+
+                [Property(Ignore = true)]
+                public IRelationship IgnoredRelationship { get; set; } = null!;
+
+                public static INode Shared { get; set; } = null!;
+
+                public IRelationship this[int index]
+                {
+                    get => null!;
+                    set { }
+                }
+
+                private INode Hidden { get; set; } = null!;
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task InheritedSerializedGraphInterfaceProperty_ProducesDiagnosticForEachEntity()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public abstract class BaseNode : Node
+            {
+                public INode {|#0:Parent|} { get; set; } = null!;
+            }
+
+            public sealed class DerivedNode : BaseNode
+            {
+            }
+            """;
+
+        await VerifyAnalyzerAsync(
+            test,
+            VerifyCS.Diagnostic("CG003").WithLocation(0).WithArguments("Parent", "BaseNode", "INode"),
+            VerifyCS.Diagnostic("CG003").WithLocation(0).WithArguments("Parent", "DerivedNode", "INode"));
+    }
+
+    [Fact]
     public async Task MultiplePropertiesWithGraphTypes_ProducesMultipleDiagnostics()
     {
         var test = """

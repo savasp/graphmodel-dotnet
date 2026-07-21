@@ -168,7 +168,7 @@ public class CG002_PropertyMustHavePublicAccessorsTests
     }
 
     [Fact]
-    public async Task NodeWithWriteOnlyProperty_ProducesDiagnostic()
+    public async Task NodeWithWriteOnlyProperty_NoDiagnostic()
     {
         var test = """
             using Cvoya.Graph;
@@ -176,15 +176,11 @@ public class CG002_PropertyMustHavePublicAccessorsTests
             public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
-                public string {|#0:Name|} { set; } = string.Empty;
+                public string Name { set; } = string.Empty;
             }
             """;
 
-        var expected = VerifyCS.Diagnostic("CG002")
-            .WithLocation(0)
-            .WithArguments("Name", "TestNode");
-
-        await VerifyAnalyzerAsync(test, expected);
+        await VerifyAnalyzerAsync(test);
     }
 
     [Fact]
@@ -232,6 +228,54 @@ public class CG002_PropertyMustHavePublicAccessorsTests
             .WithArguments("Name", "DerivedNode");
 
         await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NonSerializedPropertiesWithInvalidAccessors_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public sealed class TestNode : Node
+            {
+                [Property(Ignore = true)]
+                public string Ignored { get; private set; } = string.Empty;
+
+                public static string Shared { get; private set; } = string.Empty;
+
+                public string this[int index]
+                {
+                    get => string.Empty;
+                    private set { }
+                }
+
+                private string Hidden { get; set; } = string.Empty;
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task InheritedSerializedPropertyWithPrivateSetter_ProducesDiagnosticForEachEntity()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public abstract class BaseNode : Node
+            {
+                public string {|#0:Name|} { get; private set; } = string.Empty;
+            }
+
+            public sealed class DerivedNode : BaseNode
+            {
+            }
+            """;
+
+        await VerifyAnalyzerAsync(
+            test,
+            VerifyCS.Diagnostic("CG002").WithLocation(0).WithArguments("Name", "BaseNode"),
+            VerifyCS.Diagnostic("CG002").WithLocation(0).WithArguments("Name", "DerivedNode"));
     }
 
     [Fact]

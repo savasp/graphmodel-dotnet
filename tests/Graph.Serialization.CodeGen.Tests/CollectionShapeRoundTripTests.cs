@@ -464,6 +464,60 @@ public class CollectionShapeRoundTripTests
         Assert.Contains("ValidNodeSerializer.g.cs", generated, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void EffectiveSerializedMemberParityFixture_CompilesGeneratedSerializers()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            public sealed class EffectiveSerializedMemberParityDetails
+            {
+                public string Name { get; set; } = string.Empty;
+
+                [Property(Ignore = true)]
+                public INode IgnoredNode { get; set; } = null!;
+
+                public static IRelationship SharedRelationship { get; set; } = null!;
+
+                public INode this[int index]
+                {
+                    get => null!;
+                    set { }
+                }
+
+                private IRelationship HiddenRelationship { get; set; } = null!;
+            }
+
+            [Node("EffectiveSerializedMemberParity")]
+            public sealed record EffectiveSerializedMemberParityNode : Node
+            {
+                public EffectiveSerializedMemberParityDetails Details { get; init; } = new();
+
+                [Property(Ignore = true)]
+                public IRelationship IgnoredRelationship { get; init; } = null!;
+
+                public static INode SharedNode { get; set; } = null!;
+
+                public IRelationship this[int index]
+                {
+                    get => null!;
+                    set { }
+                }
+
+                private INode HiddenNode { get; set; } = null!;
+            }
+            """;
+
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+
+        Assert.Contains(
+            assembly.GetTypes(),
+            type => type.Name == "EffectiveSerializedMemberParityNodeSerializer");
+        Assert.Contains(
+            assembly.GetTypes(),
+            type => type.Name == "EffectiveSerializedMemberParityDetailsSerializer");
+    }
+
     private static IEntitySerializer CreateSerializer(System.Reflection.Assembly assembly, string serializerTypeName)
     {
         var serializerType = assembly.GetType(serializerTypeName, throwOnError: true)!;

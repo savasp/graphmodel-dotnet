@@ -664,7 +664,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzePropertyAccessors(SymbolAnalysisContext context, INamedTypeSymbol namedType)
     {
-        var properties = GetAllProperties(namedType);
+        var properties = AnalyzerHelper.GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {
@@ -690,7 +690,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeGraphInterfaceProperties(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
-        var properties = GetAllProperties(namedType);
+        var properties = AnalyzerHelper.GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {
@@ -999,7 +999,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeComplexTypeProperties(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
-        var properties = GetAllProperties(namedType);
+        var properties = AnalyzerHelper.GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {
