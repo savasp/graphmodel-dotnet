@@ -1,6 +1,6 @@
 # CVOYA graph compatibility compliance report
 
-A provider is **compliant** when its compatibility run reports N passed / M skipped-with-a-declared-capability-reason / 0 failed, where N is at least `ComplianceInventory.MinimumExecuted(declared)` for the capabilities the provider declares. Copy this template into your provider's repository/package and fill it in per release.
+A provider is **compliant** when its compatibility run reports N passed cases / M skipped-with-a-declared-capability-reason / 0 failed and the strict `ComplianceGuard` confirms that every method identity required by the declared capabilities executed. Copy this template into your provider's repository/package and fill it in per release.
 
 | | |
 |---|---|
@@ -30,11 +30,15 @@ A provider is **compliant** when its compatibility run reports N passed / M skip
 
 ## Results
 
-| Executed | Passed | Skipped (capability) | Failed |
-|---|---|---|---|
-| N | N | M | 0 |
+| Executed cases | Passed cases | Required method identities covered | Skipped (capability) | Failed cases |
+|---|---|---|---|---|
+| N | N | \<value\> / \<value\> | M | 0 |
 
-Minimum required executed for this capability set: `ComplianceInventory.MinimumExecuted(declared)` = \<value\>.
+Required method identities for this capability set: `ComplianceInventory.MinimumExecuted(declared)` = \<value\>; covered = \<same value\>.
+
+The executed/passed values are runtime test-case counts. A multi-row `[Theory]` contributes several
+cases but only one method identity; the strict guard checks the identity inventory and lists any
+missing declaring-interface-plus-signature identities.
 
 Reproduce:
 

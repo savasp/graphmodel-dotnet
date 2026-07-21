@@ -6,8 +6,8 @@ namespace Cvoya.Graph.CompatibilityTests;
 using System.Reflection;
 
 /// <summary>
-/// Reflects over the compatibility suite's test interfaces to answer "how many tests exist, and
-/// how many must a provider with a given declared <see cref="CapabilitySet"/> execute".
+/// Reflects over the compatibility suite's test interfaces to answer which test methods exist and
+/// which must a provider with a given declared <see cref="CapabilitySet"/> execute.
 /// </summary>
 /// <remarks>
 /// Reflection-based rather than a hand-maintained manifest, so the numbers self-maintain as
@@ -33,7 +33,7 @@ public static class ComplianceInventory
     /// <param name="declared">The capability set a provider declares.</param>
     /// <returns>The minimum number of test methods expected to execute (not skip).</returns>
     public static int MinimumExecuted(CapabilitySet declared) =>
-        testMethods.Value.Count(method => RequiredCapabilities(method).All(declared.Has));
+        ExpectedMethodIdentities(declared).Count;
 
     /// <summary>
     /// Gets the number of test methods expected to skip (via a capability mismatch) for a
@@ -65,6 +65,37 @@ public static class ComplianceInventory
             .ToArray();
     }
 
+    /// <summary>
+    /// Gets the runnable compatibility test methods required for <paramref name="declared"/>.
+    /// </summary>
+    internal static IReadOnlyList<MethodInfo> ExpectedTestMethods(CapabilitySet declared) =>
+        [.. testMethods.Value.Where(method => RequiredCapabilities(method).All(declared.Has))];
+
+    /// <summary>
+    /// Gets the stable identities of the runnable compatibility test methods required for
+    /// <paramref name="declared"/>.
+    /// </summary>
+    internal static IReadOnlySet<string> ExpectedMethodIdentities(CapabilitySet declared) =>
+        ExpectedTestMethods(declared)
+            .Select(MethodIdentity)
+            .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Builds an identity from a method's declaring type, name, generic arity, and parameter types.
+    /// The identity is stable across theory rows and distinguishes overloads.
+    /// </summary>
+    internal static string MethodIdentity(MethodInfo method)
+    {
+        ArgumentNullException.ThrowIfNull(method);
+
+        var declaringType = method.DeclaringType
+            ?? throw new ArgumentException("A compatibility test method must have a declaring type.", nameof(method));
+        var genericArity = method.IsGenericMethod ? $"``{method.GetGenericArguments().Length}" : string.Empty;
+        var parameters = string.Join(",", method.GetParameters().Select(parameter => TypeIdentity(parameter.ParameterType)));
+
+        return $"{TypeIdentity(declaringType)}.{method.Name}{genericArity}({parameters})";
+    }
+
     private static List<MethodInfo> DiscoverTestMethods()
     {
         var methods = new List<MethodInfo>();
@@ -84,5 +115,38 @@ public static class ComplianceInventory
         }
 
         return methods;
+    }
+
+    private static string TypeIdentity(Type type)
+    {
+        if (type.IsByRef)
+        {
+            return $"{TypeIdentity(type.GetElementType()!)}&";
+        }
+
+        if (type.IsPointer)
+        {
+            return $"{TypeIdentity(type.GetElementType()!)}*";
+        }
+
+        if (type.IsArray)
+        {
+            return $"{TypeIdentity(type.GetElementType()!)}[{new string(',', type.GetArrayRank() - 1)}]";
+        }
+
+        if (type.IsGenericParameter)
+        {
+            var prefix = type.DeclaringMethod is null ? "!" : "!!";
+            return $"{prefix}{type.GenericParameterPosition}";
+        }
+
+        if (type.IsGenericType)
+        {
+            var definition = type.GetGenericTypeDefinition();
+            var arguments = string.Join(",", type.GetGenericArguments().Select(TypeIdentity));
+            return $"{definition.FullName ?? definition.Name}[{arguments}]";
+        }
+
+        return type.FullName ?? type.Name;
     }
 }

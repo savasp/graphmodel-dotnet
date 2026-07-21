@@ -134,6 +134,34 @@ public sealed class ComplianceInventoryTests
     }
 
     [Fact]
+    public void ExpectedMethodIdentities_DeclaredCapabilities_SelectExactRunnableSet()
+    {
+        var declared = CapabilitySet.All.Except(GraphCapability.FullTextSearch);
+        var identities = ComplianceInventory.ExpectedMethodIdentities(declared);
+        var fullTextMethod = typeof(IFullTextSearchTests)
+            .GetMethod(nameof(IFullTextSearchTests.CanSearchNodesWithFullTextSearch))!;
+
+        Assert.Equal(ComplianceInventory.MinimumExecuted(declared), identities.Count);
+        Assert.DoesNotContain(ComplianceInventory.MethodIdentity(fullTextMethod), identities);
+        Assert.All(
+            ComplianceInventory.ExpectedTestMethods(declared),
+            method => Assert.Contains(ComplianceInventory.MethodIdentity(method), identities));
+    }
+
+    [Fact]
+    public void MethodIdentity_OverloadsAreDistinct()
+    {
+        var identities = typeof(IOverloadedMethods).GetMethods()
+            .Select(ComplianceInventory.MethodIdentity)
+            .ToArray();
+
+        Assert.Equal(2, identities.Length);
+        Assert.Equal(2, identities.Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains(identities, identity => identity.EndsWith(".Execute(System.Int32)", StringComparison.Ordinal));
+        Assert.Contains(identities, identity => identity.EndsWith(".Execute(System.String)", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void MinimumExecuted_AllExceptFullTextSearch_ExcludesFullTextSearchGatedMethods()
     {
         // Ground truth derived independently: every runnable test method gated on FullTextSearch,
@@ -190,5 +218,12 @@ public sealed class ComplianceInventoryTests
 
         Assert.NotNull(attribute);
         Assert.Equal(GraphCapability.FullTextSearch, attribute.Capability);
+    }
+
+    private interface IOverloadedMethods
+    {
+        void Execute(int value);
+
+        void Execute(string value);
     }
 }
