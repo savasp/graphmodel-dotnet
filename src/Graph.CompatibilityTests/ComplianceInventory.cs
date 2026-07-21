@@ -110,7 +110,7 @@ public static class ComplianceInventory
             methods.AddRange(
                 type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                     // A statically-skipped fact ([Fact(Skip = ...)]) can never execute on any
-                    // provider, so it must not count toward the strict-mode execution floor.
+                    // provider, so it must not appear in the strict-mode method inventory.
                     .Where(method => method.GetCustomAttribute<FactAttribute>(inherit: false) is { Skip: null }));
         }
 

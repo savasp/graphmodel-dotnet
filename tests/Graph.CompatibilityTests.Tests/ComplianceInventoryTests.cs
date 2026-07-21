@@ -18,7 +18,7 @@ public sealed class ComplianceInventoryTests
     /// or removes test methods, so this test keeps proving "the reflection count matches reality"
     /// rather than silently drifting. Statically-skipped facts (<c>[Fact(Skip = ...)]</c>) are
     /// excluded: they can never execute on any provider, so they play no part in the strict-mode
-    /// execution floor.
+    /// required method inventory.
     /// </summary>
     // +9 for #120: eight of the nine pattern-comprehension tests were un-skipped once correlated
     // collection projections landed — Basic/Filtered/TimeBased/Ordered/Aggregated/Grouped pattern
