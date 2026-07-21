@@ -25,7 +25,9 @@ public sealed class AgeDialectTests
                 GraphCapability.OptionalTraversal,
                 GraphCapability.CallSubqueries,
                 GraphCapability.PatternSizeProjection,
-                GraphCapability.GroupByAggregation),
+                GraphCapability.GroupByAggregation,
+                GraphCapability.RelationshipPredicates,
+                GraphCapability.SetOperations),
             capabilities);
     }
 

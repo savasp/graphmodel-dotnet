@@ -57,8 +57,9 @@ An application that already owns its connection pool can pass an AGE-enabled
   ISO-8601 temporal values.
 
 The provider declares full-text search. It does not currently declare nested transactions or
-shortest path. Unsupported operations fail during translation or are capability-skipped by the
-provider compatibility suite.
+shortest path. Shortest-path support remains tracked by #355 and is deferred until Apache AGE 1.8
+releases its native capability. Unsupported operations fail during translation or are
+capability-skipped by the provider compatibility suite.
 
 ### Native storage and commands
 

@@ -20,16 +20,22 @@
 | MultiLabelMatch | Yes | An AGE AST pass lowers logical inheritance labels to AGE-compatible predicates. |
 | LabelFiltering | Yes | Caller-supplied labels lower to escaped literal membership tests over physical and logical inheritance labels. |
 | OrderByEntity | No | Scalar property ordering is supported; bare whole-entity ordering is rejected rather than rewritten to public `Id`. |
-| ShortestPath | No | |
+| ShortestPath | No | Apache AGE 1.7 does not provide the required native capability; support remains tracked by #355 and is deferred until AGE 1.8 is released. |
 | OptionalTraversal | Yes | Optional matches are lowered while preserving owners with absent paths. |
 | GroupByAggregation | Yes | The shared structured `WITH` plan uses AGE-native grouping and aggregate functions. |
-| RelationshipPredicates | No | AGE declines variable-path relationship predicates and anchored relationship-existence patterns at translation time. |
-| SetOperations | No | AGE rejects typed `Union` and `Concat` at translation time. |
+| RelationshipPredicates | Yes | Per-hop predicates use indexed list filtering; anchored existence uses optional-match count stages. |
+| SetOperations | Yes | Every nested `Union`/`Concat` branch runs through the complete AGE lowering pipeline with disjoint parameters and normalized projection aliases. |
 
 ## Structured Cypher lowering
 
-After the shared planner produces a `CypherStatement`, the AGE query adapter runs an ordered
-`CypherPassRunner` before rendering. `AgeCorrelatedProjectionPass` replaces AGE-unsupported pattern
+After the shared planner produces a `CypherStatement`, the AGE query adapter recursively lowers every
+`SetOperationClause` branch, including nested and chained trees, through the same ordered
+`CypherPassRunner` before rendering. Branch parameter namespaces remain disjoint; temporal parameters
+added during lowering use the first free provider-local name. `AgeRelationshipPredicatePass` replaces
+AGE-unsupported universal relationship predicates with indexed list filtering so every expanded hop
+must satisfy the caller predicate.
+
+`AgeCorrelatedProjectionPass` replaces AGE-unsupported pattern
 comprehensions and `CALL {}` clauses with one correlated match plus grouped `collect`/aggregate
 projections — per-projection filters become conditional aggregation so one filtered projection
 cannot narrow its siblings, and the anchoring existence filter becomes a grouped row-count guard;
@@ -49,9 +55,9 @@ hydration into typed match, predicate, projection, and ordering clauses, then st
 named optional paths, `ALL`/`reduce` compatibility, temporal members, string containment, path
 indexes, reserved aliases, and empty sums. `AgeInlineComplexPropertyProjectionPass` expands inline
 node hydration into typed optional matches, list comprehensions, and collection clauses before the
-entity pass applies AGE compatibility lowering. `AgeQueryRunner` no longer performs any of #293's
-compatibility rewrites after rendering; these passes preserve the former query semantics without
-parsing rendered text.
+entity pass applies AGE compatibility lowering. `AgeSetOperationProjectionPass` assigns every leaf
+projection one compatible alias shape before rendering. `AgeQueryRunner` performs no textual
+compatibility rewrites after rendering.
 
 Scalar-key grouped aggregation needs no AGE-specific grouping pass: the shared planner emits a
 structured `WITH` stage whose non-aggregate key establishes AGE's implicit group, with aggregate
@@ -95,15 +101,16 @@ validation, cancellation, or database failure.
 
 | Inventory test methods | Executed | Capability-skipped | Statically skipped | Failed |
 |---|---|---|---|---|
-| 465 | 456 | 9 | 0 | 0 |
+| 465 | 463 | 2 | 0 | 0 |
 
 The compatibility inventory contains 465 runnable test methods. For this capability set,
-`ComplianceInventory.MinimumExecuted(declared)` is 456 methods and the strict compliance guard
-confirms all 456 expected method identities with 9 expected skips for undeclared capabilities:
-`RelationshipPredicates`, `ShortestPath`, `SetOperations`, and `OrderByEntity`. Theory data rows
-make the runtime case count slightly larger than the method inventory but do not increase method
-coverage. The provider-specific adapter, dialect, SQL-envelope, full-text, and security tests are
-excluded from the table.
+`ComplianceInventory.MinimumExecuted(declared)` is 463 methods and the strict compliance guard
+passes with 2 expected skips for the undeclared `ShortestPath` and `OrderByEntity` capabilities.
+The provider-neutral shortest-path contract remains in `IQueryTraversalTests` and pins one/all
+shortest-path selection, endpoint direction, no-path, and same-node semantics; AGE skips that
+contract until AGE 1.8 supplies the native capability tracked by #355. Theory data rows make the
+runtime case count slightly larger than the method inventory. The provider-specific adapter,
+dialect, SQL-envelope, full-text, and security tests are excluded from the table.
 
 Reproduce:
 

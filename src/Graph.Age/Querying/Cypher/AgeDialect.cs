@@ -21,7 +21,9 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.OptionalTraversal,
         GraphCapability.CallSubqueries,
         GraphCapability.PatternSizeProjection,
-        GraphCapability.GroupByAggregation);
+        GraphCapability.GroupByAggregation,
+        GraphCapability.RelationshipPredicates,
+        GraphCapability.SetOperations);
 
     // The shared planner may represent scalar projected sort keys and path-decomposition order
     // coordinates as variable references. Let it construct those internal rows, while the AGE
@@ -36,6 +38,8 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.CallSubqueries,
         GraphCapability.PatternSizeProjection,
         GraphCapability.GroupByAggregation,
+        GraphCapability.RelationshipPredicates,
+        GraphCapability.SetOperations,
         GraphCapability.OrderByEntity);
 
     private static readonly CapabilitySet CommandPlanningCapabilities = CapabilitySet.Of(
@@ -48,6 +52,7 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.CallSubqueries,
         GraphCapability.PatternSizeProjection,
         GraphCapability.GroupByAggregation,
+        GraphCapability.SetOperations,
         GraphCapability.OrderByEntity,
         GraphCapability.RelationshipPredicates);
 
@@ -67,10 +72,8 @@ public sealed class AgeDialect : ICypherDialect
     internal static AgeDialect PlanningInstance { get; } = new(PlanningCapabilities);
 
     /// <summary>
-    /// Gets the planning dialect for the narrower command-selection grammar. Command selections
-    /// end in a scalar native-id projection, which AGE can structurally lower to optional-match
-    /// counts even though general entity-hydrating relationship-existence queries remain outside
-    /// the provider's declared read capability.
+    /// Gets the planning dialect for command selections. Command selections end in a scalar
+    /// native-id projection and share the same relationship-existence lowering as read queries.
     /// </summary>
     internal static AgeDialect CommandPlanningInstance { get; } = new(CommandPlanningCapabilities);
 
@@ -85,8 +88,7 @@ public sealed class AgeDialect : ICypherDialect
     /// (<see cref="Querying.AgeFullTextSearch"/>).
     /// Scalar-key grouping uses AGE's native grouping and aggregate support through the shared
     /// structured <c>WITH</c> plan. Capabilities describe user-visible read behavior, whether
-    /// native or lowered. The internal command planner has one additional selection-only lowering
-    /// for relationship existence; it does not broaden this public capability set.
+    /// native or lowered.
     /// </remarks>
     public CapabilitySet Capabilities => capabilities;
 
