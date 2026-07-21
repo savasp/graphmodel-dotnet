@@ -5,6 +5,8 @@ namespace Cvoya.Graph.Core.Tests;
 
 using System.Collections;
 using System.Linq.Expressions;
+using System.Reflection;
+using Cvoya.Graph.Querying;
 
 public sealed class QueryableAsyncExtensionsTests
 {
@@ -56,8 +58,165 @@ public sealed class QueryableAsyncExtensionsTests
         Assert.Null(await empty.AverageAsync(row => row.NullableInt, cancellationToken));
     }
 
+    [Fact]
+    public async Task ElementAtNegativeIndex_ShortCircuitsProviderAndFallbackSources()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var provider = new RecordingGraphQueryProvider();
+
+        Assert.Null(await ProviderQuery<string>(provider).ElementAtOrDefaultAsync(-1, cancellationToken));
+        Assert.Equal(0, await ProviderQuery<int>(provider).ElementAtOrDefaultAsync(-1, cancellationToken));
+        Assert.Null(await ProviderQuery<int?>(provider).ElementAtOrDefaultAsync(-1, cancellationToken));
+
+        var providerException = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => ProviderQuery<string>(provider).ElementAtAsync(-1, cancellationToken));
+        Assert.Equal("index", providerException.ParamName);
+        Assert.Equal(0, provider.ExecutionCount);
+
+        Assert.Null(await Query("value").ElementAtOrDefaultAsync(-1, cancellationToken));
+        Assert.Null(await Query<string>().ElementAtOrDefaultAsync(-1, cancellationToken));
+        Assert.Equal(0, await Query(42).ElementAtOrDefaultAsync(-1, cancellationToken));
+        Assert.Equal(0, await Query<int>().ElementAtOrDefaultAsync(-1, cancellationToken));
+        Assert.Null(await Query<int?>(42).ElementAtOrDefaultAsync(-1, cancellationToken));
+        Assert.Null(await Query<int?>().ElementAtOrDefaultAsync(-1, cancellationToken));
+
+        var fallbackException = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => Query("value").ElementAtAsync(-1, cancellationToken));
+        Assert.Equal("index", fallbackException.ParamName);
+    }
+
+    [Fact]
+    public async Task ElementAtNegativeIndex_PreCanceledTokenTakesPrecedence()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var provider = new RecordingGraphQueryProvider();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => ProviderQuery<int>(provider).ElementAtOrDefaultAsync(-1, cts.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => ProviderQuery<int>(provider).ElementAtAsync(-1, cts.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => Query(1).ElementAtOrDefaultAsync(-1, cts.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => Query(1).ElementAtAsync(-1, cts.Token));
+
+        Assert.Equal(0, provider.ExecutionCount);
+    }
+
+    [Theory]
+    [InlineData(nameof(QueryableAsyncExtensions.AllAsync))]
+    [InlineData(nameof(QueryableAsyncExtensions.SingleAsync))]
+    public async Task PredicateTerminal_NullPredicateUsesPublicArgumentContract(string operation)
+    {
+        var provider = new RecordingGraphQueryProvider();
+
+        var providerException = await Assert.ThrowsAsync<ArgumentNullException>(
+            () => InvokeNullPredicateAsync(operation, ProviderQuery<int>(provider)));
+        Assert.Equal("predicate", providerException.ParamName);
+        Assert.Equal(0, provider.ExecutionCount);
+
+        var fallbackException = await Assert.ThrowsAsync<ArgumentNullException>(
+            () => InvokeNullPredicateAsync(operation, Query(1)));
+        Assert.Equal("predicate", fallbackException.ParamName);
+    }
+
+    [Fact]
+    public async Task EveryPublicAsyncTerminal_EmitsRegisteredQueryTerminalMarker()
+    {
+        var methods = typeof(QueryableAsyncExtensions)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            .Where(method => typeof(Task).IsAssignableFrom(method.ReturnType))
+            .ToArray();
+
+        Assert.NotEmpty(methods);
+
+        foreach (var definition in methods)
+        {
+            var method = definition.IsGenericMethodDefinition
+                ? definition.MakeGenericMethod(
+                    Enumerable.Repeat(typeof(int), definition.GetGenericArguments().Length).ToArray())
+                : definition;
+            var provider = new RecordingGraphQueryProvider();
+            var source = CreateProviderQuery(method.GetParameters()[0].ParameterType, provider);
+            var arguments = method.GetParameters()
+                .Select(parameter => CreateArgument(parameter, source))
+                .ToArray();
+
+            var task = Assert.IsAssignableFrom<Task>(method.Invoke(null, arguments));
+            await task;
+
+            Assert.Equal(1, provider.ExecutionCount);
+            var call = Assert.IsAssignableFrom<MethodCallExpression>(provider.LastExpression);
+            Assert.True(
+                call.Method.DeclaringType == typeof(QueryTerminals),
+                $"{method} emitted a marker declared by '{call.Method.DeclaringType}'.");
+            Assert.True(
+                LinqOperatorDispatch.Resolve(call.Method) is not null,
+                $"{method} emitted unregistered marker '{call.Method}'.");
+        }
+    }
+
+    private static Task InvokeNullPredicateAsync(string operation, IGraphQueryable<int> source) =>
+        operation switch
+        {
+            nameof(QueryableAsyncExtensions.AllAsync) => source.AllAsync(null!),
+            nameof(QueryableAsyncExtensions.SingleAsync) => source.SingleAsync(null!),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+        };
+
+    private static object CreateProviderQuery(
+        Type queryContract,
+        RecordingGraphQueryProvider provider)
+    {
+        var elementType = queryContract.GetGenericArguments()[0];
+        return Activator.CreateInstance(
+            typeof(RecordingGraphQueryable<>).MakeGenericType(elementType),
+            provider)!;
+    }
+
+    private static object? CreateArgument(ParameterInfo parameter, object source)
+    {
+        if (parameter.Position == 0)
+        {
+            return source;
+        }
+
+        if (parameter.ParameterType == typeof(CancellationToken))
+        {
+            return CancellationToken.None;
+        }
+
+        if (parameter.Name == "index")
+        {
+            return 0;
+        }
+
+        if (parameter.ParameterType.IsGenericType &&
+            parameter.ParameterType.GetGenericTypeDefinition() == typeof(Expression<>))
+        {
+            var delegateType = parameter.ParameterType.GetGenericArguments()[0];
+            var signature = delegateType.GetGenericArguments();
+            var lambdaParameters = signature[..^1]
+                .Select((type, index) => Expression.Parameter(type, $"value{index}"))
+                .ToArray();
+            var resultType = signature[^1];
+            Expression body = resultType == typeof(bool)
+                ? Expression.Constant(true)
+                : Expression.Default(resultType);
+            return Expression.Lambda(delegateType, body, lambdaParameters);
+        }
+
+        return parameter.ParameterType.IsValueType
+            ? Activator.CreateInstance(parameter.ParameterType)
+            : null;
+    }
+
     private static EnumerableGraphQueryable<T> Query<T>(params T[] values) =>
         new EnumerableGraphQueryable<T>(values);
+
+    private static RecordingGraphQueryable<T> ProviderQuery<T>(RecordingGraphQueryProvider provider) =>
+        new RecordingGraphQueryable<T>(provider);
 
     private sealed record NumericRow(
         int Int,
@@ -104,6 +263,93 @@ public sealed class QueryableAsyncExtensionsTests
                 yield return value;
                 await Task.Yield();
             }
+        }
+    }
+
+    private sealed class RecordingGraphQueryable<T> : IOrderedGraphQueryable<T>
+    {
+        public RecordingGraphQueryable(RecordingGraphQueryProvider provider)
+            : this(provider, expression: null)
+        {
+        }
+
+        public RecordingGraphQueryable(RecordingGraphQueryProvider provider, Expression? expression)
+        {
+            Provider = provider;
+            Expression = expression ?? Expression.Constant(this);
+        }
+
+        public Type ElementType => typeof(T);
+
+        public Expression Expression { get; }
+
+        public IGraphQueryProvider Provider { get; }
+
+        IQueryProvider IQueryable.Provider => Provider;
+
+        public IGraph Graph => null!;
+
+        public IEnumerator<T> GetEnumerator() => Enumerable.Empty<T>().GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public async IAsyncEnumerator<T> GetAsyncEnumerator(
+            CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
+
+    private sealed class RecordingGraphQueryProvider : IGraphQueryProvider
+    {
+        public int ExecutionCount { get; private set; }
+
+        public Expression? LastExpression { get; private set; }
+
+        public IGraph Graph => null!;
+
+        public IQueryable CreateQuery(Expression expression)
+        {
+            var elementType = ExtensionUtils.GetQueryableElementType(expression.Type);
+            return (IQueryable)Activator.CreateInstance(
+                typeof(RecordingGraphQueryable<>).MakeGenericType(elementType),
+                this,
+                expression)!;
+        }
+
+        public IQueryable<TElement> CreateQuery<TElement>(Expression expression) =>
+            new RecordingGraphQueryable<TElement>(this, expression);
+
+        IGraphQueryable<TElement> IGraphQueryProvider.CreateQuery<TElement>(Expression expression) =>
+            new RecordingGraphQueryable<TElement>(this, expression);
+
+        public object? Execute(Expression expression) =>
+            throw new NotSupportedException();
+
+        public TResult Execute<TResult>(Expression expression) =>
+            throw new NotSupportedException();
+
+        public Task<TResult> ExecuteAsync<TResult>(
+            Expression expression,
+            CancellationToken cancellationToken = default)
+        {
+            ExecutionCount++;
+            LastExpression = expression;
+            var result = typeof(TResult).IsGenericType &&
+                typeof(TResult).GetGenericTypeDefinition() == typeof(List<>)
+                    ? Activator.CreateInstance<TResult>()
+                    : default;
+            return Task.FromResult(result!);
+        }
+
+        public Task<object?> ExecuteAsync(
+            Expression expression,
+            CancellationToken cancellationToken = default)
+        {
+            ExecutionCount++;
+            LastExpression = expression;
+            return Task.FromResult<object?>(null);
         }
     }
 }

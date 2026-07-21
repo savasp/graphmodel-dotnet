@@ -80,7 +80,9 @@ public sealed class ComplianceInventoryTests
     // collision rollback, relationship uniqueness, and ordinary domain properties named Id.
     // +3 for #476: independent mixed scalar/complex replacement, polymorphic ordered collection
     // replacement plus null/empty clearing, and dynamic complex/scalar representation transitions.
-    private const int ExpectedTotalTestMethods = 475;
+    // +1 for #383: negative ElementAt/ElementAtOrDefault parity across empty/nonempty reference,
+    // nullable-value, and non-nullable-value query shapes.
+    private const int ExpectedTotalTestMethods = 476;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()
