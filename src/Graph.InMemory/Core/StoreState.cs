@@ -117,7 +117,7 @@ internal sealed record StoreState(
         if (roots.Count > 1)
         {
             throw new GraphException(
-                $"Node ID {id} matches {roots.Count} nodes under different labels; refusing an ambiguous delete.");
+                $"Node ID {id} matches {roots.Count} nodes; refusing an ambiguous delete.");
         }
 
         var root = roots[0];

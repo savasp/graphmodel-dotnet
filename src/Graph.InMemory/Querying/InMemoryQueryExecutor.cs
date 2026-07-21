@@ -512,7 +512,7 @@ internal sealed class InMemoryQueryExecutor(
             Current = entity,
             NativeIdentity = nativeIdentity,
             Sources = new Dictionary<object, IReadOnlyDictionary<string, StoredProperty>>(
-            GraphDataModel.ReferenceEqualityComparer.Instance)
+                GraphDataModel.ReferenceEqualityComparer.Instance)
             {
                 [entity] = source,
             },
@@ -816,18 +816,15 @@ internal sealed class InMemoryQueryExecutor(
             return false;
         }
 
-        return new[] { record }.Any(record =>
+        IReadOnlyList<string> storedLabels = record.ActualType == typeof(DynamicNode)
+            ? record.Labels
+            : [record.Label];
+        return filter.Match switch
         {
-            IReadOnlyList<string> storedLabels = record.ActualType == typeof(DynamicNode)
-                ? record.Labels
-                : [record.Label];
-            return filter.Match switch
-            {
-                GraphLabelMatch.Any => filter.Labels.Any(label => storedLabels.Contains(label, StringComparer.Ordinal)),
-                GraphLabelMatch.All => filter.Labels.All(label => storedLabels.Contains(label, StringComparer.Ordinal)),
-                _ => false,
-            };
-        });
+            GraphLabelMatch.Any => filter.Labels.Any(label => storedLabels.Contains(label, StringComparer.Ordinal)),
+            GraphLabelMatch.All => filter.Labels.All(label => storedLabels.Contains(label, StringComparer.Ordinal)),
+            _ => false,
+        };
     }
 
     private static bool RelationshipMatches(RelationshipRecord relationship, TraversalStep step)
@@ -1044,9 +1041,10 @@ internal sealed class InMemoryQueryExecutor(
                 return EvaluatePredicate(predicate.Predicate, predicate.Input);
             }
 
+            var sourceKey = RequireNodeKey(sourceNode);
             var propertyReplacements = replacements
                 .Where(pair =>
-                    pair.Key.SourceKey == RequireNodeKey(sourceNode) &&
+                    pair.Key.SourceKey == sourceKey &&
                     pair.Key.SourceType == predicate.Input.GetType())
                 .ToDictionary(pair => pair.Key.Property, pair => pair.Value);
             var rewrittenBody = new ComplexPropertyValueRewriter(
@@ -1511,11 +1509,23 @@ internal sealed class InMemoryQueryExecutor(
                 return true;
             }
 
-            if (x is not null && y is not null &&
-                elementBindings.TryGetValue(x, out var left) &&
-                elementBindings.TryGetValue(y, out var right))
+            if (x is null || y is null)
             {
-                return left.Kind == right.Kind && left.Key == right.Key;
+                return false;
+            }
+
+            var leftIsElement = elementBindings.TryGetValue(x, out var left);
+            var rightIsElement = elementBindings.TryGetValue(y, out var right);
+            if (leftIsElement != rightIsElement)
+            {
+                // A bound graph element hashes by its private key, so it can never equal a
+                // detached value hashing by CLR semantics.
+                return false;
+            }
+
+            if (leftIsElement)
+            {
+                return left!.Kind == right!.Kind && left.Key == right.Key;
             }
 
             return EqualityComparer<object?>.Default.Equals(x, y);

@@ -613,12 +613,17 @@ internal sealed class InMemoryGraph : IGraph
                 tx.Apply(state =>
                 {
                     var existing = ResolveLegacyRelationshipForUpdate(state, relationship.Id);
-                    var start = ResolveLegacyEndpoint(state, relationship.StartNodeId, "start");
-                    var end = ResolveLegacyEndpoint(state, relationship.EndNodeId, "end");
+
+                    // Endpoints are immutable on update, so the caller-supplied IDs are validated
+                    // against the stored endpoints instead of re-resolved globally: duplicate
+                    // public IDs elsewhere in the graph must not fail an unambiguous property
+                    // update on a keyed record.
+                    EnsureLegacyEndpointUnchanged(state, existing.StartKey, relationship.StartNodeId);
+                    EnsureLegacyEndpointUnchanged(state, existing.EndKey, relationship.EndNodeId);
                     var record = EntityWriter.DecomposeRelationship(
                         entity,
-                        start.Key,
-                        end.Key,
+                        existing.StartKey,
+                        existing.EndKey,
                         LegacyRelationshipEndpoints.LegacyDirection(relationship),
                         existing.Key);
                     if (constraints is not null)
@@ -758,6 +763,15 @@ internal sealed class InMemoryGraph : IGraph
             _ => throw new GraphException(
                 $"Node ID {id} and label {label} match {matches.Length} nodes; refusing an ambiguous update."),
         };
+    }
+
+    private static void EnsureLegacyEndpointUnchanged(StoreState state, Guid storedKey, string requestedId)
+    {
+        if (!string.Equals(state.Nodes[storedKey].CompatibilityId, requestedId, StringComparison.Ordinal))
+        {
+            throw new GraphException(
+                "Relationship endpoints cannot be changed on update; delete and recreate the relationship.");
+        }
     }
 
     private static RelationshipRecord ResolveLegacyRelationshipForUpdate(

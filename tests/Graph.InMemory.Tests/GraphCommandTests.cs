@@ -486,6 +486,97 @@ public sealed class GraphCommandTests
         Assert.Equal(6, await store.Graph.Relationships<Knows>().CountAsync(TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task TraversalDistinct_DedupesTargetReachedByTwoConvergingPaths()
+    {
+        await using var store = new InMemoryGraphStore();
+        var source = new Person { FirstName = "source" };
+        var target = new Person { FirstName = "target" };
+        await store.Graph.CreateNodeAsync(source, cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateNodeAsync(target, cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateRelationshipAsync(
+            new Knows(source, target) { Since = DateTime.UnixEpoch },
+            cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateRelationshipAsync(
+            new Knows(source, target) { Since = DateTime.UnixEpoch.AddDays(1) },
+            cancellationToken: TestContext.Current.CancellationToken);
+        var traversal = store.Graph.Nodes<Person>()
+            .Where(person => person.Id == source.Id)
+            .Traverse<Knows, Person>();
+
+        // The parallel edges genuinely produce two rows before deduplication; Distinct then
+        // collapses them because both rows bind one stored record key, not because the
+        // materialized values are equal.
+        Assert.Equal(2, await traversal.CountAsync(TestContext.Current.CancellationToken));
+        var distinct = await traversal.Distinct().ToListAsync(TestContext.Current.CancellationToken);
+        var single = Assert.Single(distinct);
+        Assert.Equal(target.Id, single.Id);
+    }
+
+    [Fact]
+    public async Task MutationsOverTraversalQueries_AreRejectedByTheSharedSelectionGrammar()
+    {
+        await using var store = new InMemoryGraphStore();
+        var source = new Person { FirstName = "source" };
+        var target = new Person { FirstName = "target" };
+        await store.Graph.CreateNodeAsync(source, cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateNodeAsync(target, cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateRelationshipAsync(
+            new Knows(source, target) { Since = DateTime.UnixEpoch },
+            cancellationToken: TestContext.Current.CancellationToken);
+        var traversal = store.Graph.Nodes<Person>()
+            .Where(person => person.Id == source.Id)
+            .Traverse<Knows, Person>();
+
+        var updateFailure = await Assert.ThrowsAsync<GraphQueryTranslationException>(() =>
+            GraphCommandExtensions.UpdateAsync(
+                traversal,
+                setters => setters.SetProperty(person => person.FirstName, "never"),
+                TestContext.Current.CancellationToken));
+        var deleteFailure = await Assert.ThrowsAsync<GraphQueryTranslationException>(() =>
+            GraphCommandExtensions.DeleteAsync(
+                traversal,
+                cascadeDelete: true,
+                TestContext.Current.CancellationToken));
+
+        Assert.Contains("command selection", updateFailure.Message);
+        Assert.Contains("command selection", deleteFailure.Message);
+        Assert.Equal(
+            "target",
+            (await store.Graph.GetNodeAsync<Person>(
+                target.Id,
+                cancellationToken: TestContext.Current.CancellationToken)).FirstName);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RemovesOnlyOrderedWindow()
+    {
+        await using var store = new InMemoryGraphStore();
+        var marker = $"delete-window-{Guid.NewGuid():N}";
+        foreach (var age in new[] { 30, 10, 20, 40 })
+        {
+            await store.Graph.CreateNodeAsync(
+                new Person { FirstName = $"person-{age}", LastName = marker, Age = age },
+                cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        var affected = await GraphCommandExtensions.DeleteAsync(
+            store.Graph.Nodes<Person>()
+                .Where(person => person.LastName == marker)
+                .OrderBy(person => person.Age)
+                .Skip(1)
+                .Take(2),
+            cascadeDelete: false,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, affected);
+        var survivors = await store.Graph.Nodes<Person>()
+            .Where(person => person.LastName == marker)
+            .OrderBy(person => person.Age)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal([10, 40], survivors.Select(person => person.Age));
+    }
+
     private static async Task CreateSelectedRelationshipAsync<TSource, TTarget>(
         IGraphQueryable<TSource> source,
         IRelationship relationship,
