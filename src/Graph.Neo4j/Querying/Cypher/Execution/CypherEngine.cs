@@ -78,7 +78,7 @@ internal sealed class CypherEngine
         var records = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
         return records.Select(record => new SelectedGraphElement(
             selection.ElementKind,
-            record["__nativeId"].As<string>())).ToArray();
+            global::Neo4j.Driver.ValueExtensions.As<string>(record["__nativeId"]))).ToArray();
     }
 
     internal async Task<int> ApplyMutationAsync(
@@ -86,6 +86,9 @@ internal sealed class CypherEngine
         GraphTransaction transaction,
         CancellationToken cancellationToken)
     {
+        var complexPlan = mutation.Kind == GraphMutationKind.Update
+            ? ComplexPropertyMutationPlan.Create(_entityFactory, mutation)
+            : null;
         var selected = await SelectNativeAsync(mutation.Selection, transaction, cancellationToken)
             .ConfigureAwait(false);
         if (selected.Count == 0)
@@ -140,7 +143,18 @@ internal sealed class CypherEngine
                         .Where(property => property.Assignment is not null)
                         .Select(property => property.StorageName)
                         .ToArray());
-            _ = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
+            if (complexPlan!.HasWork)
+            {
+                await ExecuteComplexMutationAsync(
+                    statement,
+                    complexPlan,
+                    transaction,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                _ = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         return selected.Count;
@@ -160,7 +174,7 @@ internal sealed class CypherEngine
             acquireWriteLock: true);
         var records = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
         var rows = records.Select(record => new GraphMutationConstraintRow(
-            record["__nativeId"].As<string>(),
+            global::Neo4j.Driver.ValueExtensions.As<string>(record["__nativeId"]),
             constraintPlan.Properties.Select((property, index) => new
             {
                 property.StorageName,
@@ -209,7 +223,8 @@ internal sealed class CypherEngine
                 parameters,
                 transaction,
                 cancellationToken).ConfigureAwait(false);
-            if (records.Single()["duplicateCount"].As<long>() > 0)
+            if (global::Neo4j.Driver.ValueExtensions.As<long>(
+                    records.Single()["duplicateCount"]) > 0)
             {
                 throw constraintPlan.CreateViolation(candidate.Constraint);
             }
@@ -230,6 +245,42 @@ internal sealed class CypherEngine
             StringComparer.Ordinal);
         return await _executor.ExecuteAsync(
             rendered.Text,
+            converted,
+            transaction,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ExecuteComplexMutationAsync(
+        CypherStatement scalarStatement,
+        ComplexPropertyMutationPlan complexPlan,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var prefixStatement = new CypherStatement(
+            scalarStatement.Clauses.Where(clause => clause is not ReturnClause).ToArray(),
+            scalarStatement.Parameters);
+        var rendered = new CypherRenderer(Neo4jDialect.Instance).Render(prefixStatement);
+        var parameters = CypherQueryVisitor.RewriteFullTextSearchParameters(
+            prefixStatement,
+            rendered.Parameters).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        var fragment = ComplexPropertyManager.BuildElementBoundMutationFragment(
+            "target",
+            complexPlan.ReplacementEntity,
+            complexPlan.RelationshipTypesToClear,
+            complexPlan.RootScalarPropertiesToClear);
+        foreach (var (name, value) in fragment.Parameters)
+        {
+            parameters.Add(name, value);
+        }
+
+        var parameterBuilder = new CypherParameterBuilder(_entityFactory, _loggerFactory);
+        var converted = parameters.ToDictionary(
+            pair => pair.Key,
+            pair => parameterBuilder.BuildParameterValue(pair.Value),
+            StringComparer.Ordinal);
+        var cypher = $"{rendered.Text}\n{fragment.Cypher}RETURN count(target) AS affectedCount";
+        _ = await _executor.ExecuteAsync(
+            cypher,
             converted,
             transaction,
             cancellationToken).ConfigureAwait(false);

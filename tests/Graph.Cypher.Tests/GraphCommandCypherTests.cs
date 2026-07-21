@@ -110,6 +110,71 @@ public sealed class GraphCommandCypherTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MutationPlan_LeavesComplexAssignmentsForProviderOwnedStorage(bool staged)
+    {
+        Expression<Func<Person, string>> name = person => person.Name;
+        Expression<Func<Person, AddressValue>> address = person => person.Address;
+        var mutation = new GraphMutationModel(
+            GraphMutationKind.Update,
+            new GraphElementSelectionModel(Model(new NodeRoot(typeof(Person))), GraphElementSelectionMode.Set),
+            [
+                new GraphConstantPropertyAssignment(
+                    name,
+                    typeof(Person).GetProperty(nameof(Person.Name)),
+                    nameof(Person.Name),
+                    false,
+                    "updated"),
+                new GraphConstantPropertyAssignment(
+                    address,
+                    typeof(Person).GetProperty(nameof(Person.Address)),
+                    nameof(Person.Address),
+                    false,
+                    new AddressValue { City = "Seattle" },
+                    isComplex: true),
+            ],
+            cascadeDelete: false);
+
+        var statement = new CypherMutationPlanner(dialect).Plan(
+            mutation,
+            ["native-1"],
+            staged ? [nameof(Person.Name)] : []);
+        var rendered = new CypherRenderer(dialect).Render(statement);
+
+        Assert.Contains("target.Name", rendered.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("target.Address", rendered.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain(rendered.Parameters.Values, value => value is AddressValue);
+    }
+
+    [Fact]
+    public void ComplexOnlyMutationPlan_SelectsTargetsWithoutDeletingThem()
+    {
+        Expression<Func<Person, AddressValue>> address = person => person.Address;
+        var mutation = new GraphMutationModel(
+            GraphMutationKind.Update,
+            new GraphElementSelectionModel(Model(new NodeRoot(typeof(Person))), GraphElementSelectionMode.Set),
+            [
+                new GraphConstantPropertyAssignment(
+                    address,
+                    typeof(Person).GetProperty(nameof(Person.Address)),
+                    nameof(Person.Address),
+                    false,
+                    new AddressValue { City = "Seattle" },
+                    isComplex: true),
+            ],
+            cascadeDelete: false);
+
+        var rendered = new CypherRenderer(dialect).Render(
+            new CypherMutationPlanner(dialect).Plan(mutation, ["native-1"]));
+
+        Assert.Contains("MATCH (target", rendered.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("DELETE target", rendered.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("SET target", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("RETURN count(target) AS affectedCount", rendered.Text, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData(GraphElementKind.Node, true)]
     [InlineData(GraphElementKind.Node, false)]
     [InlineData(GraphElementKind.Relationship, false)]
@@ -167,6 +232,13 @@ public sealed class GraphCommandCypherTests
         public string Name { get; init; } = string.Empty;
 
         public int Age { get; init; }
+
+        public AddressValue Address { get; init; } = new();
+    }
+
+    private sealed record AddressValue
+    {
+        public string City { get; init; } = string.Empty;
     }
 
     [Relationship(Label = "COMMAND_CYPHER_KNOWS")]

@@ -38,6 +38,10 @@ internal sealed class InMemoryGraphCommandExecutionContext(
         cancellationToken.ThrowIfCancellationRequested();
         GraphMutationModelValidator.Validate(mutation);
 
+        var complexPlan = mutation.Kind == GraphMutationKind.Update
+            ? ComplexPropertyMutationPlan.Create(new EntityFactory(), mutation)
+            : null;
+
         var executor = new InMemoryQueryExecutor(reader, transaction.View, schemaRegistry, cancellationToken);
         var selected = executor.SelectNative(mutation.Selection);
         if (selected.Count == 0)
@@ -53,7 +57,7 @@ internal sealed class InMemoryGraphCommandExecutionContext(
 
         var constraintPlan = GraphMutationConstraintPlan.Create(mutation, schemaRegistry);
         var updates = PrepareUpdates(mutation, selected, cancellationToken);
-        transaction.Apply(state => ApplyUpdates(state, updates, constraintPlan));
+        transaction.Apply(state => ApplyUpdates(state, updates, constraintPlan, complexPlan!));
         return Task.FromResult(selected.Count);
     }
 
@@ -93,7 +97,10 @@ internal sealed class InMemoryGraphCommandExecutionContext(
     {
         var state = transaction.View;
         var entityType = GetEntityType(mutation.Selection.Query.Root);
-        var compiled = mutation.Assignments.ToDictionary(
+        var scalarAssignments = mutation.Assignments
+            .Where(assignment => assignment is not GraphConstantPropertyAssignment { IsComplex: true })
+            .ToArray();
+        var compiled = scalarAssignments.ToDictionary(
             assignment => assignment,
             assignment => assignment is GraphComputedPropertyAssignment computed
                 ? computed.ValueExpression.Compile()
@@ -105,7 +112,7 @@ internal sealed class InMemoryGraphCommandExecutionContext(
             cancellationToken.ThrowIfCancellationRequested();
             var entity = Materialize(item, state, entityType);
             var values = new Dictionary<GraphPropertyAssignment, object?>();
-            foreach (var assignment in mutation.Assignments)
+            foreach (var assignment in scalarAssignments)
             {
                 values[assignment] = assignment switch
                 {
@@ -135,7 +142,8 @@ internal sealed class InMemoryGraphCommandExecutionContext(
     private static StoreState ApplyUpdates(
         StoreState state,
         IReadOnlyList<PreparedUpdate> updates,
-        GraphMutationConstraintPlan constraintPlan)
+        GraphMutationConstraintPlan constraintPlan,
+        ComplexPropertyMutationPlan complexPlan)
     {
         foreach (var update in updates)
         {
@@ -147,13 +155,30 @@ internal sealed class InMemoryGraphCommandExecutionContext(
                     throw new GraphException("A frozen in-memory node target no longer exists in the transaction view.");
                 }
 
+                var rootProperties = ApplyAssignments(node.Properties, update.Values);
+                foreach (var propertyName in complexPlan.RootScalarPropertiesToClear)
+                {
+                    rootProperties.Remove(propertyName);
+                }
+
                 state = state with
                 {
                     Nodes = state.Nodes.SetItem(node.Key, node with
                     {
-                        Properties = ApplyAssignments(node.Properties, update.Values),
+                        Properties = rootProperties,
                     }),
                 };
+                if (complexPlan.HasWork)
+                {
+                    var complexProperties = EntityWriter.DecomposeComplexProperties(
+                        complexPlan.ReplacementEntity,
+                        key);
+                    state = state.ReplaceComplexProperties(
+                        key,
+                        complexPlan.RelationshipTypesToClear,
+                        complexProperties.ValueNodes,
+                        complexProperties.Edges);
+                }
             }
             else
             {

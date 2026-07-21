@@ -35,6 +35,7 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
             context.EntityFactory,
             context.SchemaRegistry,
             context.GraphName,
+            context.ComplexPropertyManager,
             context.LoggerFactory);
     }
 
@@ -42,8 +43,6 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
         Expression expression,
         CancellationToken cancellationToken)
     {
-        await context.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
         if (GraphMutationModelBuilder.IsMutation(expression))
         {
             var mutation = GraphMutationModelBuilder.Build(expression);
@@ -53,6 +52,8 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
                 cancellationToken).ConfigureAwait(false);
             return (TResult)(object)affected;
         }
+
+        await context.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
 
         var result = await TransactionHelpers.ExecuteInTransactionAsync(
             context,

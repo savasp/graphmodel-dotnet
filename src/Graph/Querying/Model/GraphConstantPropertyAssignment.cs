@@ -15,9 +15,20 @@ public sealed record GraphConstantPropertyAssignment : GraphPropertyAssignment
         PropertyInfo? property,
         string storageName,
         bool dynamic,
-        object? value)
-        : base(propertySelector, property, storageName, dynamic) => Value = value;
+        object? value,
+        bool isComplex = false)
+        : base(propertySelector, property, storageName, dynamic)
+    {
+        Value = value;
+        IsComplex = isComplex;
+    }
 
     /// <summary>Gets the value to assign.</summary>
     public object? Value { get; }
+
+    /// <summary>
+    /// Gets whether the value is stored as an owned complex-property subtree instead of a root
+    /// scalar property.
+    /// </summary>
+    public bool IsComplex { get; }
 }

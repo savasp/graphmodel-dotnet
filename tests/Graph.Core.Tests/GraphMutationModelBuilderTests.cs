@@ -106,20 +106,21 @@ public sealed class GraphMutationModelBuilderTests
     }
 
     [Fact]
-    public void BuildUpdate_AcceptsComputedDynamicScalarAndRejectsComplexDynamicConstant()
+    public void BuildUpdate_AcceptsComputedDynamicScalarAndComplexDynamicConstant()
     {
         Expression<Func<GraphPropertySetters<DynamicNode>, GraphPropertySetters<DynamicNode>>> computed = builder =>
             builder.SetProperty(
                 node => node.Properties["score"],
                 node => (int)node.Properties["score"]! + 1);
         var complex = new Dictionary<string, object?> { ["nested"] = 1 };
-        Expression<Func<GraphPropertySetters<DynamicNode>, GraphPropertySetters<DynamicNode>>> invalid = builder =>
+        Expression<Func<GraphPropertySetters<DynamicNode>, GraphPropertySetters<DynamicNode>>> complexSetter = builder =>
             builder.SetProperty(node => node.Properties["payload"], complex);
 
         var mutation = GraphMutationModelBuilder.Build(UpdateCall(Root<DynamicNode>(), computed));
         Assert.IsType<GraphComputedPropertyAssignment>(Assert.Single(mutation.Assignments));
-        Assert.Throws<GraphQueryTranslationException>(() =>
-            GraphMutationModelBuilder.Build(UpdateCall(Root<DynamicNode>(), invalid)));
+        var complexMutation = GraphMutationModelBuilder.Build(UpdateCall(Root<DynamicNode>(), complexSetter));
+        Assert.True(Assert.IsType<GraphConstantPropertyAssignment>(
+            Assert.Single(complexMutation.Assignments)).IsComplex);
     }
 
     [Fact]
@@ -215,13 +216,11 @@ public sealed class GraphMutationModelBuilderTests
             new GraphElementSelectionModel(aggregate, GraphElementSelectionMode.Set)));
     }
 
-    [Theory]
-    [InlineData(nameof(Person.Ignored))]
-    [InlineData(nameof(Person.Home))]
-    public void BuildUpdate_RejectsStructuralOrUnsupportedMappedProperties(string propertyName)
+    [Fact]
+    public void BuildUpdate_RejectsIgnoredMappedProperty()
     {
         var parameter = Expression.Parameter(typeof(Person), "person");
-        var property = Expression.Property(parameter, propertyName);
+        var property = Expression.Property(parameter, nameof(Person.Ignored));
         var selector = Expression.Lambda(property, parameter);
         var setters = Expression.Parameter(typeof(GraphPropertySetters<Person>), "setters");
         var overload = typeof(GraphPropertySetters<Person>).GetMethods()
@@ -236,6 +235,100 @@ public sealed class GraphMutationModelBuilderTests
 
         Assert.Throws<GraphQueryTranslationException>(() =>
             GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), chain)));
+    }
+
+    [Fact]
+    public void BuildUpdate_ClassifiesTypedComplexPropertyAndCollectionConstants()
+    {
+        var home = new Address { City = "Seattle" };
+        var previous = new List<Address> { new() { City = "Portland" } };
+        Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> setters = builder => builder
+            .SetProperty(person => person.Home, home)
+            .SetProperty(person => person.PreviousHomes, previous);
+
+        var mutation = GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), setters));
+
+        Assert.All(mutation.Assignments, assignment =>
+            Assert.True(Assert.IsType<GraphConstantPropertyAssignment>(assignment).IsComplex));
+    }
+
+    [Fact]
+    public void BuildUpdate_RejectsComputedComplexValueAndNestedSelector()
+    {
+        Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> computed = builder =>
+            builder.SetProperty(person => person.Home, person => new Address { City = person.FirstName });
+        Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> nested = builder =>
+            builder.SetProperty(person => person.Home.City, "Seattle");
+
+        Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), computed)));
+        Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), nested)));
+    }
+
+    [Fact]
+    public void BuildUpdate_RejectsComplexValueCycleAndExcessDepth()
+    {
+        var cyclic = new RecursiveAddress();
+        cyclic.Next = cyclic;
+        var deep = new RecursiveAddress
+        {
+            Next = new RecursiveAddress
+            {
+                Next = new RecursiveAddress
+                {
+                    Next = new RecursiveAddress
+                    {
+                        Next = new RecursiveAddress { Next = new RecursiveAddress() },
+                    },
+                },
+            },
+        };
+        Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> cyclicSetter = builder =>
+            builder.SetProperty(person => person.RecursiveHome, cyclic);
+        Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> deepSetter = builder =>
+            builder.SetProperty(person => person.RecursiveHome, deep);
+
+        Assert.Throws<GraphException>(() =>
+            GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), cyclicSetter)));
+        Assert.Throws<GraphException>(() =>
+            GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), deepSetter)));
+    }
+
+    [Fact]
+    public void BuildUpdate_RejectsDynamicCyclesAndDepthHiddenBehindDictionaryCollections()
+    {
+        var cyclic = new Dictionary<string, object?>();
+        cyclic["children"] = new List<Dictionary<string, object?>> { cyclic };
+        var deep = new Dictionary<string, object?>();
+        var current = deep;
+        for (var depth = 0; depth < GraphDataModel.DefaultDepthAllowed; depth++)
+        {
+            var child = new Dictionary<string, object?>();
+            current["children"] = new List<Dictionary<string, object?>> { child };
+            current = child;
+        }
+
+        Expression<Func<GraphPropertySetters<DynamicNode>, GraphPropertySetters<DynamicNode>>> cyclicSetter =
+            builder => builder.SetProperty(node => node.Properties["payload"], cyclic);
+        Expression<Func<GraphPropertySetters<DynamicNode>, GraphPropertySetters<DynamicNode>>> deepSetter =
+            builder => builder.SetProperty(node => node.Properties["payload"], deep);
+
+        Assert.Throws<GraphException>(() =>
+            GraphMutationModelBuilder.Build(UpdateCall(Root<DynamicNode>(), cyclicSetter)));
+        Assert.Throws<GraphException>(() =>
+            GraphMutationModelBuilder.Build(UpdateCall(Root<DynamicNode>(), deepSetter)));
+    }
+
+    [Fact]
+    public void BuildUpdate_RejectsComplexDynamicRelationshipValue()
+    {
+        var payload = new Dictionary<string, object?> { ["city"] = "Seattle" };
+        Expression<Func<GraphPropertySetters<DynamicRelationship>, GraphPropertySetters<DynamicRelationship>>> setters =
+            builder => builder.SetProperty(relationship => relationship.Properties["payload"], payload);
+
+        Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphMutationModelBuilder.Build(UpdateCall(Root<DynamicRelationship>(), setters)));
     }
 
     [Fact]
@@ -358,11 +451,20 @@ public sealed class GraphMutationModelBuilderTests
         public string UniqueName { get; init; } = string.Empty;
 
         public Address Home { get; init; } = new();
+
+        public List<Address> PreviousHomes { get; init; } = [];
+
+        public RecursiveAddress? RecursiveHome { get; init; }
     }
 
     private sealed record Address
     {
         public string City { get; init; } = string.Empty;
+    }
+
+    private sealed class RecursiveAddress
+    {
+        public RecursiveAddress? Next { get; set; }
     }
 
     [Relationship(Label = "COMMAND_KNOWS")]

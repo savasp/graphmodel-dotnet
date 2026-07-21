@@ -119,6 +119,25 @@ public static class GraphDataModel
     }
 
     /// <summary>
+    /// Ensures that a value assigned directly to a root complex property is acyclic and does not
+    /// exceed the supported storage depth. The assigned value itself is one relationship below
+    /// the owning graph node.
+    /// </summary>
+    internal static void EnsureComplexPropertyValueDepth(
+        object? value,
+        int maximumDepth = DefaultDepthAllowed)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumDepth, 1);
+        if (value is null)
+        {
+            return;
+        }
+
+        var currentPath = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        CheckComplexPropertyDepth(value, depth: 1, maximumDepth, currentPath);
+    }
+
+    /// <summary>
     /// Enforces representation constraints for an <see cref="INode"/>.
     /// </summary>
     /// <param name="node">The node to enforce constraints for</param>
@@ -443,13 +462,31 @@ public static class GraphDataModel
 
         try
         {
+            if (value is IEnumerable<KeyValuePair<string, object?>> dynamicDictionary)
+            {
+                foreach (var item in dynamicDictionary.Select(entry => entry.Value).Where(item => item is not null))
+                {
+                    var itemType = item!.GetType();
+                    if (IsComplex(itemType) || IsCollectionOfComplex(itemType) || IsDictionary(itemType) ||
+                        IsCollectionOfDictionaries(itemType))
+                    {
+                        CheckComplexPropertyDepth(item, depth + 1, maximumDepth, currentPath);
+                    }
+                }
+
+                return;
+            }
+
             if (value is IDictionary dictionary)
             {
                 foreach (var item in dictionary.Values.Cast<object?>().Where(item => item is not null))
                 {
                     var itemType = item!.GetType();
-                    if (IsComplex(itemType) || IsCollectionOfComplex(itemType) || IsDictionary(itemType))
+                    if (IsComplex(itemType) || IsCollectionOfComplex(itemType) || IsDictionary(itemType) ||
+                        IsCollectionOfDictionaries(itemType))
+                    {
                         CheckComplexPropertyDepth(item, depth + 1, maximumDepth, currentPath);
+                    }
                 }
 
                 return;
@@ -494,6 +531,18 @@ public static class GraphDataModel
             currentPath.Remove(value);
         }
     }
+
+    private static bool IsCollectionOfDictionaries(Type type) =>
+        type != typeof(string) &&
+        typeof(IEnumerable).IsAssignableFrom(type) &&
+        !IsDictionary(type) &&
+        type switch
+        {
+            { IsArray: true } => IsDictionary(type.GetElementType()!),
+            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } itemType &&
+                IsDictionary(itemType),
+            _ => false,
+        };
 
     /// <summary>
     /// An equality comparer that uses reference equality (<see cref="object.ReferenceEquals"/>) for comparisons.

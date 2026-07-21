@@ -78,7 +78,9 @@ public sealed class ComplianceInventoryTests
     // exact-one endpoint cardinality failures.
     // +7 for #475: key/unique updates, selected-set swaps and duplicate rollback, unselected
     // collision rollback, relationship uniqueness, and ordinary domain properties named Id.
-    private const int ExpectedTotalTestMethods = 472;
+    // +3 for #476: independent mixed scalar/complex replacement, polymorphic ordered collection
+    // replacement plus null/empty clearing, and dynamic complex/scalar representation transitions.
+    private const int ExpectedTotalTestMethods = 475;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()
