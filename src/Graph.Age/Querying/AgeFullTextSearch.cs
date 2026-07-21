@@ -3,66 +3,68 @@
 
 namespace Cvoya.Graph.Age.Querying;
 
+using Cvoya.Graph.Age.Entities;
+using Cvoya.Graph.Age.Querying.Cypher;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
+using Cvoya.Graph.Age.Schema;
 using Cvoya.Graph.Age.Serialization;
 using Cvoya.Graph.Querying;
 
 /// <summary>
-/// Phase 1 of AGE's two-phase full-text search. AGE cannot express full-text matching in its Cypher
-/// subset, so its native mechanism is a Postgres text-search query run as plain SQL over the label
-/// tables. This class builds that SQL and returns the public <c>Id</c> values of the matching
-/// entities; the query rewriter (<see cref="AgeFullTextSearchRewriter"/>) then replaces the
-/// <c>Search(...)</c> operator with a <c>Where(e =&gt; ids.Contains(e.Id))</c> filter so the entirely
-/// unchanged shared planner and renderer serve the residual, search-free query.
+/// Phase 1 of AGE's two-phase full-text search. PostgreSQL searches the physical AGE label tables
+/// and returns transaction-local graphids; the residual Cypher query correlates those graphids with
+/// <c>id(alias)</c> through <see cref="AgeFullTextSearchRewriter"/>.
 /// </summary>
-/// <remarks>
-/// The predicate defines the semantics the later GIN-index work (#291) must preserve:
-/// <list type="bullet">
-/// <item>The <c>'simple'</c> regconfig is required: no stemming and no stop-word removal, so the match
-/// set sits exactly on the cross-provider contract floor (case-insensitive, whole-token, all-terms).
-/// <c>'english'</c> would make <c>Search("the")</c> diverge from the other providers.</item>
-/// <item>The shared tokenizer normalizes raw text before its terms reach Postgres through
-/// <c>plainto_tsquery('simple', @query)</c> as a bind parameter: never <c>to_tsquery</c>, never string
-/// interpolation.</item>
-/// </list>
-/// </remarks>
 internal static class AgeFullTextSearch
 {
-    /// <summary>
-    /// The maximum number of ids a single search may seed into the residual query. The id list rides
-    /// to AGE as one <c>agtype</c> parameter blob; past this bound the provider fails informatively
-    /// rather than build an unbounded parameter. Documented in <c>COMPLIANCE.md</c>.
-    /// </summary>
+    /// <summary>The maximum combined, deduplicated graphid set accepted by one search.</summary>
     internal const int MaxMatchedIds = 10_000;
 
-    /// <summary>
-    /// The unqualified name of the <c>IMMUTABLE</c> function that extracts an entity's searchable text
-    /// from its <c>agtype</c> blob. It lives in each graph's own schema (not a shared one) so
-    /// concurrent per-graph provisioning never races on a single catalog tuple. The phase-1 coarse
-    /// conjunct and the GIN index expression (<see cref="Schema.AgeFullTextIndex"/>) both reference it
-    /// by the same schema-qualified name so the planner matches the index expression textually.
-    /// </summary>
+    /// <summary>The managed extraction function used only when its matching GIN index is present.</summary>
     internal const string BlobFunctionName = "age_fulltext_blob";
 
     /// <summary>The schema-qualified reference to the blob function for <paramref name="graphName"/>.</summary>
     internal static string BlobFunctionRef(string graphName) =>
         $"{AgeSqlIdentifier.Quote(graphName, "graph name")}.{BlobFunctionName}";
 
-    private enum FullTextTarget
+    internal enum FullTextTarget
     {
         Nodes,
         Relationships,
     }
 
-    /// <summary>A concrete candidate type contributing one disjunct to a typed search predicate.</summary>
-    internal readonly record struct FullTextCandidate(string Label, IReadOnlyList<string> SearchableProperties);
+    private enum SearchScope
+    {
+        Typed,
+        Global,
+        Dynamic,
+    }
+
+    /// <summary>A concrete candidate type and its included searchable properties.</summary>
+    internal readonly record struct FullTextCandidate(
+        string Label,
+        IReadOnlyList<string> SearchableProperties);
+
+    /// <summary>A catalog-vetted physical AGE table and its optional managed acceleration.</summary>
+    internal readonly record struct GraphLabelTable(string Name, bool HasManagedIndex);
+
+    /// <summary>One private phase-one match. None of this context reaches entity materialization.</summary>
+    internal readonly record struct FullTextMatch(
+        long GraphId,
+        FullTextTarget Target,
+        string StorageName);
+
+    private sealed record FullTextTablePlan(
+        GraphLabelTable Table,
+        IReadOnlyList<FullTextCandidate> Candidates,
+        bool MatchAllStringValues,
+        bool IsLegacy);
 
     /// <summary>
-    /// Runs phase 1 on the supplied runner's transaction and returns the matching entities' public
-    /// <c>Id</c> values. Executing on the caller's transaction is deliberate: an uncommitted write in
-    /// that transaction is visible to the search.
+    /// Runs phase 1 on the supplied runner's transaction and returns physical AGE graphids with
+    /// private kind/table context. The shared transaction preserves visibility of uncommitted writes.
     /// </summary>
-    internal static async Task<IReadOnlyList<string>> FindMatchingIdsAsync(
+    internal static async Task<IReadOnlyList<FullTextMatch>> FindMatchesAsync(
         Type elementType,
         string query,
         SchemaRegistry schemaRegistry,
@@ -74,9 +76,6 @@ internal static class AgeFullTextSearch
         ArgumentNullException.ThrowIfNull(schemaRegistry);
         ArgumentNullException.ThrowIfNull(runner);
 
-        // PostgreSQL's lexer is deliberately not the semantic authority here. Normalize through the
-        // provider-neutral tokenizer first so punctuation and Unicode boundaries mean the same thing
-        // for every provider that declares FullTextSearch.
         var terms = FullTextQueryTokenizer.Tokenize(query);
         if (terms.Count == 0)
         {
@@ -84,42 +83,39 @@ internal static class AgeFullTextSearch
         }
 
         var normalizedQuery = string.Join(' ', terms);
+        var (target, scope) = Classify(elementType);
+        var tables = await runner
+            .DiscoverFullTextTablesAsync(target == FullTextTarget.Relationships, cancellationToken)
+            .ConfigureAwait(false);
 
-        var (target, isDynamic) = Classify(elementType);
-        var table = target == FullTextTarget.Nodes
-            ? SerializationBridge.PhysicalNodeLabel
-            : SerializationBridge.PhysicalRelationshipType;
-
-        string sql;
-        if (isDynamic)
+        IReadOnlyList<FullTextCandidate> candidates = scope == SearchScope.Dynamic
+            ? []
+            : await ResolveCandidatesAsync(
+                elementType,
+                target,
+                schemaRegistry,
+                includeAllRegistered: scope == SearchScope.Global,
+                cancellationToken).ConfigureAwait(false);
+        if (scope == SearchScope.Typed && candidates.Count == 0)
         {
-            sql = BuildDynamicSql(runner.GraphName, table);
-        }
-        else
-        {
-            var candidates = await ResolveCandidatesAsync(elementType, target, schemaRegistry, cancellationToken)
-                .ConfigureAwait(false);
-
-            // No registered type contributes a searchable property, so nothing can match. The residual
-            // query becomes Where(e => [].Contains(e.Id)) and returns an empty result by construction.
-            if (candidates.Count == 0)
-            {
-                return [];
-            }
-
-            sql = BuildTypedSql(runner.GraphName, table, candidates);
+            return [];
         }
 
-        var ids = await runner.QueryScalarStringsAsync(sql, normalizedQuery, cancellationToken).ConfigureAwait(false);
-        EnforceIdSetLimit(ids.Count);
-        return ids;
+        var plans = BuildTablePlans(target, scope, candidates, tables);
+        if (plans.Count == 0)
+        {
+            return [];
+        }
+
+        var sql = BuildSearchSql(runner.GraphName, target, plans);
+        var matches = await runner
+            .QueryFullTextMatchesAsync(sql, normalizedQuery, target, cancellationToken)
+            .ConfigureAwait(false);
+        EnforceIdSetLimit(matches.Count);
+        return matches;
     }
 
-    /// <summary>
-    /// Fails with an actionable error when a single search matches more entities than can ride to AGE
-    /// as one parameter blob. The phase-1 SQL fetches one past the limit, so any count above it means
-    /// the true match set is larger still.
-    /// </summary>
+    /// <summary>Fails when the combined distinct match set exceeds the provider bound.</summary>
     internal static void EnforceIdSetLimit(int matchedCount)
     {
         if (matchedCount > MaxMatchedIds)
@@ -130,38 +126,46 @@ internal static class AgeFullTextSearch
         }
     }
 
-    private static (FullTextTarget Target, bool IsDynamic) Classify(Type elementType)
+    private static (FullTextTarget Target, SearchScope Scope) Classify(Type elementType)
     {
         if (elementType == typeof(Graph.DynamicNode))
         {
-            return (FullTextTarget.Nodes, true);
+            return (FullTextTarget.Nodes, SearchScope.Dynamic);
         }
 
         if (elementType == typeof(Graph.DynamicRelationship))
         {
-            return (FullTextTarget.Relationships, true);
+            return (FullTextTarget.Relationships, SearchScope.Dynamic);
+        }
+
+        if (elementType == typeof(Graph.INode))
+        {
+            return (FullTextTarget.Nodes, SearchScope.Global);
+        }
+
+        if (elementType == typeof(Graph.IRelationship))
+        {
+            return (FullTextTarget.Relationships, SearchScope.Global);
+        }
+
+        if (elementType == typeof(Graph.IEntity))
+        {
+            return (FullTextTarget.Nodes, SearchScope.Global);
         }
 
         return typeof(Graph.IRelationship).IsAssignableFrom(elementType)
-            ? (FullTextTarget.Relationships, false)
-            : (FullTextTarget.Nodes, false);
+            ? (FullTextTarget.Relationships, SearchScope.Typed)
+            : (FullTextTarget.Nodes, SearchScope.Typed);
     }
 
     private static async Task<IReadOnlyList<FullTextCandidate>> ResolveCandidatesAsync(
         Type elementType,
         FullTextTarget target,
         SchemaRegistry schemaRegistry,
+        bool includeAllRegistered,
         CancellationToken cancellationToken)
     {
-        // Untyped search (INode/IRelationship/IEntity) has no single domain label to expand, so it
-        // ranges over every registered type of the target kind. A concrete or abstract domain type
-        // expands to itself plus its registered concrete subtypes, so SearchNodes<Person> also matches
-        // Manager rows (whose inheritance_labels carry both labels).
-        var untyped = elementType == typeof(Graph.INode)
-            || elementType == typeof(Graph.IRelationship)
-            || elementType == typeof(Graph.IEntity);
-
-        IEnumerable<string> labels = untyped
+        IEnumerable<string> labels = includeAllRegistered
             ? target == FullTextTarget.Nodes
                 ? await schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false)
                 : await schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken).ConfigureAwait(false)
@@ -194,64 +198,204 @@ internal static class AgeFullTextSearch
         return candidates;
     }
 
-    // agtype -> text -> jsonb once per row so the precise predicates read plain JSON.
+    private static List<FullTextTablePlan> BuildTablePlans(
+        FullTextTarget target,
+        SearchScope scope,
+        IReadOnlyList<FullTextCandidate> candidates,
+        IReadOnlyList<GraphLabelTable> tables)
+    {
+        var legacyTable = target == FullTextTarget.Nodes
+            ? SerializationBridge.PhysicalNodeLabel
+            : SerializationBridge.PhysicalRelationshipType;
+        var candidatesByNativeLabel = candidates
+            .Where(candidate => CypherIdentifier.IsNativeLabelName(candidate.Label))
+            .ToDictionary(candidate => candidate.Label, StringComparer.Ordinal);
+        var plans = new List<FullTextTablePlan>();
+
+        foreach (var table in tables)
+        {
+            if (!IsSafePhysicalTable(table.Name))
+            {
+                continue;
+            }
+
+            var isLegacy = string.Equals(table.Name, legacyTable, StringComparison.Ordinal);
+            if (scope == SearchScope.Dynamic)
+            {
+                plans.Add(new FullTextTablePlan(table, [], MatchAllStringValues: true, isLegacy));
+                continue;
+            }
+
+            if (isLegacy)
+            {
+                if (candidates.Count > 0)
+                {
+                    plans.Add(new FullTextTablePlan(table, candidates, MatchAllStringValues: false, IsLegacy: true));
+                }
+
+                continue;
+            }
+
+            if (candidatesByNativeLabel.TryGetValue(table.Name, out var candidate))
+            {
+                plans.Add(new FullTextTablePlan(table, [candidate], MatchAllStringValues: false, IsLegacy: false));
+            }
+            else if (scope == SearchScope.Global)
+            {
+                // An externally managed label has no registered CLR schema, so its dynamic contract
+                // is every string property. The residual global root still owns materialization.
+                plans.Add(new FullTextTablePlan(table, [], MatchAllStringValues: true, IsLegacy: false));
+            }
+        }
+
+        return plans;
+    }
+
+    private static bool IsSafePhysicalTable(string table)
+    {
+        if (table is "_ag_label_vertex" or "_ag_label_edge")
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = AgeSqlIdentifier.Validate(table, "table name");
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
     private const string Props = "(properties::text::jsonb)";
 
-    // The coarse conjunct, matching the GIN index expression (AgeFullTextIndex) verbatim so the planner
-    // can use the index; without the index it is a correct (slower) sequential scan. It over-matches
-    // relative to the precise per-type predicate (coarse ⊇ precise), so AND-ing the two never changes
-    // the result set. The dynamic all-values predicate IS this coarse expression.
-    private static string CoarsePredicate(string graphName) =>
-        $"to_tsvector('simple', {BlobFunctionRef(graphName)}(properties)) @@ plainto_tsquery('simple', @query)";
+    private static string ManagedPredicate(string graphName) =>
+        $"to_tsvector('simple', {BlobFunctionRef(graphName)}(properties)) @@ " +
+        "plainto_tsquery('simple', @query)";
 
-    /// <summary>
-    /// Builds the typed phase-1 SQL: the coarse (indexable) conjunct AND-ed with a disjunction of
-    /// per-candidate-type predicates, each a <c>to_tsvector</c> over that type's searchable properties
-    /// AND-ed with an <c>inheritance_labels</c> membership test for that type's own label. The label
-    /// test naturally excludes complex-property value-node rows, which carry the value type's label, not
-    /// the owner's.
-    /// </summary>
-    internal static string BuildTypedSql(
+    private static string FallbackPredicate =>
+        "to_tsvector('simple', (SELECT string_agg(age_fulltext_value.value #>> '{}', ' ') " +
+        $"FROM jsonb_each({Props}) AS age_fulltext_value(key, value) " +
+        "WHERE jsonb_typeof(age_fulltext_value.value) = 'string' " +
+        $"AND age_fulltext_value.key NOT IN ('{AgeElementMatcher.InheritanceLabelsProperty}', " +
+        $"'{SerializationBridge.EntityKindPropertyName}', '{SerializationBridge.MetadataPropertyName}'))) " +
+        "@@ plainto_tsquery('simple', @query)";
+
+    private static string BuildSearchSql(
         string graphName,
-        string table,
-        IReadOnlyList<FullTextCandidate> candidates)
+        FullTextTarget target,
+        IReadOnlyList<FullTextTablePlan> plans)
     {
-        var predicates = string.Join(
-            $"{Environment.NewLine}       OR ",
-            candidates.Select(BuildCandidatePredicate));
+        var branches = plans.Select(plan => BuildTableBranch(graphName, target, plan));
         return
-            $"SELECT {Props} ->> 'Id' AS id{Environment.NewLine}" +
-            $"FROM {BaseTable(graphName, table)}{Environment.NewLine}" +
-            $"WHERE {CoarsePredicate(graphName)}{Environment.NewLine}" +
-            $"  AND ({predicates}){Environment.NewLine}" +
+            $"SELECT graph_id, entity_kind, min(storage_name) AS storage_name{Environment.NewLine}" +
+            $"FROM ({Environment.NewLine}{string.Join($"{Environment.NewLine}UNION ALL{Environment.NewLine}", branches)}" +
+            $"{Environment.NewLine}) AS age_fulltext_matches{Environment.NewLine}" +
+            $"GROUP BY graph_id, entity_kind{Environment.NewLine}" +
             $"LIMIT {MaxMatchedIds + 1}";
     }
 
-    private static string BuildCandidatePredicate(FullTextCandidate candidate)
+    private static string BuildTableBranch(
+        string graphName,
+        FullTextTarget target,
+        FullTextTablePlan plan)
+    {
+        var precise = plan.MatchAllStringValues
+            ? plan.Table.HasManagedIndex ? ManagedPredicate(graphName) : FallbackPredicate
+            : BuildTypedPredicate(plan.Candidates, plan.IsLegacy);
+        if (!plan.MatchAllStringValues && plan.Table.HasManagedIndex)
+        {
+            precise = $"{ManagedPredicate(graphName)} AND ({precise})";
+        }
+
+        var rootPredicate = LegacyRootPredicate(target, plan.IsLegacy);
+        var predicate = rootPredicate is null ? precise : $"{rootPredicate} AND ({precise})";
+        var entityKind = target == FullTextTarget.Nodes ? "Node" : "Relationship";
+        return
+            $"SELECT id::text::bigint AS graph_id, {SqlString(entityKind)} AS entity_kind, " +
+            $"{SqlString(plan.Table.Name)} AS storage_name{Environment.NewLine}" +
+            $"FROM ONLY {BaseTable(graphName, plan.Table.Name)}{Environment.NewLine}" +
+            $"WHERE {predicate}";
+    }
+
+    private static string? LegacyRootPredicate(FullTextTarget target, bool isLegacy)
+    {
+        if (!isLegacy)
+        {
+            return null;
+        }
+
+        return target == FullTextTarget.Nodes
+            ? $"NOT jsonb_exists({Props}, {SqlString(SerializationBridge.EntityKindPropertyName)})"
+            : $"({Props} -> {SqlString(ComplexPropertyStorage.RelationshipMarkerProperty)}) " +
+                "IS DISTINCT FROM 'true'::jsonb";
+    }
+
+    private static string BuildTypedPredicate(
+        IReadOnlyList<FullTextCandidate> candidates,
+        bool legacy) =>
+        string.Join(
+            $"{Environment.NewLine}       OR ",
+            candidates.Select(candidate => BuildCandidatePredicate(candidate, legacy)));
+
+    private static string BuildCandidatePredicate(FullTextCandidate candidate, bool legacy)
     {
         var extractions = string.Join(
             ", ",
             candidate.SearchableProperties.Select(property => $"{Props} ->> {SqlString(property)}"));
-        return
-            $"(to_tsvector('simple', concat_ws(' ', {extractions})) @@ plainto_tsquery('simple', @query) " +
-            $"AND jsonb_exists({Props} -> 'inheritance_labels', {SqlString(candidate.Label)}))";
+        var textPredicate =
+            $"to_tsvector('simple', concat_ws(' ', {extractions})) @@ " +
+            "plainto_tsquery('simple', @query)";
+        return legacy
+            ? $"({textPredicate} AND jsonb_exists({Props} -> " +
+                $"'{AgeElementMatcher.InheritanceLabelsProperty}', {SqlString(candidate.Label)}))"
+            : $"({textPredicate})";
     }
 
-    /// <summary>
-    /// Builds the dynamic phase-1 SQL for <see cref="Graph.DynamicNode"/>/<see cref="Graph.DynamicRelationship"/>:
-    /// the coarse "all string values" predicate, which is exactly the dynamic match set (there is no
-    /// schema to name searchable properties) and is served directly by the GIN index.
-    /// </summary>
-    internal static string BuildDynamicSql(string graphName, string table) =>
-        $"SELECT {Props} ->> 'Id' AS id{Environment.NewLine}" +
-        $"FROM {BaseTable(graphName, table)}{Environment.NewLine}" +
-        $"WHERE {CoarsePredicate(graphName)}{Environment.NewLine}" +
-        $"LIMIT {MaxMatchedIds + 1}";
+    /// <summary>Provider-free seam for one typed table's combined graphid SQL.</summary>
+    internal static string BuildTypedSql(
+        string graphName,
+        string table,
+        IReadOnlyList<FullTextCandidate> candidates,
+        bool relationship = false,
+        bool hasManagedIndex = false)
+    {
+        var target = relationship ? FullTextTarget.Relationships : FullTextTarget.Nodes;
+        var legacyTable = relationship
+            ? SerializationBridge.PhysicalRelationshipType
+            : SerializationBridge.PhysicalNodeLabel;
+        return BuildSearchSql(
+            graphName,
+            target,
+            [new FullTextTablePlan(
+                new GraphLabelTable(table, hasManagedIndex),
+                candidates,
+                MatchAllStringValues: false,
+                IsLegacy: string.Equals(table, legacyTable, StringComparison.Ordinal))]);
+    }
 
-    // All nodes/relationships live in one agtype-blob label table per kind; the graph name doubles as
-    // the Postgres schema. The query reads the base table directly (not a derived table) so the coarse
-    // conjunct over the raw `properties` column matches the GIN index expression. graphName and table
-    // are validated as SQL identifiers; the search text is the only user input and rides as @query.
+    /// <summary>Provider-free seam for one dynamic table's combined graphid SQL.</summary>
+    internal static string BuildDynamicSql(
+        string graphName,
+        string table,
+        bool relationship = false,
+        bool hasManagedIndex = false) =>
+        BuildSearchSql(
+            graphName,
+            relationship ? FullTextTarget.Relationships : FullTextTarget.Nodes,
+            [new FullTextTablePlan(
+                new GraphLabelTable(table, hasManagedIndex),
+                [],
+                MatchAllStringValues: true,
+                IsLegacy: string.Equals(
+                    table,
+                    relationship
+                        ? SerializationBridge.PhysicalRelationshipType
+                        : SerializationBridge.PhysicalNodeLabel,
+                    StringComparison.Ordinal))]);
+
     private static string BaseTable(string graphName, string table) =>
         $"{AgeSqlIdentifier.Quote(graphName, "graph name")}.{AgeSqlIdentifier.Quote(table, "table name")}";
 

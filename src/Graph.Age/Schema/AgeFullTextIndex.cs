@@ -9,13 +9,11 @@ using Cvoya.Graph.Age.Serialization;
 using Npgsql;
 
 /// <summary>
-/// Creates the coarse blob-level GIN indexes that accelerate full-text search (#291). AGE stores every
-/// node in one physical table with one <c>agtype</c> blob, so a per-type index is impossible; instead
-/// one GIN expression index on each physical entity table covers a fixed, <c>IMMUTABLE</c> "all string
-/// values" tsvector.
-/// Phase-1 SQL AND-s a coarse conjunct matching that expression verbatim with the precise per-type
-/// predicate, so Postgres uses the index and rechecks the precise conjunct — coarse ⊇ precise, so the
-/// result set never changes, index or no index.
+/// Creates the coarse blob-level GIN indexes that accelerate searches of the legacy CVOYA tables.
+/// Native logical and externally managed label tables remain correct through phase one's inline
+/// function-free predicate. When a managed index is present, phase-one SQL AND-s its coarse
+/// expression with the precise per-type predicate, so the result set never changes with or without
+/// managed infrastructure.
 /// </summary>
 internal static class AgeFullTextIndex
 {
@@ -64,7 +62,7 @@ internal static class AgeFullTextIndex
           SELECT string_agg(kv.value #>> '{}', ' ')
           FROM jsonb_each(props::text::jsonb) AS kv(key, value)
           WHERE jsonb_typeof(kv.value) = 'string'
-            AND kv.key NOT IN ('Id', 'inheritance_labels', '{{SerializationBridge.EntityKindPropertyName}}', '{{SerializationBridge.MetadataPropertyName}}')
+            AND kv.key NOT IN ('inheritance_labels', '{{SerializationBridge.EntityKindPropertyName}}', '{{SerializationBridge.MetadataPropertyName}}')
         $fn$;
         """;
 

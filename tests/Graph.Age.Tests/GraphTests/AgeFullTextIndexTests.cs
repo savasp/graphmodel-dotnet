@@ -17,11 +17,13 @@ using Cvoya.Graph.CompatibilityTests;
 public sealed class AgeFullTextIndexTests(AgeHarness harness)
     : AgeTest(harness, StoreIsolation.FreshStore)
 {
-    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
+    [Fact]
     public async Task PhaseOneTypedSearch_UsesGinIndex_WhenTheStoreHasStatistics()
     {
         var ct = TestContext.Current.CancellationToken;
         string graphName;
+
+        await this.Graph.RecreateIndexesAsync(ct);
 
         // Seed a few thousand rows so the planner prefers the index over a sequential scan; a handful
         // of rows would seq-scan regardless. Bulk-create via one Cypher UNWIND rather than per-node CRUD.
@@ -51,7 +53,8 @@ public sealed class AgeFullTextIndexTests(AgeHarness harness)
         var typedSql = AgeFullTextSearch.BuildTypedSql(
             graphName,
             "CvoyaNode",
-            [new AgeFullTextSearch.FullTextCandidate("Person", ["Bio"])]);
+            [new AgeFullTextSearch.FullTextCandidate("Person", ["Bio"])],
+            hasManagedIndex: true);
         var plan = await runner.QueryScalarStringsAsync(
             "EXPLAIN (FORMAT JSON) " + typedSql, "uniqueneedletoken", ct);
         var planText = string.Join(string.Empty, plan);
@@ -64,7 +67,7 @@ public sealed class AgeFullTextIndexTests(AgeHarness harness)
         await transaction.CommitAsync();
     }
 
-    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
+    [Fact]
     public async Task Search_StaysCorrect_WhenTheIndexIsDroppedAndRecreated()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -99,11 +102,12 @@ public sealed class AgeFullTextIndexTests(AgeHarness harness)
         Assert.Equal(alice.Id, recreated[0].Id);
     }
 
-    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
+    [Fact]
     public async Task RecreateIndexes_RebuildsAnExistingIndex()
     {
         var ct = TestContext.Current.CancellationToken;
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Index", LastName = "Identity" }, null, ct);
+        await this.Graph.RecreateIndexesAsync(ct);
 
         var before = await ReadIndexOidAsync(AgeFullTextIndex.NodeIndexName, ct);
         await this.Graph.RecreateIndexesAsync(ct);

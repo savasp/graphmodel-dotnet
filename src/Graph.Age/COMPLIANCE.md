@@ -11,7 +11,7 @@
 
 | Capability | Declared | Note |
 |---|---|---|
-| FullTextSearch | No | Native/legacy graphid correlation is tracked by #474. |
+| FullTextSearch | Yes | PostgreSQL discovers native/legacy/external tables; residual Cypher correlates private graphids. |
 | Transactions | Yes | One PostgreSQL connection and transaction per graph transaction. |
 | NestedTransactions | No | |
 | ComplexPropertyCascade | Yes | Owned value nodes are deleted transactionally. |
@@ -78,8 +78,8 @@ New user roots use their mapped AGE label/type. The label-lowering pass matches 
 metadata and old `CvoyaNode` / `CvoyaRelationship` data remains usable without migration. Graph
 creation provisions only the graph; an authorized write discovers or creates only the native label
 table it needs under the graph-scoped advisory lock. Read transactions verify graph existence and
-perform no DDL. Managed full-text infrastructure is explicit and the capability remains undeclared
-until #474 replaces its public-`Id` handoff with graphid correlation.
+perform no DDL. Managed full-text infrastructure is explicit; ordinary searches use a function-free
+fallback and correlate native graphids without exposing them as model data.
 
 Set mutations select, deduplicate, and freeze native graphids before writes. Node/relationship
 updates and deletes, uniqueness self-exclusion, and exact endpoint-intent creation use those graphids
@@ -91,16 +91,14 @@ validation, cancellation, or database failure.
 
 | Inventory test methods | Executed | Capability-skipped | Statically skipped | Failed |
 |---|---|---|---|---|
-| 465 | 422 | 43 | 0 | 0 |
+| 465 | 456 | 9 | 0 | 0 |
 
 The compatibility inventory contains 465 runnable test methods. For this capability set,
-`ComplianceInventory.MinimumExecuted(declared)` is 422 methods and the strict compliance guard
-passes with 43 expected skips for undeclared capabilities: `FullTextSearch`,
-`RelationshipPredicates`, `ShortestPath`, `SetOperations`, and `OrderByEntity`. Theory data rows
+`ComplianceInventory.MinimumExecuted(declared)` is 456 methods and the strict compliance guard
+passes with 9 expected skips for undeclared capabilities: `RelationshipPredicates`, `ShortestPath`,
+`SetOperations`, and `OrderByEntity`. Theory data rows
 make the runtime case count slightly larger than the method inventory. The provider-specific
-adapter, dialect, SQL-envelope, full-text, and security tests are excluded from the table; five
-provider-specific full-text tests are statically skipped until #474 restores native/legacy graphid
-correlation.
+adapter, dialect, SQL-envelope, full-text, and security tests are excluded from the table.
 
 Reproduce:
 

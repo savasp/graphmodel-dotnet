@@ -9,7 +9,9 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Cvoya.Graph.Age.Querying;
 using Cvoya.Graph.Age.Schema;
+using Cvoya.Graph.Age.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -128,6 +130,126 @@ internal sealed partial class AgeQueryRunner
         existsCommand.Parameters.AddWithValue("labelName", label);
         existsCommand.Parameters.AddWithValue("labelKind", relationship ? "e" : "v");
         return await existsCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is true;
+    }
+
+    /// <summary>
+    /// Discovers concrete label tables for one entity kind from AGE's catalog. A matching managed
+    /// index is reported as optional acceleration; callers must retain a function-free fallback.
+    /// </summary>
+    internal async Task<List<AgeFullTextSearch.GraphLabelTable>> DiscoverFullTextTablesAsync(
+        bool relationship,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var legacyTable = relationship
+            ? SerializationBridge.PhysicalRelationshipType
+            : SerializationBridge.PhysicalNodeLabel;
+        var managedIndex = relationship
+            ? AgeFullTextIndex.RelationshipIndexName
+            : AgeFullTextIndex.NodeIndexName;
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT label.name,
+                   CASE WHEN label.name = @legacyTable THEN EXISTS (
+                       SELECT 1
+                       FROM pg_catalog.pg_index AS managed_index
+                       JOIN pg_catalog.pg_class AS index_relation
+                         ON index_relation.oid = managed_index.indexrelid
+                       WHERE managed_index.indrelid = label.relation
+                         AND index_relation.relname = @managedIndex)
+                   ELSE false END AS has_managed_index
+            FROM ag_catalog.ag_label AS label
+            JOIN ag_catalog.ag_graph AS graph ON graph.graphid = label.graph
+            WHERE graph.name = @graphName
+              AND label.kind = @labelKind
+            ORDER BY label.name
+            """;
+        command.Parameters.AddWithValue("legacyTable", legacyTable);
+        command.Parameters.AddWithValue("managedIndex", managedIndex);
+        command.Parameters.AddWithValue("graphName", graphName);
+        command.Parameters.AddWithValue("labelKind", relationship ? "e" : "v");
+        await using var commandLease = command.ConfigureAwait(false);
+
+        try
+        {
+            var tables = new List<AgeFullTextSearch.GraphLabelTable>();
+            var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await using var readerLease = reader.ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                tables.Add(new AgeFullTextSearch.GraphLabelTable(reader.GetString(0), reader.GetBoolean(1)));
+            }
+
+            return tables;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsQueryExecutionFailure(exception))
+        {
+            throw WrapQueryExecutionFailure(exception);
+        }
+    }
+
+    /// <summary>Executes one combined phase-one search and reads its private graphid context.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security",
+        "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "AgeFullTextSearch composes SQL only from catalog-vetted identifiers, " +
+            "compile-time constants, and bound search text.")]
+    internal async Task<List<AgeFullTextSearch.FullTextMatch>> QueryFullTextMatchesAsync(
+        string sql,
+        string query,
+        AgeFullTextSearch.FullTextTarget expectedTarget,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sql);
+        ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.Parameters.Add(new NpgsqlParameter("query", query));
+        await using var commandLease = command.ConfigureAwait(false);
+
+        try
+        {
+            var matches = new List<AgeFullTextSearch.FullTextMatch>();
+            var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await using var readerLease = reader.ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var target = reader.GetString(1) switch
+                {
+                    "Node" => AgeFullTextSearch.FullTextTarget.Nodes,
+                    "Relationship" => AgeFullTextSearch.FullTextTarget.Relationships,
+                    var value => throw new GraphException($"AGE full-text search returned unknown entity kind '{value}'."),
+                };
+                if (target != expectedTarget)
+                {
+                    throw new GraphException("AGE full-text search returned an entity kind outside its requested scope.");
+                }
+
+                matches.Add(new AgeFullTextSearch.FullTextMatch(
+                    reader.GetInt64(0),
+                    target,
+                    reader.GetString(2)));
+            }
+
+            return matches;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsQueryExecutionFailure(exception))
+        {
+            throw WrapQueryExecutionFailure(exception);
+        }
     }
 
     /// <summary>

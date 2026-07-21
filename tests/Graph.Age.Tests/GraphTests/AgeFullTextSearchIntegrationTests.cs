@@ -3,6 +3,8 @@
 
 namespace Cvoya.Graph.Age.Tests.GraphTests;
 
+using Cvoya.Graph.Age.Core;
+using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.CompatibilityTests;
 
 /// <summary>
@@ -13,7 +15,7 @@ using Cvoya.Graph.CompatibilityTests;
 public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
     : AgeTest(harness, StoreIsolation.FreshStore)
 {
-    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
+    [Fact]
     public async Task Search_RunsOnCallerTransaction_SeesUncommittedWrites()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -35,7 +37,7 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
         Assert.Empty(afterRollback);
     }
 
-    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
+    [Fact]
     public async Task MixedSearch_AppliesOrderingPagingAndTerminalsAfterCombiningBothKinds()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -64,5 +66,137 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
         Assert.Equal(all.MinBy(entity => entity.Id)!.Id, paged[0].Id);
 
         Assert.Equal(2, await this.Graph.Search(term).CountAsync(ct));
+    }
+
+    [Fact]
+    public async Task Search_RawNativeElementsWithoutId_UsesGraphidWithoutExposingIt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string term = "ExternalSearchToken474";
+        long nodeGraphId;
+        long relationshipGraphId;
+        await using (var transaction = await this.Graph.GetTransactionAsync(ct))
+        {
+            await using var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
+                """
+                CREATE (source:Person)
+                SET source.FirstName = $term, source.LastName = 'External', source.Bio = ''
+                CREATE (target:Person)
+                SET target.FirstName = 'Endpoint', target.LastName = 'External', target.Bio = ''
+                CREATE (source)-[relationship:WORKS_REALLY_WELL_WITH]->(target)
+                SET relationship.HowWell = $term
+                RETURN id(source) AS nodeGraphId, id(relationship) AS relationshipGraphId
+                """,
+                new { term },
+                ct);
+            var record = await result.SingleAsync(ct);
+            nodeGraphId = record["nodeGraphId"].As<long>();
+            relationshipGraphId = record["relationshipGraphId"].As<long>();
+            await transaction.CommitAsync();
+        }
+
+        var node = Assert.Single(await this.Graph.SearchNodes<Person>(term).ToListAsync(ct));
+        var relationship = Assert.Single(
+            await this.Graph.SearchRelationships<KnowsWell>(term).ToListAsync(ct));
+        var mixed = await this.Graph.Search(term).ToListAsync(ct);
+
+        Assert.Equal(term, node.FirstName);
+        Assert.Equal(term, relationship.HowWell);
+        Assert.Equal(2, mixed.Count);
+        Assert.DoesNotContain(mixed, entity => entity.Id == nodeGraphId.ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
+        Assert.DoesNotContain(mixed, entity => entity.Id == relationshipGraphId.ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public async Task DynamicSearch_DiscoversUnregisteredExternalLabelTables()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string term = "UnregisteredExternalToken474";
+        await using (var transaction = await this.Graph.GetTransactionAsync(ct))
+        {
+            await using var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
+                """
+                CREATE (source:ExternalSearchNode)
+                SET source.Name = $term
+                CREATE (target:ExternalSearchNode)
+                SET target.Name = 'Endpoint'
+                CREATE (source)-[relationship:EXTERNAL_SEARCH_EDGE]->(target)
+                SET relationship.Description = $term
+                RETURN true AS created
+                """,
+                new { term },
+                ct);
+            _ = await result.SingleAsync(ct);
+            await transaction.CommitAsync();
+        }
+
+        var node = Assert.Single(await this.Graph.SearchNodes<DynamicNode>(term).ToListAsync(ct));
+        var relationship = Assert.Single(
+            await this.Graph.SearchRelationships<DynamicRelationship>(term).ToListAsync(ct));
+
+        Assert.Contains("ExternalSearchNode", node.Labels);
+        Assert.Equal(term, node.Properties["Name"]);
+        Assert.Equal("EXTERNAL_SEARCH_EDGE", relationship.Type);
+        Assert.Equal(term, relationship.Properties["Description"]);
+        Assert.Empty(node.Id);
+        Assert.Empty(relationship.Id);
+    }
+
+    [Fact]
+    public async Task Search_NativeAndLegacyTables_CombineWithoutDuplicateLegacyRows()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string term = "HybridStorageToken474";
+        var native = new Person { FirstName = "Native", LastName = term };
+        await this.Graph.CreateNodeAsync(native, cancellationToken: ct);
+
+        const string legacyId = "legacy-search-474";
+        await using (var transaction = await this.Graph.GetTransactionAsync(ct))
+        {
+            var runner = ((AgeGraphTransaction)transaction).Runner;
+            await runner.EnsureLabelAsync("CvoyaNode", relationship: false, ct);
+            await using var result = await runner.RunAsync(
+                """
+                CREATE (legacy:CvoyaNode)
+                SET legacy.Id = $id,
+                    legacy.FirstName = 'Legacy',
+                    legacy.LastName = $term,
+                    legacy.Bio = '',
+                    legacy.inheritance_labels = ['Person', 'Manager']
+                RETURN true AS created
+                """,
+                new { id = legacyId, term },
+                ct);
+            _ = await result.SingleAsync(ct);
+            await transaction.CommitAsync();
+        }
+
+        var results = await this.Graph.SearchNodes<Person>(term)
+            .OrderBy(person => person.FirstName)
+            .ToListAsync(ct);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(["Legacy", "Native"], results.Select(person => person.FirstName));
+        Assert.Single(results, person => person.Id == legacyId);
+    }
+
+    [Fact]
+    public async Task Search_DomainIdIsOrdinarySearchableData()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string searchableId = "SearchableDomainIdToken474";
+        var person = new Person
+        {
+            Id = searchableId,
+            FirstName = "Ordinary",
+            LastName = "Identity",
+        };
+        await this.Graph.CreateNodeAsync(person, cancellationToken: ct);
+
+        var result = Assert.Single(await this.Graph.SearchNodes<Person>(searchableId).ToListAsync(ct));
+
+        Assert.Equal(searchableId, result.Id);
     }
 }

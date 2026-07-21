@@ -109,12 +109,16 @@ maps continue through the provider-neutral result wire model and shared material
 
 ### Full-text search
 
-The former AGE search implementation correlates through the transitional public `Id` property and
-only scans the two legacy physical tables, so it is not declared as a capability with native logical
-storage. Issue #474 tracks graphid correlation across native, legacy, and external label tables.
-Managed full-text functions and indexes are no longer provisioned by ordinary graph creation or
-reads; explicit `RecreateIndexesAsync` remains the only provisioning entry point while that work is
-completed.
+AGE full-text search discovers the graph's concrete vertex/edge tables from the AGE catalog, searches
+native logical storage, legacy `CvoyaNode` / `CvoyaRelationship` rows, and externally managed labels,
+then correlates the combined distinct result through transaction-local `id(n)` / `id(r)` values. The
+graphids remain provider plumbing and are never substituted for public `Id` data. A domain property
+named `Id` participates like any other included string property.
+
+Ordinary reads use an inline PostgreSQL text-search fallback and require no managed function, index,
+or DDL permission. `RecreateIndexesAsync` is the explicit authorized entry point for the optional
+legacy-table extraction function and GIN acceleration; dropping that infrastructure affects only
+performance, not results.
 
 ## Local AGE
 

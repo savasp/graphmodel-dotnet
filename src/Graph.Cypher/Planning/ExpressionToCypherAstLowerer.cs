@@ -161,6 +161,18 @@ internal sealed class ExpressionToCypherAstLowerer(
         MethodCallExpression node,
         IReadOnlyDictionary<ParameterExpression, string> aliases)
     {
+        if (node.Method.GetCustomAttribute<CypherNativeElementIdentityAttribute>() is not null)
+        {
+            if (!node.Method.IsStatic || node.Arguments.Count != 1)
+            {
+                throw Unsupported(
+                    node,
+                    "A native graph-element identity marker must be a static method with one argument.");
+            }
+
+            return new NativeElementIdentity(Lower(node.Arguments[0], aliases));
+        }
+
         if (TryLowerDynamicEntityMethod(node, aliases, out var dynamicExpression))
         {
             return dynamicExpression;
