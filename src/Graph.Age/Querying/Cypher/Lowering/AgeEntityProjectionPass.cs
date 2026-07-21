@@ -746,7 +746,7 @@ internal sealed class AgeEntityProjectionPass : ICypherPass
                     Op: CypherBinaryOperator.Contains,
                     Left: var left,
                     Right: var right,
-                } || !IsLegacyContainsOperand(left) || !IsLegacyContainsOperand(right))
+                } || !IsContainsOperand(left) || !IsContainsOperand(right))
             {
                 return false;
             }
@@ -811,7 +811,7 @@ internal sealed class AgeEntityProjectionPass : ICypherPass
                 Right: Literal { Value: 1 },
             };
 
-        private static bool IsLegacyContainsOperand(CypherExpression expression) => expression is
+        private static bool IsContainsOperand(CypherExpression expression) => expression is
             QueryParameter or
             PropertyAccess { Target: VariableRef };
 

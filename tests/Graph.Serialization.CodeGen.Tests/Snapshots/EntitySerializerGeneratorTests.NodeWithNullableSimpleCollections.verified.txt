@@ -35,23 +35,9 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
 
     public object Deserialize(EntityInfo entity)
     {
-        // Extracting init-only property 'Id'
-        string idValue;
-        // Look for property 'Id' in both simple and complex properties
-        var idPropRep = entity.SimpleProperties.TryGetValue("Id", out var idSimpleProp) ? idSimpleProp
-                    : entity.ComplexProperties.TryGetValue("Id", out var idComplexProp) ? idComplexProp : null;
-        // Extract simple value - no conversion, just cast
-        idValue = idPropRep is null
-            ? string.Empty
-            : idPropRep.Value is SimpleValue idPropRepSimpleValue
-                ? (string)idPropRepSimpleValue.Object
-                : string.Empty;
 
         var result = new NullableCollections.TrackedNode(
-        )
-        {
-            Id = idValue
-        };
+        );
 
         // Set remaining properties with setters
         // Look for property 'Scores' in both simple and complex properties
@@ -181,28 +167,6 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
             simpleProperties["Aliases"] = propertyRep;
         }
 
-        // Serialize property: Id
-        {
-            var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Id")!;
-            var value = entity.Id;
-            Serialized? serializedValue;
-
-            serializedValue = value is null
-                ? null
-                : new SimpleValue(
-                    Object: value,
-                    Type: typeof(string)
-                );
-
-            var propertyRep = new Property(
-                PropertyInfo: propInfo,
-                Label: "Id",
-                IsNullable: false,
-                Value: serializedValue
-            );
-            simpleProperties["Id"] = propertyRep;
-        }
-
         // Serialize property: Labels
         {
             var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Labels")!;
@@ -295,18 +259,6 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
                 ElementType: typeof(string),
                 IsNullable: false
             ) { IsElementNullable = false };
-        }
-
-        // Schema for property: Id
-        {
-            var propInfo = typeof(NullableCollections.TrackedNode).GetProperty("Id")
-                ?? typeof(Cvoya.Graph.IEntity).GetProperty("Id")!;
-            simpleProperties["Id"] = new PropertySchema(
-                PropertyInfo: propInfo,
-                PropertyName: "Id",
-                PropertyType: PropertyType.Simple,
-                IsNullable: false
-            );
         }
 
         // Schema for property: Scores

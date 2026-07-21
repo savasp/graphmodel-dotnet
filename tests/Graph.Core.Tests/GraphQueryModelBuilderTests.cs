@@ -275,7 +275,7 @@ public class GraphQueryModelBuilderTests
     {
         var query = Root<Person>()
             .OptionalTraverse<Knows, Company>()
-            .Select(result => new { SourceId = result.Source.Id, TargetId = result.Target == null ? null : result.Target.Id });
+            .Select(result => new { SourceLabel = result.Source.Labels[0], TargetId = result.Target == null ? null : result.Target.Id });
 
         var model = GraphQueryModelBuilder.Build(query.Expression);
 
@@ -302,7 +302,7 @@ public class GraphQueryModelBuilderTests
     {
         var query = Root<Person>()
             .OptionalTraverse<Knows, Company>()
-            .OrderBy(result => result.Source.Id);
+            .OrderBy(result => result.Source.Labels.Count);
 
         var exception = Assert.Throws<GraphException>(() =>
             GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(query.Expression)));
@@ -756,7 +756,7 @@ public class GraphQueryModelBuilderTests
         var query = Root<Person>()
             .TraversePaths<Knows, Company>(1, 3)
             .Select(path => path.End)
-            .Where(node => node.Id != "");
+            .Where(node => node.Labels.Count > 0);
 
         var exception = Assert.Throws<GraphQueryTranslationException>(
             () => GraphQueryModelBuilder.Build(query.Expression));
@@ -1418,6 +1418,8 @@ public class GraphQueryModelBuilderTests
     [Node("MODEL_BUILDER_PERSON")]
     private sealed record Person : Node
     {
+        public string Id { get; init; } = string.Empty;
+
         public string FirstName { get; init; } = string.Empty;
 
         public string LastName { get; init; } = string.Empty;
@@ -1437,11 +1439,16 @@ public class GraphQueryModelBuilderTests
     }
 
     [Relationship(Label = "MODEL_BUILDER_KNOWS")]
-    private sealed record Knows(string Start, string End) : Relationship(Start, End);
+    private sealed record Knows : Relationship
+    {
+        public string Id { get; init; } = string.Empty;
+    }
 
     [Node("MODEL_BUILDER_COMPANY")]
     private sealed record Company : Node
     {
+        public string Id { get; init; } = string.Empty;
+
         public Address Headquarters { get; init; } = new();
     }
 

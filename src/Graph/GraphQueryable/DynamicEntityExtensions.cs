@@ -38,10 +38,7 @@ public static class DynamicEntityExtensions
         return new DynamicNode(
             labels: GetNodeLabels(node),
             properties: properties
-        )
-        {
-            Id = node.Id
-        };
+        );
     }
 
     /// <summary>
@@ -69,16 +66,7 @@ public static class DynamicEntityExtensions
         var properties = ExtractProperties(relationship, EntityKind.Relationship);
 
         // Create dynamic relationship with type and properties
-        return new DynamicRelationship(
-            startNodeId: relationship.StartNodeId,
-            endNodeId: relationship.EndNodeId,
-            type: GetRelationshipType(relationship),
-            properties: properties,
-            direction: LegacyRelationshipEndpoints.LegacyDirection(relationship)
-        )
-        {
-            Id = relationship.Id
-        };
+        return new DynamicRelationship(GetRelationshipType(relationship), properties);
     }
 
     /// <summary>
@@ -108,10 +96,7 @@ public static class DynamicEntityExtensions
         return new DynamicNode(
             labels: GetNodeLabels(node),
             properties: properties
-        )
-        {
-            Id = node.Id
-        };
+        );
     }
 
     /// <summary>
@@ -138,16 +123,7 @@ public static class DynamicEntityExtensions
         var properties = ExtractProperties(relationship, EntityKind.Relationship);
 
         // Create dynamic relationship with type and properties
-        return new DynamicRelationship(
-            startNodeId: relationship.StartNodeId,
-            endNodeId: relationship.EndNodeId,
-            type: GetRelationshipType(relationship),
-            properties: properties,
-            direction: LegacyRelationshipEndpoints.LegacyDirection(relationship)
-        )
-        {
-            Id = relationship.Id
-        };
+        return new DynamicRelationship(GetRelationshipType(relationship), properties);
     }
 
     /// <summary>
@@ -248,19 +224,10 @@ public static class DynamicEntityExtensions
     {
         var propertyName = propertyInfo.Name;
 
-        if (propertyName == nameof(IEntity.Id))
-        {
-            return true;
-        }
-
         return entityKind switch
         {
             EntityKind.Node => propertyName == nameof(INode.Labels),
-            EntityKind.Relationship =>
-                propertyName == nameof(IRelationship.Type) ||
-                propertyName == nameof(Relationship.Direction) ||
-                propertyName == nameof(IRelationship.StartNodeId) ||
-                propertyName == nameof(IRelationship.EndNodeId),
+            EntityKind.Relationship => propertyName == nameof(IRelationship.Type),
             _ => false,
         };
     }

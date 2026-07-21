@@ -10,8 +10,6 @@ using Cvoya.Graph.Age.Querying.Cypher;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.Age.Serialization;
 using Cvoya.Graph.Serialization;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 
 /// <summary>
@@ -20,94 +18,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </summary>
 internal sealed class AgeRelationshipManager(AgeGraphContext context)
 {
-    private const string RelationshipIdentityChangeMessage =
-        "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.";
-
-    private readonly ILogger<AgeRelationshipManager> _logger = context.LoggerFactory?.CreateLogger<AgeRelationshipManager>()
-        ?? NullLogger<AgeRelationshipManager>.Instance;
     private readonly EntityFactory _serializer = new();
-
-    private static readonly string[] _ignoredProperties =
-    [
-        nameof(Graph.IRelationship.StartNodeId),
-        nameof(Graph.IRelationship.EndNodeId),
-        nameof(Graph.IRelationship.Type),
-        nameof(Graph.DynamicRelationship.Direction),
-        nameof(Graph.INode.Labels),
-    ];
-
-    public async Task<TRelationship> CreateRelationshipAsync<TRelationship>(
-        TRelationship relationship,
-        AgeGraphTransaction transaction,
-        CancellationToken cancellationToken = default)
-        where TRelationship : class, Graph.IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(relationship);
-
-        _logger.LogDebugAgeRelationshipManager40(typeof(TRelationship).Name, relationship.StartNodeId, relationship.EndNodeId);
-
-        try
-        {
-            // Validate no reference cycles
-            GraphDataModel.EnsureNoReferenceCycle(relationship);
-            GraphDataModel.EnsureComplexPropertyDepth(relationship);
-
-            // Validate property constraints at application level
-            ValidateRelationshipProperties(relationship);
-
-            // Serialize the relationship
-            var entity = _serializer.Serialize(relationship);
-
-            await ValidateRelationshipUniquenessAsync(
-                relationship, transaction.Runner, excludeGraphId: null, cancellationToken).ConfigureAwait(false);
-
-            // Validate that relationships don't have complex properties
-            if (entity.ComplexProperties.Count > 0)
-            {
-                throw new GraphException(
-                    $"Relationships cannot have complex properties. Found {entity.ComplexProperties.Count} complex properties on {typeof(TRelationship).Name}");
-            }
-
-            var direction = LegacyRelationshipEndpoints.LegacyDirection(relationship);
-            var (sourceNodeId, targetNodeId) = direction switch
-            {
-                RelationshipDirection.Outgoing => (relationship.StartNodeId, relationship.EndNodeId),
-                RelationshipDirection.Incoming => (relationship.EndNodeId, relationship.StartNodeId),
-                _ => throw new GraphException($"Unsupported relationship direction '{direction}'.")
-            };
-            var sourceGraphId = await ResolveEndpointGraphIdAsync(
-                sourceNodeId, "source", transaction.Runner, cancellationToken).ConfigureAwait(false);
-            var targetGraphId = await ResolveEndpointGraphIdAsync(
-                targetNodeId, "target", transaction.Runner, cancellationToken).ConfigureAwait(false);
-
-            // Create the relationship against the exact endpoints selected above. Domain Id is an
-            // ordinary property, so it must not remain the mutation identity after preflight.
-            var created = await CreateRelationshipInGraphAsync(
-                entity,
-                sourceGraphId,
-                targetGraphId,
-                direction,
-                true,
-                transaction.Runner,
-                cancellationToken).ConfigureAwait(false);
-
-            if (!created)
-            {
-                throw new GraphException(
-                    $"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}. " +
-                    "One or both nodes may not exist.");
-            }
-
-            _logger.LogInformationAgeRelationshipManager86(typeof(TRelationship).Name, relationship.Id);
-
-            return relationship;
-        }
-        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
-        {
-            _logger.LogErrorAgeRelationshipManager93(ex, typeof(TRelationship).Name);
-            throw new GraphException("Failed to create relationship.", ex);
-        }
-    }
 
     /// <summary>Creates a relationship between exact command-selected endpoint graphids.</summary>
     internal async Task CreateRelationshipForCommandAsync(
@@ -142,8 +53,6 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 entity,
                 physicalSource,
                 physicalTarget,
-                direction,
-                false,
                 transaction.Runner,
                 cancellationToken).ConfigureAwait(false))
         {
@@ -151,149 +60,16 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         }
     }
 
-    public async Task<bool> UpdateRelationshipAsync<TRelationship>(
-        TRelationship relationship,
-        AgeGraphTransaction transaction,
-        CancellationToken cancellationToken = default)
-        where TRelationship : class, Graph.IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(relationship);
-
-        _logger.LogDebugAgeRelationshipManager106(typeof(TRelationship).Name, relationship.Id);
-
-        try
-        {
-            var direction = LegacyRelationshipEndpoints.LegacyDirection(relationship);
-
-            // Validate no reference cycles
-            GraphDataModel.EnsureNoReferenceCycle(relationship);
-            GraphDataModel.EnsureComplexPropertyDepth(relationship);
-
-            // Serialize the relationship
-            var entity = _serializer.Serialize(relationship);
-
-            // Validate that relationships don't have complex properties
-            if (entity.ComplexProperties.Count > 0)
-            {
-                throw new GraphException(
-                    $"Relationships cannot have complex properties. Found {entity.ComplexProperties.Count} complex properties on {typeof(TRelationship).Name}");
-            }
-
-            var target = await ResolveRelationshipAsync(
-                relationship.Id,
-                entity,
-                relationship.StartNodeId,
-                relationship.EndNodeId,
-                direction,
-                transaction.Runner,
-                cancellationToken).ConfigureAwait(false);
-            if (target is null)
-            {
-                _logger.LogWarningAgeRelationshipManager138(relationship.Id);
-                throw new EntityNotFoundException($"Relationship with ID {relationship.Id} not found for update");
-            }
-
-            // Existing-row writers take the physical row lock before uniqueness locks. Set-based
-            // constrained updates use the same ordering, preventing cross-API lock inversion.
-            await transaction.Runner.AcquireElementLocksAsync(
-                [target.GraphId],
-                relationship: true,
-                cancellationToken).ConfigureAwait(false);
-            await ValidateRelationshipUniquenessAsync(
-                relationship, transaction.Runner, target.GraphId, cancellationToken).ConfigureAwait(false);
-
-            await UpdateRelationshipPropertiesAsync(
-                target,
-                entity,
-                transaction.Runner,
-                cancellationToken).ConfigureAwait(false);
-
-            // Validate property constraints after confirming the target row exists. If validation
-            // fails, the transaction rolls back the guarded update statement above.
-            ValidateRelationshipProperties(relationship);
-
-            _logger.LogInformationAgeRelationshipManager153(typeof(TRelationship).Name, relationship.Id);
-
-            return true;
-        }
-        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
-        {
-            _logger.LogErrorAgeRelationshipManager160(ex, relationship.Id, typeof(TRelationship).Name);
-            throw new GraphException("Failed to update relationship.", ex);
-        }
-    }
-
-    public async Task<bool> DeleteRelationshipAsync(
-        string relationshipId,
-        AgeGraphTransaction transaction,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(relationshipId);
-
-        _logger.LogDebugAgeRelationshipManager173(relationshipId);
-
-        try
-        {
-            var lookup = await transaction.Runner.RunAsync(
-                $"MATCH ()-[r {{Id: $relId}}]->() WHERE {AgeElementMatcher.UserRelationshipPredicate("r")} RETURN id(r) AS graphId",
-                new { relId = relationshipId }, cancellationToken).ConfigureAwait(false);
-            var targets = await lookup.ToListAsync(cancellationToken).ConfigureAwait(false);
-            if (targets.Count == 0)
-            {
-                _logger.LogWarningAgeRelationshipManager188(relationshipId);
-                throw new EntityNotFoundException($"Relationship with ID {relationshipId} not found for deletion");
-            }
-
-            if (targets.Count > 1)
-            {
-                throw new GraphException(
-                    $"Cannot delete relationship {relationshipId} because the ID matches {targets.Count} graph relationships. " +
-                    "DeleteRelationshipAsync requires the ID to identify exactly one relationship.");
-            }
-
-            var graphId = targets[0]["graphId"].As<long>();
-            var result = await transaction.Runner.RunAsync(
-                "MATCH ()-[r]->() WHERE id(r) = $graphId DELETE r RETURN true AS deleted",
-                new { graphId }, cancellationToken).ConfigureAwait(false);
-            _ = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
-
-            _logger.LogInformationAgeRelationshipManager192(relationshipId);
-            return true;
-        }
-        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
-        {
-            _logger.LogErrorAgeRelationshipManager197(ex, relationshipId);
-            throw new GraphException("Failed to delete relationship.", ex);
-        }
-    }
-
     private static async Task<bool> CreateRelationshipInGraphAsync(
         EntityInfo entity,
         long sourceGraphId,
         long targetGraphId,
-        RelationshipDirection direction,
-        bool persistLegacyDirection,
         AgeQueryRunner transaction,
         CancellationToken cancellationToken)
     {
         var properties = BuildRelationshipProperties(entity);
-        if (persistLegacyDirection)
-        {
-            properties[nameof(Graph.DynamicRelationship.Direction)] = direction.ToString();
-        }
+        var storageType = SerializationBridge.GetRootStorageName(entity.Label, relationship: true);
 
-        var nativeStorage = CypherIdentifier.IsNativeLabelName(entity.Label);
-        var storageType = nativeStorage ? entity.Label : SerializationBridge.PhysicalRelationshipType;
-        if (!nativeStorage)
-        {
-            properties[nameof(Graph.IRelationship.Type)] = entity.Label;
-            properties[AgeElementMatcher.InheritanceLabelsProperty] =
-                new[] { Labels.GetLabelFromType(entity.ActualType) };
-            properties[SerializationBridge.MetadataPropertyName] =
-                SerializationBridge.CreateScalarMetadata(entity.ActualType);
-        }
-
-        SerializationBridge.ValidateRootStorageName(entity.Label, "relationship type");
         await transaction.EnsureLabelAsync(storageType, relationship: true, cancellationToken).ConfigureAwait(false);
         var physicalType = CypherIdentifier.Escape(storageType, "relationship type");
         var parameters = new Dictionary<string, object?>
@@ -317,199 +93,17 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         return record["created"].As<bool>();
     }
 
-    private static async Task<long> ResolveEndpointGraphIdAsync(
-        string nodeId,
-        string role,
-        AgeQueryRunner transaction,
-        CancellationToken cancellationToken)
-    {
-        var result = await transaction.RunAsync(
-            $"{AgeElementMatcher.UserRootMatch("n", " {Id: $nodeId}")} RETURN id(n) AS graphId",
-            new { nodeId }, cancellationToken).ConfigureAwait(false);
-        var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
-        if (records.Count == 0)
-        {
-            throw new GraphException($"Relationship {role} node with ID {nodeId} was not found.");
-        }
-
-        if (records.Count > 1)
-        {
-            throw new GraphException(
-                $"Relationship {role} node ID {nodeId} matches {records.Count} graph nodes; an endpoint must resolve to exactly one node.");
-        }
-
-        return records[0]["graphId"].As<long>();
-    }
-
-    private static async Task UpdateRelationshipPropertiesAsync(
-        RelationshipTarget target,
-        EntityInfo entity,
-        AgeQueryRunner transaction,
-        CancellationToken cancellationToken)
-    {
-        var properties = BuildRelationshipProperties(entity);
-        if (target.IsLegacy && target.StoredMetadata is null)
-        {
-            // Preserve the former lazy metadata migration for legacy rows. Native non-generic rows
-            // intentionally require no CLR metadata.
-            properties[SerializationBridge.MetadataPropertyName] =
-                SerializationBridge.CreateScalarMetadata(entity.ActualType);
-        }
-
-        var parameters = new Dictionary<string, object?> { ["graphId"] = target.GraphId };
-        var setClause = AgeCypherProperties.BuildSetClause("r", properties, parameters, "relationshipProperty");
-        var result = await transaction.RunAsync(
-            $"MATCH ()-[r]->() WHERE id(r) = $graphId {setClause} RETURN true AS updated",
-            parameters,
-            cancellationToken).ConfigureAwait(false);
-        var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
-        if (records.Count != 1)
-        {
-            throw new GraphException("The selected relationship disappeared before the update could be applied.");
-        }
-    }
-
-    private async Task<RelationshipTarget?> ResolveRelationshipAsync(
-        string relationshipId,
-        EntityInfo entity,
-        string incomingStartNodeId,
-        string incomingEndNodeId,
-        RelationshipDirection incomingDirection,
-        AgeQueryRunner transaction,
-        CancellationToken cancellationToken)
-    {
-        var incomingMetadata = SerializationBridge.CreateScalarMetadata(entity.ActualType);
-        var incomingCanonicalType = Labels.GetLabelFromType(entity.ActualType);
-        var lookup = await transaction.RunAsync(
-            $@"
-            MATCH (source)-[r {{Id: $relId}}]->(target)
-            WHERE {AgeElementMatcher.UserRelationshipPredicate("r")}
-            RETURN id(r) AS graphId,
-                   source.Id AS sourceId,
-                   target.Id AS targetId,
-                   type(r) AS physicalType,
-                   r.Type AS storedType,
-                   r.{SerializationBridge.MetadataPropertyName} AS storedMetadata,
-                   head(r.inheritance_labels) AS storedCanonicalType",
-            new { relId = relationshipId }, cancellationToken).ConfigureAwait(false);
-        var lookupRecords = await lookup.ToListAsync(cancellationToken).ConfigureAwait(false);
-        if (lookupRecords.Count == 0)
-        {
-            return null;
-        }
-
-        if (lookupRecords.Count > 1)
-        {
-            throw new GraphException(
-                $"Cannot update relationship {relationshipId} because the ID matches {lookupRecords.Count} graph relationships. " +
-                "UpdateRelationshipAsync requires the ID to identify exactly one relationship.");
-        }
-
-        var lookupRecord = lookupRecords[0];
-        var expectedSourceId = incomingDirection == RelationshipDirection.Outgoing
-            ? incomingStartNodeId
-            : incomingEndNodeId;
-        var expectedTargetId = incomingDirection == RelationshipDirection.Outgoing
-            ? incomingEndNodeId
-            : incomingStartNodeId;
-        var storedSourceId = lookupRecord["sourceId"].As<string>();
-        var storedTargetId = lookupRecord["targetId"].As<string>();
-        if (!string.Equals(storedSourceId, expectedSourceId, StringComparison.Ordinal) ||
-            !string.Equals(storedTargetId, expectedTargetId, StringComparison.Ordinal))
-        {
-            throw new GraphException(
-                "Direction cannot be changed on update; delete and recreate the relationship.");
-        }
-
-        var physicalType = lookupRecord["physicalType"].As<string>();
-        var isLegacy = string.Equals(
-            physicalType, SerializationBridge.PhysicalRelationshipType, StringComparison.Ordinal);
-        var storedType = isLegacy ? lookupRecord["storedType"].As<string>() : physicalType;
-        var storedCanonicalType = lookupRecord["storedCanonicalType"].As<string>();
-        string? storedMetadata;
-        try
-        {
-            storedMetadata = lookupRecord["storedMetadata"].As<string>();
-        }
-        catch (Exception ex) when (ex is InvalidCastException or FormatException)
-        {
-            throw RelationshipIdentityChanged(
-                storedType,
-                storedMetadata: "<invalid>",
-                storedCanonicalType,
-                entity.Label,
-                incomingMetadata);
-        }
-
-        if (!string.Equals(storedType, entity.Label, StringComparison.Ordinal))
-        {
-            throw RelationshipIdentityChanged(
-                storedType,
-                storedMetadata,
-                storedCanonicalType,
-                entity.Label,
-                incomingMetadata);
-        }
-
-        var allowLegacyClrLabel = isLegacy && !entity.ActualType.IsConstructedGenericType;
-        if (entity.ActualType.IsConstructedGenericType &&
-            !string.Equals(storedMetadata, incomingMetadata, StringComparison.Ordinal))
-        {
-            throw RelationshipIdentityChanged(
-                storedType,
-                storedMetadata,
-                storedCanonicalType,
-                entity.Label,
-                incomingMetadata);
-        }
-        else if (isLegacy && storedMetadata is null &&
-            (!allowLegacyClrLabel ||
-             !string.Equals(storedCanonicalType, incomingCanonicalType, StringComparison.Ordinal)))
-        {
-            throw RelationshipIdentityChanged(
-                storedType,
-                storedMetadata,
-                storedCanonicalType,
-                entity.Label,
-                incomingMetadata);
-        }
-
-        else if (!isLegacy &&
-            context.SchemaManager.GetSchemaRegistry().GetRelationshipSchema(entity.Label) is { } schema &&
-            schema.Type != entity.ActualType)
-        {
-            throw RelationshipIdentityChanged(
-                storedType,
-                storedMetadata,
-                storedCanonicalType,
-                entity.Label,
-                incomingMetadata);
-        }
-
-        return new RelationshipTarget(
-            lookupRecord["graphId"].As<long>(),
-            isLegacy,
-            storedMetadata);
-    }
-
-    private static GraphException RelationshipIdentityChanged(
-        string? storedType,
-        string? storedMetadata,
-        string? storedCanonicalType,
-        string incomingType,
-        string incomingMetadata) => new(
-            $"{RelationshipIdentityChangeMessage} " +
-            $"Stored logical type is '{storedType ?? "<null>"}', CLR metadata is '{storedMetadata ?? "<missing>"}', " +
-            $"and legacy CLR label is '{storedCanonicalType ?? "<missing>"}'; " +
-            $"incoming logical type is '{incomingType}' and CLR metadata is '{incomingMetadata}'.");
-
-    private sealed record RelationshipTarget(long GraphId, bool IsLegacy, string? StoredMetadata);
-
     internal static Dictionary<string, object?> BuildRelationshipProperties(EntityInfo entity)
     {
         var properties = SerializationHelpers.SerializeSimpleProperties(entity)
-            .Where(kv => !_ignoredProperties.Contains(kv.Key))
+            .Where(kv => kv.Key != nameof(Graph.IRelationship.Type))
             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+        var storageType = SerializationBridge.GetRootStorageName(entity.Label, relationship: true);
+        if (SerializationBridge.IsEncodedRootStorageName(storageType, relationship: true))
+        {
+            properties[AgeElementMatcher.InheritanceLabelsProperty] = new[] { entity.Label };
+        }
+
         if (entity.ActualType.IsConstructedGenericType)
         {
             properties[SerializationBridge.MetadataPropertyName] =

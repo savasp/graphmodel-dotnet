@@ -397,7 +397,7 @@ public class ExpressionShapeTests
     [Fact]
     public void Traverse_WidenedAfterTypedChain_UsesChainElementType()
     {
-        IGraphQueryable<INode> source = Root.Nodes<Person>().Where(p => p.Id != "");
+        IGraphQueryable<INode> source = Root.Nodes<Person>().Where(p => p.TestKey != "");
 
         var result = source.Traverse<Knows, Person>();
 

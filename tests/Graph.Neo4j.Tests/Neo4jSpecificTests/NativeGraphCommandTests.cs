@@ -5,7 +5,6 @@ namespace Cvoya.Graph.Neo4j.Tests;
 
 using Cvoya.Graph.CompatibilityTests;
 using Cvoya.Graph.Neo4j.Core;
-using Cvoya.Graph.Neo4j.Querying.Commands;
 using global::Neo4j.Driver;
 
 public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(harness)
@@ -25,7 +24,7 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
             });
         await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
 
-        var affected = await Neo4jGraphCommand.UpdateAsync(
+        var affected = await GraphCommandExtensions.UpdateAsync(
             Graph.DynamicNodes().Where(candidate =>
                 candidate.HasLabel(label) && candidate.GetProperty<string>("selector") == marker),
             setters => setters
@@ -55,12 +54,12 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
             $"(source)-[:{relationshipType} {{weight: 1}}]->(target)",
             new { sourceName = "source", targetName = "target" });
 
-        var updatedNodeCount = await Neo4jGraphCommand.UpdateAsync(
+        var updatedNodeCount = await GraphCommandExtensions.UpdateAsync(
             Graph.DynamicNodes().Where(node =>
                 node.HasLabel(label) && node.GetProperty<string>("name") == "source"),
             setters => setters.SetProperty(node => node.Properties["score"], 2),
             TestContext.Current.CancellationToken);
-        var updatedRelationshipCount = await Neo4jGraphCommand.UpdateAsync(
+        var updatedRelationshipCount = await GraphCommandExtensions.UpdateAsync(
             Graph.DynamicRelationships().Where(relationship => relationship.HasType(relationshipType)),
             setters => setters.SetProperty(relationship => relationship.Properties["weight"], 2),
             TestContext.Current.CancellationToken);
@@ -78,11 +77,10 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
         Assert.DoesNotContain("Id", dynamicNode.Properties.Keys);
         Assert.DoesNotContain("Id", dynamicRelationship.Properties.Keys);
 
-        var deletedRelationshipCount = await Neo4jGraphCommand.DeleteAsync(
+        var deletedRelationshipCount = await GraphCommandExtensions.DeleteAsync(
             Graph.DynamicRelationships().Where(relationship => relationship.HasType(relationshipType)),
-            cascadeDelete: false,
             TestContext.Current.CancellationToken);
-        var deletedNodeCount = await Neo4jGraphCommand.DeleteAsync(
+        var deletedNodeCount = await GraphCommandExtensions.DeleteAsync(
             Graph.DynamicNodes().Where(node => node.HasLabel(label)),
             cascadeDelete: false,
             TestContext.Current.CancellationToken);
@@ -101,21 +99,21 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
         var sourceQuery = Graph.Nodes<Person>().Where(person => person.FirstName == selectedSource.FirstName);
         var targetQuery = Graph.Nodes<Person>().Where(person => person.FirstName == selectedTarget.FirstName);
 
-        await Neo4jGraphCommand.CreateRelationshipAsync(
+        await GraphCommandExtensions.CreateRelationshipAsync(
             Graph,
             sourceQuery,
             new Knows(),
             targetQuery,
             RelationshipDirection.Incoming,
             TestContext.Current.CancellationToken);
-        await Neo4jGraphCommand.CreateAsync(
+        await GraphCommandExtensions.CreateAsync(
             Graph,
             sourceQuery,
             new Knows(),
             new Person { FirstName = "new-target" },
             RelationshipDirection.Outgoing,
             TestContext.Current.CancellationToken);
-        await Neo4jGraphCommand.CreateAsync(
+        await GraphCommandExtensions.CreateAsync(
             Graph,
             new Person { FirstName = "new-source" },
             new Knows(),
@@ -124,19 +122,18 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
             TestContext.Current.CancellationToken);
 
         var equalEndpoint = new Person { FirstName = "equal-endpoint" };
-        await Neo4jGraphCommand.CreateAsync(
-            Graph,
+        await Graph.CreateAsync(
             equalEndpoint,
             new Knows(),
             equalEndpoint,
             RelationshipDirection.Outgoing,
-            TestContext.Current.CancellationToken);
-        await Neo4jGraphCommand.CreateSelfLoopAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        await GraphCommandExtensions.CreateSelfLoopAsync(
             Graph,
             new Person { FirstName = "new-self-loop" },
             new Knows(),
-            TestContext.Current.CancellationToken);
-        await Neo4jGraphCommand.CreateRelationshipAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        await GraphCommandExtensions.CreateRelationshipAsync(
             Graph,
             sourceQuery,
             new Knows(),
@@ -145,14 +142,14 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
             TestContext.Current.CancellationToken);
 
         var parallelRelationship = new Knows();
-        await Neo4jGraphCommand.CreateRelationshipAsync(
+        await GraphCommandExtensions.CreateRelationshipAsync(
             Graph,
             sourceQuery,
             parallelRelationship,
             targetQuery,
             RelationshipDirection.Outgoing,
             TestContext.Current.CancellationToken);
-        await Neo4jGraphCommand.CreateRelationshipAsync(
+        await GraphCommandExtensions.CreateRelationshipAsync(
             Graph,
             sourceQuery,
             parallelRelationship,
@@ -200,7 +197,7 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
         var sourceQuery = Graph.Nodes<Person>().Where(person => person.FirstName == source.FirstName);
 
         var empty = await Assert.ThrowsAsync<GraphCardinalityException>(() =>
-            Neo4jGraphCommand.CreateRelationshipAsync(
+            GraphCommandExtensions.CreateRelationshipAsync(
                 Graph,
                 sourceQuery,
                 new Knows(),
@@ -208,7 +205,7 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
                 RelationshipDirection.Outgoing,
                 TestContext.Current.CancellationToken));
         var multiple = await Assert.ThrowsAsync<GraphCardinalityException>(() =>
-            Neo4jGraphCommand.CreateRelationshipAsync(
+            GraphCommandExtensions.CreateRelationshipAsync(
                 Graph,
                 sourceQuery,
                 new Knows(),
@@ -234,7 +231,7 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
         var sourceInTransaction = Graph.Nodes<Person>(transaction).Where(person => person.FirstName == source.FirstName);
         var targetInTransaction = Graph.Nodes<Person>(transaction).Where(person => person.FirstName == target.FirstName);
 
-        await Neo4jGraphCommand.CreateRelationshipAsync(
+        await GraphCommandExtensions.CreateRelationshipAsync(
             Graph,
             sourceInTransaction,
             new Knows(),
@@ -246,7 +243,7 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
             await Graph.Relationships<Knows>(transaction).CountAsync(TestContext.Current.CancellationToken));
 
         var mismatch = await Assert.ThrowsAsync<GraphException>(() =>
-            Neo4jGraphCommand.CreateRelationshipAsync(
+            GraphCommandExtensions.CreateRelationshipAsync(
                 Graph,
                 sourceInTransaction,
                 new Knows(),
@@ -270,8 +267,8 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
         await readOnlyTransaction.BeginTransactionAsync(TestContext.Current.CancellationToken);
 
         var exception = await Assert.ThrowsAsync<GraphException>(() =>
-            Neo4jGraphCommand.UpdateAsync(
-                Graph.Nodes<Person>(readOnlyTransaction).Where(candidate => candidate.Id == person.Id),
+            GraphCommandExtensions.UpdateAsync(
+                Graph.Nodes<Person>(readOnlyTransaction).Where(candidate => candidate.TestKey == person.TestKey),
                 setters => setters.SetProperty(candidate => candidate.FirstName, "after"),
                 TestContext.Current.CancellationToken));
         Assert.Equal(
@@ -281,9 +278,9 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
         await readOnlyTransaction.RollbackAsync();
         Assert.Equal(
             "read-only-guard",
-            (await Graph.GetNodeAsync<Person>(
-                person.Id,
-                cancellationToken: TestContext.Current.CancellationToken)).FirstName);
+            (await Graph.Nodes<Person>()
+                .Where(candidate => candidate.TestKey == person.TestKey)
+                .SingleAsync(TestContext.Current.CancellationToken)).FirstName);
     }
 
     [Fact]
@@ -296,7 +293,7 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Neo4jGraphCommand.CreateRelationshipAsync(
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => GraphCommandExtensions.CreateRelationshipAsync(
             Graph,
             Graph.Nodes<Person>().Where(person => person.FirstName == source.FirstName),
             new Knows(),
@@ -315,12 +312,14 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Neo4jGraphCommand.DeleteAsync(
-            Graph.Nodes<Person>().Where(candidate => candidate.Id == person.Id),
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => GraphCommandExtensions.DeleteAsync(
+            Graph.Nodes<Person>().Where(candidate => candidate.TestKey == person.TestKey),
             cascadeDelete: false,
             cancellation.Token));
 
-        _ = await Graph.GetNodeAsync<Person>(person.Id, cancellationToken: TestContext.Current.CancellationToken);
+        _ = await Graph.Nodes<Person>()
+            .Where(candidate => candidate.TestKey == person.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -332,19 +331,16 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
             [label],
             new Dictionary<string, object?> { ["Id"] = "user-supplied-node-id", ["name"] = "source" });
         var relationship = new DynamicRelationship(
-            string.Empty,
-            string.Empty,
             relationshipType,
             new Dictionary<string, object?> { ["Id"] = "user-supplied-relationship-id" });
         var target = new DynamicNode([label], new Dictionary<string, object?> { ["name"] = "target" });
 
-        await Neo4jGraphCommand.CreateAsync(
-            Graph,
+        await Graph.CreateAsync(
             source,
             relationship,
             target,
             RelationshipDirection.Outgoing,
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // A dynamic property-bag entry named "Id" is user data, not framework identity: it must be
         // stored verbatim, while the target without one still gets no synthetic identity.
@@ -360,8 +356,7 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
     public async Task NewNativeSubgraph_DoesNotPersistLegacyOrReservedIdentityProtocol()
     {
         var marker = $"native-subgraph-{Guid.NewGuid():N}";
-        await Neo4jGraphCommand.CreateAsync(
-            Graph,
+        await Graph.CreateAsync(
             new PersonWithComplexProperty
             {
                 FirstName = marker,
@@ -374,7 +369,7 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
                 Address = new AddressValue { Street = "target-street", City = "target-city" }
             },
             RelationshipDirection.Outgoing,
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var record = await QueryRawSingleAsync(
             """
@@ -383,8 +378,11 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
             WHERE propertyRelationship.__graphModelComplexProperty = true
             RETURN source.Id IS NULL AS sourceIdMissing,
                    target.Id IS NULL AS targetIdMissing,
+                   source.Labels IS NULL AS sourceLabelsMissing,
+                   target.Labels IS NULL AS targetLabelsMissing,
                    relationship.Id IS NULL AS relationshipIdMissing,
                    relationship.Direction IS NULL AS directionMissing,
+                   relationship.Type IS NULL AS relationshipTypeMissing,
                    propertyRelationship.Id IS NULL AS propertyRelationshipIdMissing,
                    valueNode.Id IS NULL AS valueNodeIdMissing,
                    '__CvoyaRootNode' IN labels(source) AS hasReservedRootLabel
@@ -393,8 +391,11 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
 
         Assert.True(record["sourceIdMissing"].As<bool>());
         Assert.True(record["targetIdMissing"].As<bool>());
+        Assert.True(record["sourceLabelsMissing"].As<bool>());
+        Assert.True(record["targetLabelsMissing"].As<bool>());
         Assert.True(record["relationshipIdMissing"].As<bool>());
         Assert.True(record["directionMissing"].As<bool>());
+        Assert.True(record["relationshipTypeMissing"].As<bool>());
         Assert.True(record["propertyRelationshipIdMissing"].As<bool>());
         Assert.True(record["valueNodeIdMissing"].As<bool>());
         Assert.False(record["hasReservedRootLabel"].As<bool>());

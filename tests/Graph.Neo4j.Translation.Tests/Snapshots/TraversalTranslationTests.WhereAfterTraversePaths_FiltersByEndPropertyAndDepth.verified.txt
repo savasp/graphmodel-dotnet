@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH p = (src:Person|Manager)-[r:KNOWS*1..3]->(tgt:Person|Manager)
-WHERE ((nodes(p)[0].Id <> $p0 AND nodes(p)[length(p)].Age > $p1) AND length(p) > $p2)
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND ((nodes(p)[0].TestKey <> $p0 AND nodes(p)[length(p)].Age > $p1) AND length(p) > $p2) AND ALL(__ordinaryRelationship_0 IN r WHERE __ordinaryRelationship_0.__graphModelComplexProperty IS NULL)
 WITH collect(p) AS __paths
 UNWIND range(0, size(__paths) - 1) AS pathIndex
 WITH __paths[pathIndex] AS p, pathIndex

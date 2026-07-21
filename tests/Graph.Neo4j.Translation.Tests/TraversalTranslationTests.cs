@@ -26,10 +26,10 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
-    public Task Traverse_WidenedToINodeBeforeWhere_LeavesStartUnconstrained()
+    public Task Traverse_WidenedToINodeBeforeLabelFilter_LeavesStartUnconstrained()
     {
         var query = ((IGraphQueryable<INode>)Root.Nodes<Person>())
-            .Where(n => n.Id != "")
+            .OfLabel("Person")
             .Traverse<Knows, Person>();
 
         return VerifyTranslation(query);
@@ -118,8 +118,8 @@ public class TraversalTranslationTests : TranslationTestBase
             .OptionalTraverse<Knows, Person>()
             .Select(result => new
             {
-                SourceId = result.Source.Id,
-                TargetId = result.Target == null ? null : result.Target.Id,
+                SourceKey = ((Person)result.Source).TestKey,
+                TargetKey = result.Target == null ? null : ((Person)result.Target).TestKey,
             })
             .Take(5);
 
@@ -180,8 +180,8 @@ public class TraversalTranslationTests : TranslationTestBase
     [Fact]
     public Task TypedConcat_ScalarProjectionRendersUnionAll()
     {
-        var first = Root.Nodes<Person>().Where(person => person.Age >= 18).Select(person => person.Id);
-        var second = Root.Nodes<Person>().Where(person => person.Age >= 65).Select(person => person.Id);
+        var first = Root.Nodes<Person>().Where(person => person.Age >= 18).Select(person => person.TestKey);
+        var second = Root.Nodes<Person>().Where(person => person.Age >= 65).Select(person => person.TestKey);
 
         return VerifyTranslation(first.Concat(second));
     }
@@ -189,9 +189,9 @@ public class TraversalTranslationTests : TranslationTestBase
     [Fact]
     public Task TypedConcat_ScalarLeftChainRendersEveryOperand()
     {
-        var first = Root.Nodes<Person>().Where(person => person.Age >= 18).Select(person => person.Id);
-        var second = Root.Nodes<Person>().Where(person => person.Age >= 30).Select(person => person.Id);
-        var third = Root.Nodes<Person>().Where(person => person.Age >= 65).Select(person => person.Id);
+        var first = Root.Nodes<Person>().Where(person => person.Age >= 18).Select(person => person.TestKey);
+        var second = Root.Nodes<Person>().Where(person => person.Age >= 30).Select(person => person.TestKey);
+        var third = Root.Nodes<Person>().Where(person => person.Age >= 65).Select(person => person.TestKey);
 
         return VerifyTranslation(first.Concat(second).Concat(third));
     }
@@ -263,7 +263,7 @@ public class TraversalTranslationTests : TranslationTestBase
     {
         var query = Root.Nodes<Person>()
             .TraversePaths<Knows, Person>(1, 3)
-            .Where(p => p.Start.Id != "" && ((Person)p.End).Age > 21 && p.Segments.Count > 1);
+            .Where(p => ((Person)p.Start).TestKey != "" && ((Person)p.End).Age > 21 && p.Segments.Count > 1);
         return VerifyTranslation(query);
     }
 

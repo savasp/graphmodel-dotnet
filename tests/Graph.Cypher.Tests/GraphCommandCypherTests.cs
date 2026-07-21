@@ -242,5 +242,5 @@ public sealed class GraphCommandCypherTests
     }
 
     [Relationship(Label = "COMMAND_CYPHER_KNOWS")]
-    private sealed record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+    private sealed record Knows : Relationship;
 }

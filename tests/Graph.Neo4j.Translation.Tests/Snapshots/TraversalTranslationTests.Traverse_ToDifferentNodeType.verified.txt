@@ -1,5 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)-[r:WORKS_AT]->(tgt:Company)
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND r.__graphModelComplexProperty IS NULL
 RETURN {
                 Node: tgt,
                 ComplexProperties: []

@@ -9,8 +9,6 @@ using Cvoya.Graph.Neo4j.Querying.Cypher;
 using Cvoya.Graph.Neo4j.Serialization;
 using Cvoya.Graph.Serialization;
 using global::Neo4j.Driver;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 
 /// <summary>
@@ -22,182 +20,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     private const string RelationshipIdentityChangeMessage =
         "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.";
 
-    private readonly ILogger<Neo4jRelationshipManager> _logger = context.LoggerFactory?.CreateLogger<Neo4jRelationshipManager>()
-        ?? NullLogger<Neo4jRelationshipManager>.Instance;
     private readonly EntityFactory _serializer = new();
-
-    private static readonly string[] _ignoredProperties =
-    [
-        nameof(Graph.IRelationship.StartNodeId),
-        nameof(Graph.IRelationship.EndNodeId)
-    ];
-
-    public async Task<TRelationship> CreateRelationshipAsync<TRelationship>(
-        TRelationship relationship,
-        GraphTransaction transaction,
-        CancellationToken cancellationToken = default)
-        where TRelationship : class, Graph.IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(relationship);
-
-        _logger.LogDebugNeo4jRelationshipManager39(typeof(TRelationship).Name, relationship.StartNodeId, relationship.EndNodeId);
-
-        try
-        {
-            // Validate no reference cycles
-            GraphDataModel.EnsureNoReferenceCycle(relationship);
-            GraphDataModel.EnsureComplexPropertyDepth(relationship);
-
-            // Validate property constraints at application level
-            ValidateRelationshipProperties(relationship);
-
-            // Serialize the relationship
-            var entity = _serializer.Serialize(relationship);
-
-            // Validate that relationships don't have complex properties
-            if (entity.ComplexProperties.Count > 0)
-            {
-                throw new GraphException(
-                    $"Relationships cannot have complex properties. Found {entity.ComplexProperties.Count} complex properties on {typeof(TRelationship).Name}");
-            }
-
-            // Create the relationship
-            var created = await CreateRelationshipInGraphAsync(
-                entity,
-                relationship.StartNodeId,
-                relationship.EndNodeId,
-                LegacyRelationshipEndpoints.LegacyDirection(relationship),
-                transaction.Transaction,
-                cancellationToken).ConfigureAwait(false);
-
-            if (!created)
-            {
-                throw new GraphException(
-                    $"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}. " +
-                    "One or both nodes may not exist.");
-            }
-
-            _logger.LogInformationNeo4jRelationshipManager77(typeof(TRelationship).Name, relationship.Id);
-
-            return relationship;
-        }
-        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
-        {
-            _logger.LogErrorNeo4jRelationshipManager84(ex, typeof(TRelationship).Name);
-            throw new GraphException($"Failed to create relationship: {ex.Message}", ex);
-        }
-    }
-
-    public async Task<bool> UpdateRelationshipAsync<TRelationship>(
-        TRelationship relationship,
-        GraphTransaction transaction,
-        CancellationToken cancellationToken = default)
-        where TRelationship : class, Graph.IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(relationship);
-
-        _logger.LogDebugNeo4jRelationshipManager97(typeof(TRelationship).Name, relationship.Id);
-
-        try
-        {
-            var direction = LegacyRelationshipEndpoints.LegacyDirection(relationship);
-
-            // Validate no reference cycles
-            GraphDataModel.EnsureNoReferenceCycle(relationship);
-            GraphDataModel.EnsureComplexPropertyDepth(relationship);
-
-            // Serialize the relationship
-            var entity = _serializer.Serialize(relationship);
-
-            // Validate that relationships don't have complex properties
-            if (entity.ComplexProperties.Count > 0)
-            {
-                throw new GraphException(
-                    $"Relationships cannot have complex properties. Found {entity.ComplexProperties.Count} complex properties on {typeof(TRelationship).Name}");
-            }
-
-            // Update the relationship properties
-            var updated = await UpdateRelationshipPropertiesAsync(
-                relationship.Id,
-                entity,
-                direction,
-                transaction.Transaction,
-                cancellationToken).ConfigureAwait(false);
-
-            if (!updated.Exists)
-            {
-                _logger.LogWarningNeo4jRelationshipManager126(relationship.Id);
-                throw new EntityNotFoundException($"Relationship with ID {relationship.Id} not found for update");
-            }
-
-            if (!updated.DirectionMatches)
-            {
-                throw new GraphException(
-                    "Direction cannot be changed on update; delete and recreate the relationship. " +
-                    $"Stored direction is {updated.StoredDirection}; incoming direction is {direction}.");
-            }
-
-            if (!updated.PhysicalTypeMatches || !updated.LogicalTypeMatches || !updated.ClrTypeMatches)
-            {
-                var incomingClrType = SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
-                var storedClrIdentity = updated.StoredClrMetadata ?? updated.StoredLegacyClrLabel ?? "<missing>";
-                throw new GraphException(
-                    $"{RelationshipIdentityChangeMessage} " +
-                    $"Stored physical type is '{updated.StoredPhysicalType}', logical type is '{updated.StoredLogicalType}', " +
-                    $"and CLR identity is '{storedClrIdentity}'; incoming relationship type is '{entity.Label}' " +
-                    $"and CLR type is '{incomingClrType}'.");
-            }
-
-            // Validate property constraints after confirming the target row exists. If validation
-            // fails, the transaction rolls back the guarded update statement above.
-            ValidateRelationshipProperties(relationship);
-
-            _logger.LogInformationNeo4jRelationshipManager141(typeof(TRelationship).Name, relationship.Id);
-
-            return true;
-        }
-        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
-        {
-            _logger.LogErrorNeo4jRelationshipManager148(ex, relationship.Id, typeof(TRelationship).Name);
-            throw new GraphException($"Failed to update relationship: {ex.Message}", ex);
-        }
-    }
-
-    public async Task<bool> DeleteRelationshipAsync(
-        string relationshipId,
-        GraphTransaction transaction,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(relationshipId);
-
-        _logger.LogDebugNeo4jRelationshipManager161(relationshipId);
-
-        try
-        {
-            var cypher = "MATCH ()-[r {Id: $relId}]-() DELETE r RETURN COUNT(r) AS deletedCount";
-
-            var result = await transaction.Transaction.RunAsync(
-                cypher,
-                new { relId = relationshipId }).ConfigureAwait(false);
-
-            var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
-            var deletedCount = record["deletedCount"].As<int>();
-
-            if (deletedCount == 0)
-            {
-                _logger.LogWarningNeo4jRelationshipManager176(relationshipId);
-                throw new EntityNotFoundException($"Relationship with ID {relationshipId} not found for deletion");
-            }
-
-            _logger.LogInformationNeo4jRelationshipManager180(relationshipId);
-            return true;
-        }
-        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
-        {
-            _logger.LogErrorNeo4jRelationshipManager185(ex, relationshipId);
-            throw new GraphException($"Failed to delete relationship: {ex.Message}", ex);
-        }
-    }
 
     internal async Task<bool> UpdateByElementIdAsync(
         Graph.IRelationship relationship,
@@ -222,40 +45,27 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
         var properties = BuildElementBoundRelationshipProperties(entity);
 
-        // Stored legacy identity must survive the full-replace SET (#469 keeps legacy Id APIs
-        // working until the coordinated removal: they address relationships by {Id: ...} and
-        // reject direction changes against the stored Direction), unless the entity defines the
-        // property itself. A SET back to null is a no-op for relationships that never had one.
-        var restoreLegacyIdClause = properties.ContainsKey(nameof(Graph.IEntity.Id))
-            ? string.Empty
-            : " SET r.Id = legacyId";
-        var restoreLegacyDirectionClause = properties.ContainsKey(nameof(Graph.Relationship.Direction))
-            ? string.Empty
-            : " SET r.Direction = legacyDirection";
-
-        // The stored type and metadata are compared through coalesce so a relationship without
-        // CVOYA CLR metadata (raw driver-seeded data) reads as an identity mismatch instead of a
-        // null that would poison the FOREACH guard and the boolean conversion below.
+        var requiresClrMetadata = entity.ActualType.IsConstructedGenericType;
         var cypher = $"""
             OPTIONAL MATCH ()-[r]->()
             WHERE elementId(r) = $elementId
             WITH r,
                  type(r) AS storedPhysicalType,
-                 r.{SerializationBridge.MetadataPropertyName} AS storedClrMetadata,
-                 r.Id AS legacyId,
-                 r.Direction AS legacyDirection
-            WITH r, storedPhysicalType, storedClrMetadata, legacyId, legacyDirection,
+                 r.{SerializationBridge.MetadataPropertyName} AS storedClrMetadata
+            WITH r, storedPhysicalType, storedClrMetadata,
                  coalesce(storedPhysicalType = $incomingStorageType, false) AS physicalTypeMatches,
-                 coalesce(storedClrMetadata = $incomingClrType, false) AS clrTypeMatches
+                 coalesce($requiresClrMetadata = false OR storedClrMetadata = $incomingClrType, false) AS clrTypeMatches
             FOREACH (_ IN CASE WHEN r IS NOT NULL AND physicalTypeMatches AND clrTypeMatches THEN [1] ELSE [] END |
-                SET r = $props{restoreLegacyIdClause}{restoreLegacyDirectionClause})
+                SET r = $props)
             RETURN r IS NOT NULL AS exists,
                    physicalTypeMatches AS physicalTypeMatches,
                    clrTypeMatches AS clrTypeMatches,
                    storedPhysicalType AS storedPhysicalType,
                    storedClrMetadata AS storedClrMetadata
             """;
-        var incomingClrType = SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
+        var incomingClrType = requiresClrMetadata
+            ? SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType)
+            : null;
         var result = await transaction.Transaction.RunAsync(
             cypher,
             new
@@ -263,6 +73,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 elementId,
                 incomingStorageType = entity.Label,
                 incomingClrType,
+                requiresClrMetadata,
                 props = properties
             }).WaitAsync(cancellationToken).ConfigureAwait(false);
         var record = await result.SingleAsync(cancellationToken).ConfigureAwait(false);
@@ -308,195 +119,18 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         return (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["affectedCount"].As<int>();
     }
 
-    private static async Task<bool> CreateRelationshipInGraphAsync(
-        EntityInfo entity,
-        string startNodeId,
-        string endNodeId,
-        RelationshipDirection direction,
-        IAsyncTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        // entity.Label is a relationship type, not a Cypher parameter value: it must be validated
-        // and escaped before interpolation, since it can originate from caller-supplied input
-        // (DynamicRelationship.Type is set at runtime and cannot be parameterized by the driver).
-        var relationshipType = CypherIdentifier.Escape(entity.Label, "relationship type");
-
-        var (sourceNodeId, targetNodeId) = direction switch
-        {
-            RelationshipDirection.Outgoing => (startNodeId, endNodeId),
-            RelationshipDirection.Incoming => (endNodeId, startNodeId),
-            _ => throw new GraphException($"Unsupported relationship direction '{direction}'.")
-        };
-
-        var cypher = $@"
-            MATCH (source {{Id: $sourceNodeId}})
-            MATCH (target {{Id: $targetNodeId}})
-            CREATE (source)-[r:{relationshipType} $props]->(target)
-            RETURN r IS NOT NULL AS created";
-
-        var properties = BuildRelationshipProperties(entity);
-
-        var result = await transaction.RunAsync(cypher, new
-        {
-            sourceNodeId,
-            targetNodeId,
-            props = properties
-        }).ConfigureAwait(false);
-
-        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
-        return record["created"].As<bool>();
-    }
-
-
-    private static async Task<(
-        bool Exists,
-        bool DirectionMatches,
-        bool PhysicalTypeMatches,
-        bool LogicalTypeMatches,
-        bool ClrTypeMatches,
-        RelationshipDirection StoredDirection,
-        string? StoredPhysicalType,
-        string? StoredLogicalType,
-        string? StoredClrMetadata,
-        string? StoredLegacyClrLabel)> UpdateRelationshipPropertiesAsync(
-        string relationshipId,
-        EntityInfo entity,
-        RelationshipDirection incomingDirection,
-        IAsyncTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        var cypher = @"
-            OPTIONAL MATCH ()-[r {Id: $relId}]->()
-            WITH r,
-                 r.Direction AS storedDirection,
-                 type(r) AS storedPhysicalType,
-                 r.Type AS storedLogicalType,
-                 r.__metadata__ AS storedClrMetadata,
-                 head(r.Labels) AS storedLegacyClrLabel
-            WITH r,
-                 storedDirection,
-                 storedPhysicalType,
-                 storedLogicalType,
-                 storedClrMetadata,
-                 storedLegacyClrLabel,
-                 CASE
-                     WHEN r IS NULL THEN false
-                     WHEN r.Direction IS NULL THEN $incomingDirection = $defaultDirection
-                     ELSE toString(r.Direction) = $incomingDirection
-                 END AS directionMatches,
-                 CASE
-                     WHEN r IS NULL THEN false
-                     ELSE storedPhysicalType = $incomingStorageType
-                 END AS physicalTypeMatches,
-                 CASE
-                     WHEN r IS NULL THEN false
-                     WHEN storedLogicalType IS NULL OR storedLogicalType = '' THEN true
-                     ELSE storedLogicalType = $incomingStorageType
-                 END AS logicalTypeMatches,
-                 CASE
-                     WHEN r IS NULL THEN false
-                     WHEN storedClrMetadata IS NULL THEN $allowLegacyClrLabel AND storedLegacyClrLabel = $incomingClrLabel
-                     ELSE storedClrMetadata = $incomingClrType
-                 END AS clrTypeMatches
-            FOREACH (_ IN CASE WHEN r IS NOT NULL
-                                      AND directionMatches
-                                      AND physicalTypeMatches
-                                      AND logicalTypeMatches
-                                      AND clrTypeMatches THEN [1] ELSE [] END |
-                SET r = $props, r.Direction = storedDirection)
-            RETURN r IS NOT NULL AS exists,
-                   directionMatches AS directionMatches,
-                   physicalTypeMatches AS physicalTypeMatches,
-                   logicalTypeMatches AS logicalTypeMatches,
-                   clrTypeMatches AS clrTypeMatches,
-                   storedDirection AS storedDirection,
-                   storedPhysicalType AS storedPhysicalType,
-                   storedLogicalType AS storedLogicalType,
-                   storedClrMetadata AS storedClrMetadata,
-                   storedLegacyClrLabel AS storedLegacyClrLabel";
-
-        var properties = BuildRelationshipProperties(entity);
-        var incomingClrType = SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
-        var incomingClrLabel = Labels.GetLabelFromType(entity.ActualType);
-
-        var result = await transaction.RunAsync(cypher, new
-        {
-            relId = relationshipId,
-            props = properties,
-            incomingDirection = incomingDirection.ToString(),
-            defaultDirection = RelationshipDirection.Outgoing.ToString(),
-            incomingStorageType = entity.Label,
-            incomingClrType,
-            incomingClrLabel,
-            allowLegacyClrLabel = !entity.ActualType.IsConstructedGenericType
-        }).ConfigureAwait(false);
-
-        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
-        var exists = record["exists"].As<bool>();
-        var directionMatches = record["directionMatches"].As<bool>();
-        var physicalTypeMatches = record["physicalTypeMatches"].As<bool>();
-        var logicalTypeMatches = record["logicalTypeMatches"].As<bool>();
-        var clrTypeMatches = record["clrTypeMatches"].As<bool>();
-        var storedDirectionValue = record["storedDirection"];
-        return (
-            exists,
-            directionMatches,
-            physicalTypeMatches,
-            logicalTypeMatches,
-            clrTypeMatches,
-            ToRelationshipDirection(storedDirectionValue),
-            record["storedPhysicalType"] as string,
-            record["storedLogicalType"] as string,
-            record["storedClrMetadata"] as string,
-            record["storedLegacyClrLabel"] as string);
-    }
-
-    internal static Dictionary<string, object?> BuildRelationshipProperties(EntityInfo entity)
-    {
-        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
-            .Where(kv => !_ignoredProperties.Contains(kv.Key))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
-
-        properties[nameof(Graph.IRelationship.Type)] = entity.Label;
-        properties[SerializationBridge.MetadataPropertyName] =
-            SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
-        return properties;
-    }
-
     internal static Dictionary<string, object?> BuildElementBoundRelationshipProperties(EntityInfo entity)
     {
-        var properties = SerializationHelpers.SerializeSimpleProperties(entity);
-        foreach (var propertyName in new[]
+        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
+            .Where(pair => pair.Key != nameof(Graph.IRelationship.Type))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        if (entity.ActualType.IsConstructedGenericType)
         {
-            nameof(Graph.IEntity.Id),
-            nameof(Graph.IRelationship.StartNodeId),
-            nameof(Graph.IRelationship.EndNodeId),
-            nameof(Graph.Relationship.Direction)
-        })
-        {
-            if (SerializationHelpers.IsLegacyStructuralProperty(entity, propertyName))
-            {
-                properties.Remove(propertyName);
-            }
+            properties[SerializationBridge.MetadataPropertyName] =
+                SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
         }
 
-        properties[nameof(Graph.IRelationship.Type)] = entity.Label;
-        properties[SerializationBridge.MetadataPropertyName] =
-            SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
         return properties;
-    }
-
-    private static RelationshipDirection ToRelationshipDirection(object? value)
-    {
-        return value switch
-        {
-            RelationshipDirection direction when Enum.IsDefined(direction) => direction,
-            string directionString when Enum.TryParse<RelationshipDirection>(directionString, out var parsedDirection) &&
-                Enum.IsDefined(parsedDirection) => parsedDirection,
-            not null when Enum.TryParse<RelationshipDirection>(value.ToString(), out var parsedDirection) &&
-                Enum.IsDefined(parsedDirection) => parsedDirection,
-            _ => RelationshipDirection.Outgoing
-        };
     }
 
     internal void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Graph.IRelationship

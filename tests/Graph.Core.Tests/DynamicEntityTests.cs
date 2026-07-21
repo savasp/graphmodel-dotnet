@@ -15,11 +15,10 @@ public class DynamicEntityTests
         var labels = new List<string> { "Person", "Employee" };
         var properties = new Dictionary<string, object?> { ["name"] = "Ada", ["age"] = 37 };
 
-        var node = new DynamicNode("node-1", labels, properties);
+        var node = new DynamicNode(labels, properties);
         labels.Add("Mutated");
         properties["name"] = "Changed";
 
-        Assert.Equal("node-1", node.Id);
         Assert.Equal(ExpectedLabels, node.Labels);
         Assert.Equal("Ada", node.Properties["name"]);
         Assert.Equal(37, node.Properties["age"]);
@@ -38,23 +37,15 @@ public class DynamicEntityTests
     }
 
     [Fact]
-    public void DynamicRelationship_ConstructorCopiesPropertiesAndPreservesRelationshipShape()
+    public void DynamicRelationship_ConstructorCopiesPropertiesAndType()
     {
         var properties = new Dictionary<string, object?> { ["since"] = 2024 };
 
-        var relationship = new DynamicRelationship(
-            "source",
-            "target",
-            "KNOWS",
-            properties,
-            RelationshipDirection.Incoming);
+        var relationship = new DynamicRelationship("KNOWS", properties);
 
         properties["since"] = 2026;
 
-        Assert.Equal("source", relationship.StartNodeId);
-        Assert.Equal("target", relationship.EndNodeId);
         Assert.Equal("KNOWS", relationship.Type);
-        Assert.Equal(RelationshipDirection.Incoming, relationship.Direction);
         Assert.Equal(2024, relationship.Properties["since"]);
     }
 
@@ -62,8 +53,6 @@ public class DynamicEntityTests
     public void DynamicRelationship_ConstructorProducesReadOnlyProperties()
     {
         var relationship = new DynamicRelationship(
-            "source",
-            "target",
             "KNOWS",
             new Dictionary<string, object?> { ["since"] = 2024 });
 
@@ -88,21 +77,22 @@ public class DynamicEntityTests
 
         var dynamic = node.ToDynamicNode();
 
-        Assert.Equal("node-1", dynamic.Id);
         Assert.Equal(ExpectedLabels, dynamic.Labels);
+        Assert.Equal("node-1", dynamic.Properties[nameof(StrongNode.Id)]);
         Assert.Equal("Ada", dynamic.Properties[nameof(StrongNode.Name)]);
         Assert.Same(address, dynamic.Properties[nameof(StrongNode.Address)]);
         Assert.Same(tags, dynamic.Properties[nameof(StrongNode.Tags)]);
         Assert.DoesNotContain(nameof(INode.Labels), dynamic.Properties.Keys);
-        Assert.DoesNotContain(nameof(IEntity.Id), dynamic.Properties.Keys);
+        Assert.Contains(nameof(StrongNode.Id), dynamic.Properties.Keys);
     }
 
     [Fact]
-    public void ToDynamicRelationship_PreservesShapeAndCustomProperties()
+    public void ToDynamicRelationship_PreservesTypeAndUserProperties()
     {
-        var relationship = new StrongRelationship("source", "target")
+        var relationship = new StrongRelationship
         {
             Id = "rel-1",
+            Direction = "domain-direction",
             Type = "KNOWS",
             Description = "met at work",
             Since = new DateOnly(2024, 1, 1),
@@ -110,21 +100,19 @@ public class DynamicEntityTests
 
         var dynamic = relationship.ToDynamicRelationship();
 
-        Assert.Equal("rel-1", dynamic.Id);
-        Assert.Equal("source", dynamic.StartNodeId);
-        Assert.Equal("target", dynamic.EndNodeId);
         Assert.Equal("KNOWS", dynamic.Type);
+        Assert.Equal("rel-1", dynamic.Properties[nameof(StrongRelationship.Id)]);
+        Assert.Equal("domain-direction", dynamic.Properties[nameof(StrongRelationship.Direction)]);
         Assert.Equal("met at work", dynamic.Properties[nameof(StrongRelationship.Description)]);
         Assert.Equal(new DateOnly(2024, 1, 1), dynamic.Properties[nameof(StrongRelationship.Since)]);
-        Assert.DoesNotContain(nameof(IRelationship.StartNodeId), dynamic.Properties.Keys);
-        Assert.DoesNotContain(nameof(IRelationship.EndNodeId), dynamic.Properties.Keys);
+        Assert.DoesNotContain(nameof(IRelationship.Type), dynamic.Properties.Keys);
     }
 
     [Fact]
     public void ToDynamic_InterfaceOverloadsDispatchToNodeOrRelationship()
     {
         INode node = new StrongNode { Name = "Ada" };
-        IRelationship relationship = new StrongRelationship("source", "target") { Description = "knows" };
+        IRelationship relationship = new StrongRelationship { Description = "knows" };
 
         Assert.IsType<DynamicNode>(node.ToDynamic());
         Assert.IsType<DynamicRelationship>(relationship.ToDynamic());
@@ -148,6 +136,8 @@ public class DynamicEntityTests
 
     private sealed record StrongNode : Node
     {
+        public string Id { get; init; } = string.Empty;
+
         public string Name { get; init; } = string.Empty;
 
         public DynamicAddress? Address { get; init; }
@@ -155,8 +145,12 @@ public class DynamicEntityTests
         public List<string> Tags { get; init; } = new();
     }
 
-    private sealed record StrongRelationship(string Start, string End) : Relationship(Start, End)
+    private sealed record StrongRelationship : Relationship
     {
+        public string Id { get; init; } = string.Empty;
+
+        public string Direction { get; init; } = string.Empty;
+
         public string Description { get; init; } = string.Empty;
 
         public DateOnly Since { get; init; }

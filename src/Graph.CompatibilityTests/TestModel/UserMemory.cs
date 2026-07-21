@@ -8,9 +8,4 @@ using Cvoya.Graph;
 [Relationship("MEMORY")]
 public record UserMemory : Relationship
 {
-    public UserMemory() : base(string.Empty, string.Empty) { }
-
-    public UserMemory(string userId, string memoryId) : base(userId, memoryId) { }
-
-    public UserMemory(User user, Memory memory) : base(user.Id, memory.Id) { }
 }

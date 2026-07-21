@@ -41,11 +41,6 @@ public record HostileSchemaLabelNode : Node
 [Relationship("HostileSchemaLabelRelationship")]
 public record HostileSchemaLabelRelationship : Relationship
 {
-    public HostileSchemaLabelRelationship() : base(string.Empty, string.Empty) { }
-
-    public HostileSchemaLabelRelationship(string startNodeId, string endNodeId)
-        : base(startNodeId, endNodeId) { }
-
     [Property(Label = "region key", IsKey = true)]
     public string Region { get; set; } = string.Empty;
 
@@ -85,7 +80,9 @@ public sealed class TypedPropertyLabelSchemaEscapingTests(Neo4jHarness harness)
         };
         await Graph.CreateNodeAsync(first, null, cancellationToken);
 
-        var roundTripped = await Graph.GetNodeAsync<HostileSchemaLabelNode>(first.Id, null, cancellationToken);
+        var roundTripped = await Graph.Nodes<HostileSchemaLabelNode>()
+            .Where(node => node.Email == first.Email)
+            .SingleAsync(cancellationToken);
         Assert.Equal("first@example.com", roundTripped.Email);
         Assert.Equal("Eng", roundTripped.Department);
 
@@ -113,33 +110,40 @@ public sealed class TypedPropertyLabelSchemaEscapingTests(Neo4jHarness harness)
         await Assert.ThrowsAnyAsync<Exception>(
             () => Graph.CreateNodeAsync(duplicate, null, cancellationToken));
 
-        var firstRelationship = new HostileSchemaLabelRelationship(first.Id, second.Id)
+        var firstRelationship = new HostileSchemaLabelRelationship
         {
             Region = "NA",
             Department = "Eng",
             Email = "relationship-first@example.com",
             DisplayName = "First relationship",
         };
-        await Graph.CreateRelationshipAsync(firstRelationship, null, cancellationToken);
+        await Graph.CreateRelationshipAsync(
+            Graph.Nodes<HostileSchemaLabelNode>().Where(node => node.Email == first.Email),
+            firstRelationship,
+            Graph.Nodes<HostileSchemaLabelNode>().Where(node => node.Email == second.Email),
+            cancellationToken: cancellationToken);
 
-        var secondRelationship = new HostileSchemaLabelRelationship(first.Id, second.Id)
+        var secondRelationship = new HostileSchemaLabelRelationship
         {
             Region = "EU",
             Department = "Sales",
             Email = "relationship-second@example.com",
             DisplayName = "Second relationship",
         };
-        await Graph.CreateRelationshipAsync(secondRelationship, null, cancellationToken);
+        await Graph.CreateRelationshipAsync(
+            Graph.Nodes<HostileSchemaLabelNode>().Where(node => node.Email == first.Email),
+            secondRelationship,
+            Graph.Nodes<HostileSchemaLabelNode>().Where(node => node.Email == second.Email),
+            cancellationToken: cancellationToken);
 
         var roundTrippedRelationship =
-            await Graph.GetRelationshipAsync<HostileSchemaLabelRelationship>(
-                firstRelationship.Id,
-                null,
-                cancellationToken);
+            await Graph.Relationships<HostileSchemaLabelRelationship>()
+                .Where(relationship => relationship.Email == firstRelationship.Email)
+                .SingleAsync(cancellationToken);
         Assert.Equal("relationship-first@example.com", roundTrippedRelationship.Email);
         Assert.Equal("Eng", roundTrippedRelationship.Department);
 
-        var duplicateRelationship = new HostileSchemaLabelRelationship(second.Id, first.Id)
+        var duplicateRelationship = new HostileSchemaLabelRelationship
         {
             Region = "APAC",
             Department = "Support",
@@ -147,6 +151,10 @@ public sealed class TypedPropertyLabelSchemaEscapingTests(Neo4jHarness harness)
             DisplayName = "Duplicate relationship",
         };
         await Assert.ThrowsAnyAsync<Exception>(
-            () => Graph.CreateRelationshipAsync(duplicateRelationship, null, cancellationToken));
+            () => Graph.CreateRelationshipAsync(
+                Graph.Nodes<HostileSchemaLabelNode>().Where(node => node.Email == second.Email),
+                duplicateRelationship,
+                Graph.Nodes<HostileSchemaLabelNode>().Where(node => node.Email == first.Email),
+                cancellationToken: cancellationToken));
     }
 }

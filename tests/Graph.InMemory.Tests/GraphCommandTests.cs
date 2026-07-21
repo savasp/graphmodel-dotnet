@@ -48,19 +48,19 @@ public sealed class GraphCommandTests
     {
         await using var store = new InMemoryGraphStore();
         var sharedId = Guid.NewGuid().ToString("N");
-        var person = new Person { Id = sharedId, FirstName = "person" };
-        var manager = new Manager { Id = sharedId, FirstName = "manager", Department = "before" };
+        var person = new Person { TestKey = sharedId, FirstName = "person" };
+        var manager = new Manager { TestKey = sharedId, FirstName = "manager", Department = "before" };
         await store.Graph.CreateNodeAsync(person, cancellationToken: TestContext.Current.CancellationToken);
         await store.Graph.CreateNodeAsync(manager, cancellationToken: TestContext.Current.CancellationToken);
 
         var affected = await GraphCommandExtensions.UpdateAsync(
-            store.Graph.Nodes<Person>().Where(candidate => candidate.Id == sharedId),
+            store.Graph.Nodes<Person>().Where(candidate => candidate.TestKey == sharedId),
             setters => setters.SetProperty(candidate => candidate.FirstName, "updated"),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(2, affected);
         var matches = await store.Graph.Nodes<Person>()
-            .Where(candidate => candidate.Id == sharedId)
+            .Where(candidate => candidate.TestKey == sharedId)
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, matches.Count);
         Assert.All(matches, match => Assert.Equal("updated", match.FirstName));
@@ -78,16 +78,15 @@ public sealed class GraphCommandTests
         var replacement = new[] { "first", "second" };
 
         var affected = await GraphCommandExtensions.UpdateAsync(
-            store.Graph.DynamicNodes().Where(candidate => candidate.Id == node.Id),
+            store.Graph.DynamicNodes().OfLabel("Command Dynamic"),
             setters => setters
                 .SetProperty(candidate => candidate.Properties["score"], 2)
                 .SetProperty(candidate => candidate.Properties["names"], replacement),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(1, affected);
-        var updated = await store.Graph.GetDynamicNodeAsync(
-            node.Id,
-            cancellationToken: TestContext.Current.CancellationToken);
+        var updated = await store.Graph.DynamicNodes().OfLabel("Command Dynamic")
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, updated.Properties["score"]);
         Assert.Equal(
             replacement,
@@ -101,30 +100,32 @@ public sealed class GraphCommandTests
         await using var store = new InMemoryGraphStore();
         var first = new Person { FirstName = "first" };
         var second = new Person { FirstName = "second" };
-        var relationship = new Knows(first, second) { Since = DateTime.UnixEpoch };
+        var relationship = new Knows { Since = DateTime.UnixEpoch };
         await store.Graph.CreateNodeAsync(first, cancellationToken: TestContext.Current.CancellationToken);
         await store.Graph.CreateNodeAsync(second, cancellationToken: TestContext.Current.CancellationToken);
-        await store.Graph.CreateRelationshipAsync(relationship, cancellationToken: TestContext.Current.CancellationToken);
+        await CreateSelectedRelationshipAsync(
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == first.TestKey),
+            relationship,
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == second.TestKey));
         var replacement = DateTime.UnixEpoch.AddDays(1);
 
         var updated = await GraphCommandExtensions.UpdateAsync(
-            store.Graph.Relationships<Knows>().Where(candidate => candidate.Id == relationship.Id),
+            store.Graph.Relationships<Knows>().Where(candidate => candidate.TestKey == relationship.TestKey),
             setters => setters.SetProperty(candidate => candidate.Since, replacement),
             TestContext.Current.CancellationToken);
-        var stored = await store.Graph.GetRelationshipAsync<Knows>(
-            relationship.Id,
-            cancellationToken: TestContext.Current.CancellationToken);
+        var stored = await store.Graph.Relationships<Knows>()
+            .Where(candidate => candidate.TestKey == relationship.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
         var deleted = await GraphCommandExtensions.DeleteAsync(
-            store.Graph.Relationships<Knows>().Where(candidate => candidate.Id == relationship.Id),
-            cascadeDelete: false,
+            store.Graph.Relationships<Knows>().Where(candidate => candidate.TestKey == relationship.TestKey),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(1, updated);
         Assert.Equal(replacement, stored.Since);
         Assert.Equal(1, deleted);
-        await Assert.ThrowsAsync<EntityNotFoundException>(() => store.Graph.GetRelationshipAsync<Knows>(
-            relationship.Id,
-            cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Null(await store.Graph.Relationships<Knows>()
+            .Where(candidate => candidate.TestKey == relationship.TestKey)
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -135,11 +136,14 @@ public sealed class GraphCommandTests
         var first = new Person { FirstName = "first", LastName = marker };
         var second = new Person { FirstName = "second", LastName = marker };
         var survivor = new Person { FirstName = "survivor" };
-        var relationship = new Knows(first, survivor);
+        var relationship = new Knows();
         await store.Graph.CreateNodeAsync(first, cancellationToken: TestContext.Current.CancellationToken);
         await store.Graph.CreateNodeAsync(second, cancellationToken: TestContext.Current.CancellationToken);
         await store.Graph.CreateNodeAsync(survivor, cancellationToken: TestContext.Current.CancellationToken);
-        await store.Graph.CreateRelationshipAsync(relationship, cancellationToken: TestContext.Current.CancellationToken);
+        await CreateSelectedRelationshipAsync(
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == first.TestKey),
+            relationship,
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == survivor.TestKey));
         var targets = store.Graph.Nodes<Person>().Where(person => person.LastName == marker);
 
         await Assert.ThrowsAsync<GraphException>(() => GraphCommandExtensions.DeleteAsync(
@@ -148,9 +152,9 @@ public sealed class GraphCommandTests
             TestContext.Current.CancellationToken));
 
         Assert.Equal(2, await targets.CountAsync(TestContext.Current.CancellationToken));
-        _ = await store.Graph.GetRelationshipAsync<Knows>(
-            relationship.Id,
-            cancellationToken: TestContext.Current.CancellationToken);
+        _ = await store.Graph.Relationships<Knows>()
+            .Where(candidate => candidate.TestKey == relationship.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         var affected = await GraphCommandExtensions.DeleteAsync(
             targets,
@@ -159,12 +163,12 @@ public sealed class GraphCommandTests
 
         Assert.Equal(2, affected);
         Assert.Equal(0, await targets.CountAsync(TestContext.Current.CancellationToken));
-        _ = await store.Graph.GetNodeAsync<Person>(
-            survivor.Id,
-            cancellationToken: TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<EntityNotFoundException>(() => store.Graph.GetRelationshipAsync<Knows>(
-            relationship.Id,
-            cancellationToken: TestContext.Current.CancellationToken));
+        _ = await store.Graph.Nodes<Person>()
+            .Where(candidate => candidate.TestKey == survivor.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Null(await store.Graph.Relationships<Knows>()
+            .Where(candidate => candidate.TestKey == relationship.TestKey)
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -176,24 +180,23 @@ public sealed class GraphCommandTests
         await using var transaction = await store.Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
 
         var affected = await GraphCommandExtensions.UpdateAsync(
-            store.Graph.Nodes<Person>(transaction).Where(candidate => candidate.Id == person.Id),
+            store.Graph.Nodes<Person>(transaction).Where(candidate => candidate.TestKey == person.TestKey),
             setters => setters.SetProperty(candidate => candidate.FirstName, "inside"),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(1, affected);
-        Assert.Equal("inside", (await store.Graph.GetNodeAsync<Person>(
-            person.Id,
-            transaction,
-            TestContext.Current.CancellationToken)).FirstName);
-        Assert.Equal("before", (await store.Graph.GetNodeAsync<Person>(
-            person.Id,
-            cancellationToken: TestContext.Current.CancellationToken)).FirstName);
+        Assert.Equal("inside", (await store.Graph.Nodes<Person>(transaction)
+            .Where(candidate => candidate.TestKey == person.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken)).FirstName);
+        Assert.Equal("before", (await store.Graph.Nodes<Person>()
+            .Where(candidate => candidate.TestKey == person.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken)).FirstName);
 
         await transaction.CommitAsync();
 
-        Assert.Equal("inside", (await store.Graph.GetNodeAsync<Person>(
-            person.Id,
-            cancellationToken: TestContext.Current.CancellationToken)).FirstName);
+        Assert.Equal("inside", (await store.Graph.Nodes<Person>()
+            .Where(candidate => candidate.TestKey == person.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken)).FirstName);
     }
 
     [Fact]
@@ -206,13 +209,13 @@ public sealed class GraphCommandTests
         await cancellation.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => GraphCommandExtensions.UpdateAsync(
-            store.Graph.Nodes<Person>().Where(candidate => candidate.Id == person.Id),
+            store.Graph.Nodes<Person>().Where(candidate => candidate.TestKey == person.TestKey),
             setters => setters.SetProperty(candidate => candidate.FirstName, "after"),
             cancellation.Token));
 
-        Assert.Equal("before", (await store.Graph.GetNodeAsync<Person>(
-            person.Id,
-            cancellationToken: TestContext.Current.CancellationToken)).FirstName);
+        Assert.Equal("before", (await store.Graph.Nodes<Person>()
+            .Where(candidate => candidate.TestKey == person.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken)).FirstName);
     }
 
     [Fact]
@@ -258,16 +261,15 @@ public sealed class GraphCommandTests
         var replacementNames = new[] { 5, 6 };
 
         var affected = await GraphCommandExtensions.UpdateAsync(
-            store.Graph.DynamicNodes().Where(candidate => candidate.Id == node.Id),
+            store.Graph.DynamicNodes().OfLabel("CommandDynamicTypeChange"),
             setters => setters
                 .SetProperty(candidate => candidate.Properties["score"], "high")
                 .SetProperty(candidate => candidate.Properties["names"], replacementNames),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(1, affected);
-        var updated = await store.Graph.GetDynamicNodeAsync(
-            node.Id,
-            cancellationToken: TestContext.Current.CancellationToken);
+        var updated = await store.Graph.DynamicNodes().OfLabel("CommandDynamicTypeChange")
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("high", updated.Properties["score"]);
         Assert.Equal(replacementNames, Assert.IsType<List<int>>(updated.Properties["names"]));
     }
@@ -306,12 +308,12 @@ public sealed class GraphCommandTests
     {
         await using var store = new InMemoryGraphStore();
         var sharedNodeId = Guid.NewGuid().ToString("N");
-        var first = new Person { Id = sharedNodeId, FirstName = "same", LastName = "same" };
+        var first = new Person { TestKey = sharedNodeId, FirstName = "same", LastName = "same" };
         var second = first with { };
         await store.Graph.CreateNodeAsync(first, cancellationToken: TestContext.Current.CancellationToken);
         await store.Graph.CreateNodeAsync(second, cancellationToken: TestContext.Current.CancellationToken);
 
-        var nodeQuery = store.Graph.Nodes<Person>().Where(person => person.Id == sharedNodeId);
+        var nodeQuery = store.Graph.Nodes<Person>().Where(person => person.TestKey == sharedNodeId);
         Assert.Equal(2, await nodeQuery.CountAsync(TestContext.Current.CancellationToken));
         Assert.Equal(2, (await nodeQuery.Distinct().ToListAsync(TestContext.Current.CancellationToken)).Count);
 
@@ -320,20 +322,22 @@ public sealed class GraphCommandTests
         await store.Graph.CreateNodeAsync(source, cancellationToken: TestContext.Current.CancellationToken);
         await store.Graph.CreateNodeAsync(target, cancellationToken: TestContext.Current.CancellationToken);
         var sharedRelationshipId = Guid.NewGuid().ToString("N");
-        var relationship = new Knows(source, target)
+        var relationship = new Knows
         {
-            Id = sharedRelationshipId,
+            TestKey = sharedRelationshipId,
             Since = DateTime.UnixEpoch,
         };
-        await store.Graph.CreateRelationshipAsync(
+        await CreateSelectedRelationshipAsync(
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == source.TestKey),
             relationship,
-            cancellationToken: TestContext.Current.CancellationToken);
-        await store.Graph.CreateRelationshipAsync(
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == target.TestKey));
+        await CreateSelectedRelationshipAsync(
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == source.TestKey),
             relationship with { },
-            cancellationToken: TestContext.Current.CancellationToken);
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == target.TestKey));
 
         var relationshipQuery = store.Graph.Relationships<Knows>()
-            .Where(candidate => candidate.Id == sharedRelationshipId);
+            .Where(candidate => candidate.TestKey == sharedRelationshipId);
         Assert.Equal(2, await relationshipQuery.CountAsync(TestContext.Current.CancellationToken));
         Assert.Equal(
             2,
@@ -342,7 +346,6 @@ public sealed class GraphCommandTests
             2,
             await GraphCommandExtensions.DeleteAsync(
                 relationshipQuery,
-                cascadeDelete: false,
                 TestContext.Current.CancellationToken));
         Assert.Equal(0, await relationshipQuery.CountAsync(TestContext.Current.CancellationToken));
 
@@ -361,10 +364,10 @@ public sealed class GraphCommandTests
         await using var store = new InMemoryGraphStore();
         var sourceId = Guid.NewGuid().ToString("N");
         var targetId = Guid.NewGuid().ToString("N");
-        var sourceA = new Person { Id = sourceId, FirstName = "source-a" };
-        var sourceB = new Person { Id = sourceId, FirstName = "source-b" };
-        var targetA = new Person { Id = targetId, FirstName = "target-a" };
-        var targetB = new Person { Id = targetId, FirstName = "target-b" };
+        var sourceA = new Person { TestKey = sourceId, FirstName = "source-a" };
+        var sourceB = new Person { TestKey = sourceId, FirstName = "source-b" };
+        var targetA = new Person { TestKey = targetId, FirstName = "target-a" };
+        var targetB = new Person { TestKey = targetId, FirstName = "target-b" };
         foreach (var node in new[] { sourceA, sourceB, targetA, targetB })
         {
             await store.Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
@@ -380,21 +383,21 @@ public sealed class GraphCommandTests
             store.Graph.Nodes<Person>().Where(person => person.FirstName == targetB.FirstName));
 
         _ = await GraphCommandExtensions.UpdateAsync(
-            store.Graph.Nodes<Person>().Where(person => person.Id == sourceId),
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == sourceId),
             setters => setters.SetProperty(person => person.FirstName, "same-source"),
             TestContext.Current.CancellationToken);
         _ = await GraphCommandExtensions.UpdateAsync(
-            store.Graph.Nodes<Person>().Where(person => person.Id == targetId),
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == targetId),
             setters => setters.SetProperty(person => person.FirstName, "same-target"),
             TestContext.Current.CancellationToken);
 
         var reached = await store.Graph.Nodes<Person>()
-            .Where(person => person.Id == sourceId)
+            .Where(person => person.TestKey == sourceId)
             .Traverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, reached.Count);
-        Assert.All(reached, person => Assert.Equal(targetId, person.Id));
+        Assert.All(reached, person => Assert.Equal(targetId, person.TestKey));
     }
 
     [Fact]
@@ -494,14 +497,16 @@ public sealed class GraphCommandTests
         var target = new Person { FirstName = "target" };
         await store.Graph.CreateNodeAsync(source, cancellationToken: TestContext.Current.CancellationToken);
         await store.Graph.CreateNodeAsync(target, cancellationToken: TestContext.Current.CancellationToken);
-        await store.Graph.CreateRelationshipAsync(
-            new Knows(source, target) { Since = DateTime.UnixEpoch },
-            cancellationToken: TestContext.Current.CancellationToken);
-        await store.Graph.CreateRelationshipAsync(
-            new Knows(source, target) { Since = DateTime.UnixEpoch.AddDays(1) },
-            cancellationToken: TestContext.Current.CancellationToken);
+        await CreateSelectedRelationshipAsync(
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == source.TestKey),
+            new Knows { Since = DateTime.UnixEpoch },
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == target.TestKey));
+        await CreateSelectedRelationshipAsync(
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == source.TestKey),
+            new Knows { Since = DateTime.UnixEpoch.AddDays(1) },
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == target.TestKey));
         var traversal = store.Graph.Nodes<Person>()
-            .Where(person => person.Id == source.Id)
+            .Where(person => person.TestKey == source.TestKey)
             .Traverse<Knows, Person>();
 
         // The parallel edges genuinely produce two rows before deduplication; Distinct then
@@ -510,7 +515,7 @@ public sealed class GraphCommandTests
         Assert.Equal(2, await traversal.CountAsync(TestContext.Current.CancellationToken));
         var distinct = await traversal.Distinct().ToListAsync(TestContext.Current.CancellationToken);
         var single = Assert.Single(distinct);
-        Assert.Equal(target.Id, single.Id);
+        Assert.Equal(target.TestKey, single.TestKey);
     }
 
     [Fact]
@@ -521,11 +526,12 @@ public sealed class GraphCommandTests
         var target = new Person { FirstName = "target" };
         await store.Graph.CreateNodeAsync(source, cancellationToken: TestContext.Current.CancellationToken);
         await store.Graph.CreateNodeAsync(target, cancellationToken: TestContext.Current.CancellationToken);
-        await store.Graph.CreateRelationshipAsync(
-            new Knows(source, target) { Since = DateTime.UnixEpoch },
-            cancellationToken: TestContext.Current.CancellationToken);
+        await CreateSelectedRelationshipAsync(
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == source.TestKey),
+            new Knows { Since = DateTime.UnixEpoch },
+            store.Graph.Nodes<Person>().Where(person => person.TestKey == target.TestKey));
         var traversal = store.Graph.Nodes<Person>()
-            .Where(person => person.Id == source.Id)
+            .Where(person => person.TestKey == source.TestKey)
             .Traverse<Knows, Person>();
 
         var updateFailure = await Assert.ThrowsAsync<GraphQueryTranslationException>(() =>
@@ -543,9 +549,9 @@ public sealed class GraphCommandTests
         Assert.Contains("command selection", deleteFailure.Message);
         Assert.Equal(
             "target",
-            (await store.Graph.GetNodeAsync<Person>(
-                target.Id,
-                cancellationToken: TestContext.Current.CancellationToken)).FirstName);
+            (await store.Graph.Nodes<Person>()
+                .Where(person => person.TestKey == target.TestKey)
+                .SingleAsync(TestContext.Current.CancellationToken)).FirstName);
     }
 
     [Fact]

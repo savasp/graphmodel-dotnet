@@ -32,21 +32,4 @@ public interface IRelationship : IEntity
     /// </remarks>
     string Type { get; }
 
-    /// <summary>
-    /// Gets the ID of the start node in this relationship.
-    /// </summary>
-    /// <remarks>
-    /// This transitional endpoint member is not populated by bare relationship projections.
-    /// Select an <see cref="IGraphPathSegment"/> when endpoint and orientation information is required.
-    /// </remarks>
-    string StartNodeId { get; init; }
-
-    /// <summary>
-    /// Gets the ID of the end node in this relationship.
-    /// </summary>
-    /// <remarks>
-    /// This transitional endpoint member is not populated by bare relationship projections.
-    /// Select an <see cref="IGraphPathSegment"/> when endpoint and orientation information is required.
-    /// </remarks>
-    string EndNodeId { get; init; }
 }

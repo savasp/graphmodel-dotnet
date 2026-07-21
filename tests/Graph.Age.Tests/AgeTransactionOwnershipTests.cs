@@ -43,20 +43,25 @@ public sealed class AgeTransactionOwnershipTests(AgeGraphCleanupFixture graphCle
         Assert.Contains("different AGE graph store", exception.Message, StringComparison.Ordinal);
 
         await Assert.ThrowsAsync<GraphException>(
-            () => second.Graph.GetNodeAsync<Person>(seeded.Id, transaction, cancellationToken));
+            () => second.Graph.Nodes<Person>(transaction)
+                .Where(candidate => candidate.TestKey == seeded.TestKey)
+                .SingleAsync(cancellationToken));
         await Assert.ThrowsAsync<GraphException>(
             () => second.Graph.Nodes<Person>(transaction).ToListAsync(cancellationToken));
 
         // Rejected before any work: nothing was written through the borrowed transaction, and the
         // transaction itself is still usable on the graph that created it.
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => first.Graph.GetNodeAsync<Person>(intruder.Id, transaction, cancellationToken));
+        Assert.Empty(await first.Graph.Nodes<Person>(transaction)
+            .Where(candidate => candidate.TestKey == intruder.TestKey)
+            .ToListAsync(cancellationToken));
 
         var committed = new Person { FirstName = "AgeOwnership", LastName = "Committed" };
         await first.Graph.CreateNodeAsync(committed, transaction, cancellationToken);
         await transaction.CommitAsync();
 
-        var persisted = await first.Graph.GetNodeAsync<Person>(committed.Id, null, cancellationToken);
+        var persisted = await first.Graph.Nodes<Person>()
+            .Where(candidate => candidate.TestKey == committed.TestKey)
+            .SingleAsync(cancellationToken);
         Assert.Equal("Committed", persisted.LastName);
     }
 
@@ -80,12 +85,15 @@ public sealed class AgeTransactionOwnershipTests(AgeGraphCleanupFixture graphCle
         await second.Graph.CreateNodeAsync(staged, transaction, cancellationToken);
 
         await Assert.ThrowsAsync<GraphException>(
-            () => first.Graph.DeleteNodeAsync(staged.Id, false, transaction, cancellationToken));
+            () => first.Graph.Nodes<Person>(transaction)
+                .Where(candidate => candidate.TestKey == staged.TestKey)
+                .DeleteAsync(cancellationToken: cancellationToken));
 
         await transaction.RollbackAsync();
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => second.Graph.GetNodeAsync<Person>(staged.Id, null, cancellationToken));
+        Assert.Empty(await second.Graph.Nodes<Person>()
+            .Where(candidate => candidate.TestKey == staged.TestKey)
+            .ToListAsync(cancellationToken));
     }
 
     private static NpgsqlDataSource CreateDataSource()

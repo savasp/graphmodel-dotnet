@@ -634,7 +634,7 @@ public class EntitySerializerGeneratorTests
             namespace TestNamespace;
 
             [Relationship("KNOWS")]
-            public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+            public record Knows : Relationship
             {
                 public int Since { get; set; }
             }

@@ -61,7 +61,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         }
         catch (GraphQueryTranslationException exception)
         {
-            throw PreserveLegacyProviderException(exception);
+            throw PreserveProviderException(exception);
         }
 
         var rendered = new CypherRenderer(AgeDialect.Instance).Render(statement);
@@ -137,7 +137,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
     internal static CypherStatement LowerStatement(CypherStatement statement) =>
         LoweringPasses.Run(statement);
 
-    private static Exception PreserveLegacyProviderException(GraphQueryTranslationException exception)
+    private static Exception PreserveProviderException(GraphQueryTranslationException exception)
     {
         if (exception.Message.StartsWith(
             "Cannot translate the correlated grouped projection:", StringComparison.Ordinal))

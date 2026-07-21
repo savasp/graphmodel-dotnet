@@ -47,7 +47,7 @@ public class QuerySurfaceCompilationFixtureTests
         }
 
         [Relationship("KNOWS")]
-        public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+        public record Knows : Relationship
         {
             public int Since { get; set; }
         }
@@ -330,6 +330,45 @@ public class QuerySurfaceCompilationFixtureTests
         Assert.False(result.HasErrors, result.DescribeErrors());
     }
 
+    [Fact]
+    public void IdentityFreeCommandSurface_Compiles()
+    {
+        var source = WithDomainModel("""
+            public static class Commands
+            {
+                public static void Run(IGraph graph, IGraphTransaction transaction, System.Threading.CancellationToken cancellationToken)
+                {
+                    var people = graph.Nodes<Person>().Where(person => person.FirstName == "Ada");
+                    var companies = graph.Nodes<Company>().Where(company => company.Name == "CVOYA");
+                    var relationships = graph.Relationships<Knows>().Where(relationship => relationship.Since < 2020);
+
+                    Task<int> update = people.UpdateAsync(
+                        setters => setters.SetProperty(person => person.Age, 42),
+                        cancellationToken);
+                    Task<int> deleteNodes = people.DeleteAsync(
+                        cascadeDelete: true,
+                        cancellationToken: cancellationToken);
+                    Task<int> deleteRelationships = relationships.DeleteAsync(cancellationToken);
+
+                    Task selectedSelected = graph.CreateRelationshipAsync(
+                        people, new Knows(), companies, RelationshipDirection.Incoming, cancellationToken);
+                    Task selectedNew = graph.CreateAsync(
+                        people, new Knows(), new Company(), RelationshipDirection.Incoming, cancellationToken);
+                    Task newSelected = graph.CreateAsync(
+                        new Person(), new Knows(), companies, RelationshipDirection.Incoming, cancellationToken);
+                    Task newNew = graph.CreateAsync(
+                        new Person(), new Knows(), new Company(), RelationshipDirection.Incoming, transaction, cancellationToken);
+                    Task selfLoop = graph.CreateSelfLoopAsync(
+                        new Person(), new Knows(), transaction, cancellationToken);
+                }
+            }
+            """);
+
+        var result = CompilationFixture.Compile(source);
+
+        Assert.False(result.HasErrors, result.DescribeErrors());
+    }
+
     // ---- Must NOT compile ----
 
     [Fact]
@@ -345,6 +384,71 @@ public class QuerySurfaceCompilationFixtureTests
         var result = CompilationFixture.Compile(source);
 
         Assert.True(result.HasErrors, "Expected the removed RecreateIndexesAsync method to fail to compile.");
+    }
+
+    [Fact]
+    public void RemovedEntityIdentityAndRelationshipEndpoints_DoNotCompile()
+    {
+        var source = WithDomainModel("""
+            public static class RemovedIdentity
+            {
+                public static void Run(IEntity entity)
+                {
+                    _ = entity.Id;
+                    _ = new Knows("start", "end");
+                }
+            }
+            """);
+
+        var result = CompilationFixture.Compile(source);
+
+        Assert.True(result.HasErrors, "Expected the removed entity identity and relationship endpoint constructor surfaces to fail to compile.");
+        Assert.True(result.Errors.Count >= 2, result.DescribeErrors());
+    }
+
+    [Fact]
+    public void ExecutePrefixedMutationAliases_DoNotCompile()
+    {
+        var source = WithDomainModel("""
+            public static class RemovedAliases
+            {
+                public static void Run(IGraphQueryable<Person> people)
+                {
+                    _ = people.ExecuteUpdateAsync(setters => setters.SetProperty(person => person.Age, 42));
+                    _ = people.ExecuteDeleteAsync();
+                }
+            }
+            """);
+
+        var result = CompilationFixture.Compile(source);
+
+        Assert.True(result.HasErrors, "Expected Execute-prefixed graph mutation aliases to remain unavailable.");
+        Assert.True(result.Errors.Count >= 2, result.DescribeErrors());
+    }
+
+    [Fact]
+    public void CommandSurfaceRejectsWrongEntityKinds_DoesNotCompile()
+    {
+        var source = WithDomainModel("""
+            public static class InvalidCommands
+            {
+                public static void Run(
+                    IGraph graph,
+                    IGraphQueryable<string> values,
+                    IGraphQueryable<Knows> relationships,
+                    IGraphQueryable<Person> people)
+                {
+                    _ = values.UpdateAsync(setters => setters.SetProperty(value => value.Length, 1));
+                    _ = graph.CreateRelationshipAsync(relationships, new Knows(), people);
+                    _ = graph.CreateAsync(people, new Knows(), new Knows());
+                }
+            }
+            """);
+
+        var result = CompilationFixture.Compile(source);
+
+        Assert.True(result.HasErrors, "Expected graph commands to reject non-entity and non-node operands.");
+        Assert.True(result.Errors.Count >= 3, result.DescribeErrors());
     }
 
     [Fact]
@@ -430,7 +534,6 @@ public class QuerySurfaceCompilationFixtureTests
         var source = WithDomainModel("""
             public struct StructNode : INode
             {
-                public string Id { get; set; }
                 public IReadOnlyList<string> Labels { get; set; }
             }
 

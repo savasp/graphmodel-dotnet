@@ -82,7 +82,9 @@ public sealed class ComplianceInventoryTests
     // replacement plus null/empty clearing, and dynamic complex/scalar representation transitions.
     // +1 for #383: negative ElementAt/ElementAtOrDefault parity across empty/nonempty reference,
     // nullable-value, and non-nullable-value query shapes.
-    private const int ExpectedTotalTestMethods = 476;
+    // -2 for #477-#480: the endpoint-bearing relationship and provider identity compatibility
+    // cases were retired with those pre-v1 surfaces.
+    private const int ExpectedTotalTestMethods = 474;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

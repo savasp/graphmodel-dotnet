@@ -192,14 +192,14 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
         var charlie = new Person { FirstName = "Charlie", LastName = "Jones" };
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
-        var knows1 = new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow };
-        var knows2 = new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow };
-        await this.Graph.CreateRelationshipAsync(knows1, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
+        var knows1 = new Knows { Since = DateTime.UtcNow };
+        var knows2 = new Knows { Since = DateTime.UtcNow };
+        await this.Graph.ConnectAsync(alice, knows1, bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, knows2, charlie, cancellationToken: TestContext.Current.CancellationToken);
 
         // Find all people Bob knows (outgoing)
         var bobsFriends = await this.Graph.Nodes<Person>()
-            .Where(person => person.Id == bob.Id)
+            .Where(person => person.TestKey == bob.TestKey)
             .PathSegments<Person, Knows, Person>()
             .Select(segment => segment.EndNode)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -208,12 +208,12 @@ public interface IAdvancedQueryTests : IGraphTest
 
         // Find all people who know Bob (incoming)
         var knowsBob = await this.Graph.Nodes<Person>()
-            .Where(person => person.Id == bob.Id)
+            .Where(person => person.TestKey == bob.TestKey)
             .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Incoming)
             .Select(segment => segment.EndNode)
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(knowsBob);
-        Assert.Equal(alice.Id, knowsBob[0].Id);
+        Assert.Equal(alice.TestKey, knowsBob[0].TestKey);
     }
 
     [Fact]
@@ -224,12 +224,12 @@ public interface IAdvancedQueryTests : IGraphTest
         var bob = new Person { FirstName = "Bob", LastName = "Smith" };
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
 
-        var knows = new Knows(alice, bob) { Since = DateTime.UtcNow };
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        var knows = new Knows { Since = DateTime.UtcNow };
+        await this.Graph.ConnectAsync(alice, knows, bob, cancellationToken: TestContext.Current.CancellationToken);
 
         // Project the endpoints from a segment; a bare relationship intentionally has no endpoints.
         var pairs = await this.Graph.Nodes<Person>()
-            .Where(person => person.Id == alice.Id)
+            .Where(person => person.TestKey == alice.TestKey)
             .PathSegments<Person, Knows, Person>()
             .Select(segment => new { Person = segment.StartNode, Friend = segment.EndNode })
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -307,17 +307,17 @@ public interface IAdvancedQueryTests : IGraphTest
         var bob = new Person { FirstName = "Bob", LastName = "Smith" };
         await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
-        var knows = new Knows(alice, bob) { Since = DateTime.UtcNow };
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        var knows = new Knows { Since = DateTime.UtcNow };
+        await this.Graph.ConnectAsync(alice, knows, bob, cancellationToken: TestContext.Current.CancellationToken);
 
         var rels = await this.Graph.Relationships<Knows>(null)
-            .Where(r => r.Id == knows.Id)
+            .Where(r => r.TestKey == knows.TestKey)
             .Select(r => r.Since).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
 
         rels = await this.Graph.Relationships<Knows>()
-            .Where(r => knows.Id == r.Id)
+            .Where(r => knows.TestKey == r.TestKey)
             .Select(r => r.Since).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
@@ -332,10 +332,10 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
-        var r1 = new Knows(alice, bob) { Since = DateTime.UtcNow.AddDays(-2) };
-        var r2 = new Knows(alice, charlie) { Since = DateTime.UtcNow.AddDays(-1) };
-        await this.Graph.CreateRelationshipAsync(r1, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(r2, null, TestContext.Current.CancellationToken);
+        var r1 = new Knows { Since = DateTime.UtcNow.AddDays(-2) };
+        var r2 = new Knows { Since = DateTime.UtcNow.AddDays(-1) };
+        await this.Graph.ConnectAsync(alice, r1, bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, r2, charlie, cancellationToken: TestContext.Current.CancellationToken);
 
         var rels = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, rels.Count);
@@ -537,11 +537,11 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
 
-        var knows1 = new Knows(alice, bob) { Since = DateTime.UtcNow.AddDays(-10) };
-        var knows2 = new Knows(alice, charlie) { Since = DateTime.UtcNow.AddDays(-15) };
+        var knows1 = new Knows { Since = DateTime.UtcNow.AddDays(-10) };
+        var knows2 = new Knows { Since = DateTime.UtcNow.AddDays(-15) };
 
-        await this.Graph.CreateRelationshipAsync(knows1, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, knows1, bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, knows2, charlie, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act: Get all friends with their details
         var friendsPattern = await this.Graph.Nodes<Person>()
@@ -582,8 +582,8 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
 
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob) { Since = DateTime.UtcNow.AddDays(-10) }, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie) { Since = DateTime.UtcNow.AddDays(-15) }, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows { Since = DateTime.UtcNow.AddDays(-10) }, bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows { Since = DateTime.UtcNow.AddDays(-15) }, charlie, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act: Get only young friends (under 30)
         var youngFriendsPattern = await this.Graph.Nodes<Person>()
@@ -619,10 +619,11 @@ public interface IAdvancedQueryTests : IGraphTest
         await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(diana, null, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(
-            new Knows(alice, bob),
-            null,
-            TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(
+            alice,
+            new Knows(),
+            bob,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var groups = await Graph.Nodes<Person>()
             .PathSegments<Person, Knows, Person>()
@@ -660,8 +661,8 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
 
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob) { Since = DateTime.UtcNow.AddDays(-10) }, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie) { Since = DateTime.UtcNow.AddDays(-15) }, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows { Since = DateTime.UtcNow.AddDays(-10) }, bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows { Since = DateTime.UtcNow.AddDays(-15) }, charlie, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act: Aggregate friend data
         var friendAggregation = await this.Graph.Nodes<Person>()
@@ -701,8 +702,8 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
 
         // Bob is a recent friend, Charlie is an old friend
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob) { Since = DateTime.UtcNow.AddDays(-5) }, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie) { Since = DateTime.UtcNow.AddDays(-20) }, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows { Since = DateTime.UtcNow.AddDays(-5) }, bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows { Since = DateTime.UtcNow.AddDays(-20) }, charlie, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act: Get recent friendships (within last 12 days)
         var recentFriendships = await this.Graph.Nodes<Person>()
@@ -739,8 +740,8 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
 
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act: Get friends ordered by age
         var orderedFriendsPattern = await this.Graph.Nodes<Person>()
@@ -788,9 +789,9 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(diana, null, TestContext.Current.CancellationToken);
 
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, diana), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), diana, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act: Group friends by age category
         var ageGroupedPattern = await this.Graph.Nodes<Person>()
@@ -845,8 +846,8 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
 
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
 
         var exception = await Assert.ThrowsAsync<GraphQueryTranslationException>(async () =>
             await this.Graph.Nodes<Person>()
@@ -1126,28 +1127,28 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(david, null, TestContext.Current.CancellationToken);
 
-        var knows1 = new Knows(alice, bob) { Since = DateTime.UtcNow.AddDays(-30) };
-        var knows2 = new Knows(bob, charlie) { Since = DateTime.UtcNow.AddDays(-20) };
-        var knows3 = new Knows(charlie, david) { Since = DateTime.UtcNow.AddDays(-10) };
+        var knows1 = new Knows { Since = DateTime.UtcNow.AddDays(-30) };
+        var knows2 = new Knows { Since = DateTime.UtcNow.AddDays(-20) };
+        var knows3 = new Knows { Since = DateTime.UtcNow.AddDays(-10) };
 
-        await this.Graph.CreateRelationshipAsync(knows1, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(knows3, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, knows1, bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, knows2, charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(charlie, knows3, david, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act & Assert: Test navigation at different levels
 
         // Test 1: Endpoint navigation comes from a segment, not a bare relationship.
         var aliceKnows = await this.Graph.Nodes<Person>()
-            .Where(person => person.Id == alice.Id)
+            .Where(person => person.TestKey == alice.TestKey)
             .PathSegments<Person, Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(aliceKnows);
-        Assert.Equal(bob.Id, aliceKnows[0].EndNode.Id);
+        Assert.Equal(bob.TestKey, aliceKnows[0].EndNode.TestKey);
 
         // Find Bob's friends
         var bobsFriends = await this.Graph.Nodes<Person>()
-            .Where(person => person.Id == bob.Id)
+            .Where(person => person.TestKey == bob.TestKey)
             .PathSegments<Person, Knows, Person>()
             .Select(segment => segment.EndNode)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -1161,10 +1162,10 @@ public interface IAdvancedQueryTests : IGraphTest
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(3, relationshipStartPeople.Count);
-        Assert.Contains(relationshipStartPeople, p => p.Id == alice.Id);
-        Assert.Contains(relationshipStartPeople, p => p.Id == bob.Id);
-        Assert.Contains(relationshipStartPeople, p => p.Id == charlie.Id);
-        Assert.DoesNotContain(relationshipStartPeople, p => p.Id == david.Id);
+        Assert.Contains(relationshipStartPeople, p => p.TestKey == alice.TestKey);
+        Assert.Contains(relationshipStartPeople, p => p.TestKey == bob.TestKey);
+        Assert.Contains(relationshipStartPeople, p => p.TestKey == charlie.TestKey);
+        Assert.DoesNotContain(relationshipStartPeople, p => p.TestKey == david.TestKey);
 
         // Test 3: Find friends of friends
         // TODO: SelectMany with nested queries is not yet implemented - would require advanced Cypher generation
@@ -1173,7 +1174,7 @@ public interface IAdvancedQueryTests : IGraphTest
 
         // Get Alice's direct friends first
         var aliceDirectFriends = await this.Graph.Nodes<Person>()
-            .Where(person => person.Id == alice.Id)
+            .Where(person => person.TestKey == alice.TestKey)
             .PathSegments<Person, Knows, Person>()
             .Select(segment => segment.EndNode)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -1183,24 +1184,24 @@ public interface IAdvancedQueryTests : IGraphTest
         foreach (var friend in aliceDirectFriends)
         {
             var friendsFriends = await this.Graph.Nodes<Person>()
-                .Where(person => person.Id == friend.Id)
+                .Where(person => person.TestKey == friend.TestKey)
                 .PathSegments<Person, Knows, Person>()
                 .Select(segment => segment.EndNode)
                 .ToListAsync(TestContext.Current.CancellationToken);
 
-            friendOfFriendIds.AddRange(friendsFriends.Select(f => f.Id));
+            friendOfFriendIds.AddRange(friendsFriends.Select(f => f.TestKey));
         }
 
         // Get the actual people (excluding Alice herself)
         var alicesFriendsOfFriends = friendOfFriendIds
-            .Where(id => id != alice.Id)
+            .Where(id => id != alice.TestKey)
             .Distinct()
             .ToList();
 
         Assert.Single(alicesFriendsOfFriends);
         // Verify Charlie is the friend of friend by getting the person
         charlie = await this.Graph.Nodes<Person>()
-            .Where(p => p.Id == alicesFriendsOfFriends[0])
+            .Where(p => p.TestKey == alicesFriendsOfFriends[0])
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(charlie);
         Assert.Equal("Charlie", charlie.FirstName);
@@ -1220,11 +1221,11 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
 
-        var knows1 = new Knows(alice, bob);
-        var knows2 = new Knows(alice, charlie);
+        var knows1 = new Knows();
+        var knows2 = new Knows();
 
-        await this.Graph.CreateRelationshipAsync(knows1, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, knows1, bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, knows2, charlie, cancellationToken: TestContext.Current.CancellationToken);
 
         // Test projection with navigation properties
         // First, verify the data exists
@@ -1242,13 +1243,12 @@ public interface IAdvancedQueryTests : IGraphTest
 
         foreach (var relationship in allKnowsRelationships)
         {
-            Assert.Empty(relationship.StartNodeId);
-            Assert.Empty(relationship.EndNodeId);
+            Assert.False(string.IsNullOrWhiteSpace(relationship.TestKey));
         }
 
         // Check the relationships from Alice through endpoint-bearing segments.
         var aliceRelationships = await this.Graph.Nodes<Person>()
-            .Where(person => person.Id == alice.Id)
+            .Where(person => person.TestKey == alice.TestKey)
             .PathSegments<Person, Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, aliceRelationships.Count); // This should also pass
@@ -1325,23 +1325,23 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
 
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
 
         // Execute separate queries and combine in memory
         var people = await this.Graph.Nodes<Person>()
-            .ToDictionaryAsync(p => p.Id, TestContext.Current.CancellationToken);
+            .ToDictionaryAsync(p => p.TestKey, TestContext.Current.CancellationToken);
         var segments = await this.Graph.Nodes<Person>()
             .PathSegments<Person, Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Build a connection map
         var connectionMap = segments
-            .GroupBy(segment => segment.StartNode.Id)
+            .GroupBy(segment => segment.StartNode.TestKey)
             .Select(g => new
             {
                 PersonName = people[g.Key].FirstName,
-                Connections = g.Select(segment => people[segment.EndNode.Id].FirstName).ToList()
+                Connections = g.Select(segment => people[segment.EndNode.TestKey].FirstName).ToList()
             })
             .ToList();
 
@@ -1365,12 +1365,12 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
 
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(charlie, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
 
         // Project connection counts using the graph-native degree projection surface, which maps to
         // a relationship-count pattern subquery (size((p)-[:KNOWS]->()) / COUNT { }).
@@ -1412,10 +1412,12 @@ public interface IAdvancedQueryTests : IGraphTest
         var bob = new Person { FirstName = "Bob" };
         await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new KnowsWell(alice, bob) { Direction = RelationshipDirection.Incoming },
-            null,
-            TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(
+            alice,
+            new KnowsWell(),
+            bob,
+            RelationshipDirection.Incoming,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var counts = await this.Graph.Nodes<Person>()
             .Select(person => new
@@ -1441,11 +1443,14 @@ public interface IAdvancedQueryTests : IGraphTest
     {
         var alice = new Person { FirstName = "Alice" };
         await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new Knows(alice, alice), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(
+            alice,
+            new Knows(),
+            alice,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var count = await this.Graph.Nodes<Person>()
-            .Where(person => person.Id == alice.Id)
+            .Where(person => person.TestKey == alice.TestKey)
             .Select(person => person.CountRelationships<Knows>(GraphTraversalDirection.Both))
             .SingleAsync(TestContext.Current.CancellationToken);
 
@@ -1497,15 +1502,15 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
 
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(bob, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(charlie, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Friend(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Friend(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(charlie, new Friend(), dave, cancellationToken: TestContext.Current.CancellationToken);
 
         // Get Alice's relationships
         var connectionStats = await this.Graph.Nodes<Person>()
@@ -1537,22 +1542,22 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
 
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(bob, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(charlie, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Friend(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Friend(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(charlie, new Friend(), dave, cancellationToken: TestContext.Current.CancellationToken);
 
         // Get Alice's relationships
         var connectionStats = await this.Graph.Nodes<Person>()
             .PathSegments<Person, IRelationship, Person>()
             .Select(ps => new
             {
-                Id = ps.StartNode.Id,
+                Id = ps.StartNode.TestKey,
                 Name = ps.StartNode.FirstName,
                 Relationship = ps.Relationship,
             })
@@ -1578,15 +1583,15 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
 
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(bob, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(charlie, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Friend(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Friend(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(charlie, new Friend(), dave, cancellationToken: TestContext.Current.CancellationToken);
 
         // Get Alice's relationships
         var connectionStats = await this.Graph.Nodes<Person>()

@@ -8,6 +8,8 @@ using Cvoya.Graph;
 [Node("User")]
 public record User : Node
 {
+    public string TestKey { get; init; } = Guid.NewGuid().ToString("N");
+
     public required string? Name { get; init; }
     public required string? Email { get; init; }
     public required string? GoogleId { get; init; }

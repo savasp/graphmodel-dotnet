@@ -133,7 +133,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-1",
             ["Person", "Employee"],
             new Dictionary<string, object?>
             {
@@ -153,7 +152,6 @@ public class EntityFactoryTests
 
         Assert.Equal("Person", entityInfo.Label);
         Assert.Equal(DynamicLabels, entityInfo.ActualLabels);
-        Assert.Equal("dynamic-1", roundTripped.Id);
         Assert.Equal(node.Labels, roundTripped.Labels);
         Assert.Equal("Ada", roundTripped.Properties["name"]);
         Assert.Equal(99, roundTripped.Properties["score"]);
@@ -170,7 +168,7 @@ public class EntityFactoryTests
     public void DynamicNode_RoundTripsTypedSimpleCollectionsAsLists()
     {
         var factory = new EntityFactory();
-        var node = new DynamicNode("dynamic-collections", ["Person"], CreateDynamicCollectionProperties());
+        var node = new DynamicNode(["Person"], CreateDynamicCollectionProperties());
 
         var roundTripped = factory.Deserialize<DynamicNode>(factory.Serialize(node));
 
@@ -182,8 +180,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var relationship = new DynamicRelationship(
-            "source",
-            "target",
             "KNOWS",
             CreateDynamicCollectionProperties());
 
@@ -196,7 +192,7 @@ public class EntityFactoryTests
     public void DynamicCollection_WithMalformedItem_ThrowsGraphException()
     {
         var factory = new EntityFactory();
-        var entity = factory.Serialize(new DynamicNode("dynamic-invalid", ["Person"], new Dictionary<string, object?>()));
+        var entity = factory.Serialize(new DynamicNode(["Person"], new Dictionary<string, object?>()));
         entity.SimpleProperties["invalid"] = new Property(
             PropertyInfo: null!,
             Label: "invalid",
@@ -215,7 +211,7 @@ public class EntityFactoryTests
     public void DynamicCollection_WithNullElementForNonNullableValueType_ThrowsGraphException()
     {
         var factory = new EntityFactory();
-        var entity = factory.Serialize(new DynamicNode("dynamic-null-element", ["Person"], new Dictionary<string, object?>()));
+        var entity = factory.Serialize(new DynamicNode(["Person"], new Dictionary<string, object?>()));
         entity.SimpleProperties["invalid"] = new Property(
             PropertyInfo: null!,
             Label: "invalid",
@@ -233,7 +229,7 @@ public class EntityFactoryTests
     public void DynamicProperty_WithNullSerializedValue_DeserializesAsNull()
     {
         var factory = new EntityFactory();
-        var entity = factory.Serialize(new DynamicNode("dynamic-null-value", ["Person"], new Dictionary<string, object?>()));
+        var entity = factory.Serialize(new DynamicNode(["Person"], new Dictionary<string, object?>()));
         entity.SimpleProperties["optional"] = new Property(
             PropertyInfo: null!,
             Label: "optional",
@@ -251,7 +247,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-complex-collections",
             ["Person"],
             new Dictionary<string, object?> { ["survey"] = new FactorySurvey() });
 
@@ -269,7 +264,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-1",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -298,7 +292,6 @@ public class EntityFactoryTests
         // instance itself as a single complex object.
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-1",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -320,27 +313,20 @@ public class EntityFactoryTests
     }
 
     [Fact]
-    public void DynamicRelationship_RoundTripPreservesId()
+    public void DynamicRelationship_RoundTripsOrdinaryIdProperty()
     {
         var factory = new EntityFactory();
         var relationship = new DynamicRelationship(
-            "source",
-            "target",
             "KNOWS",
-            new Dictionary<string, object?> { ["since"] = 2024 })
-        {
-            Id = "rel-1",
-        };
+            new Dictionary<string, object?> { ["since"] = 2024, ["Id"] = "rel-1" });
 
         var entityInfo = factory.Serialize(relationship);
         var roundTripped = factory.Deserialize<DynamicRelationship>(entityInfo);
 
         Assert.Equal("KNOWS", entityInfo.Label);
-        Assert.Equal("source", roundTripped.StartNodeId);
-        Assert.Equal("target", roundTripped.EndNodeId);
         Assert.Equal("KNOWS", roundTripped.Type);
         Assert.Equal(2024, roundTripped.Properties["since"]);
-        Assert.Equal("rel-1", roundTripped.Id);
+        Assert.Equal("rel-1", roundTripped.Properties["Id"]);
     }
 
     [Fact]
@@ -348,8 +334,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var relationship = new DynamicRelationship(
-            "source",
-            "target",
             "KNOWS",
             new Dictionary<string, object?> { ["contact"] = new LabeledContact { DisplayName = "Ada" } });
 
@@ -370,18 +354,17 @@ public class EntityFactoryTests
     }
 
     [Fact]
-    public void DynamicNode_RoundTripPreservesId()
+    public void DynamicNode_RoundTripsOrdinaryIdProperty()
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "node-1",
             ["Person"],
-            new Dictionary<string, object?> { ["name"] = "Ada" });
+            new Dictionary<string, object?> { ["name"] = "Ada", ["Id"] = "node-1" });
 
         var entityInfo = factory.Serialize(node);
         var roundTripped = factory.Deserialize<DynamicNode>(entityInfo);
 
-        Assert.Equal("node-1", roundTripped.Id);
+        Assert.Equal("node-1", roundTripped.Properties["Id"]);
     }
 
     [Fact]
@@ -394,7 +377,6 @@ public class EntityFactoryTests
         var factory = new EntityFactory();
         var expectedTags = new[] { "a", "b" };
         var node = new DynamicNode(
-            "dynamic-nested-serialize",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -420,7 +402,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-nested-collections",
             ["Person"],
             new Dictionary<string, object?> { ["bag"] = CreateDynamicCollectionProperties() });
 
@@ -435,8 +416,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var relationship = new DynamicRelationship(
-            "source",
-            "target",
             "KNOWS",
             new Dictionary<string, object?> { ["bag"] = CreateDynamicCollectionProperties() });
 
@@ -451,12 +430,9 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "node-parity",
             ["Person"],
             new Dictionary<string, object?> { ["bag"] = CreateDynamicCollectionProperties() });
         var relationship = new DynamicRelationship(
-            "source",
-            "target",
             "KNOWS",
             new Dictionary<string, object?> { ["bag"] = CreateDynamicCollectionProperties() });
 
@@ -479,7 +455,6 @@ public class EntityFactoryTests
         // simple collection must round-trip it as a List<T>.
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-poco-collection",
             ["Person"],
             new Dictionary<string, object?> { ["survey"] = new FactorySurvey() });
 
@@ -496,7 +471,6 @@ public class EntityFactoryTests
         var factory = new EntityFactory();
         var expectedTags = new[] { "x", "y", "z" };
         var node = new DynamicNode(
-            "dynamic-deep-nested",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -524,7 +498,6 @@ public class EntityFactoryTests
         var firstTags = new[] { "a", "b" };
         var secondTags = new[] { "c" };
         var node = new DynamicNode(
-            "dynamic-dictionary-collection",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -558,7 +531,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-null-complex",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -582,7 +554,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-nested-null-complex",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -605,7 +576,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-null-dictionary",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -629,7 +599,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var entity = factory.Serialize(new DynamicNode(
-            "dynamic-mistyped-complex",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -659,7 +628,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-derived-complex",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -689,7 +657,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
-            "dynamic-nested-derived-complex",
             ["Person"],
             new Dictionary<string, object?>
             {
@@ -723,7 +690,6 @@ public class EntityFactoryTests
         var bag = new Dictionary<string, object?>();
         bag["self"] = bag;
         var node = new DynamicNode(
-            "dynamic-dictionary-cycle",
             ["Person"],
             new Dictionary<string, object?> { ["bag"] = bag });
 
@@ -738,7 +704,6 @@ public class EntityFactoryTests
     {
         var factory = new EntityFactory();
         var entity = factory.Serialize(new DynamicNode(
-            "dynamic-nested-invalid",
             ["Person"],
             new Dictionary<string, object?> { ["bag"] = new Dictionary<string, object?>() }));
 
@@ -781,6 +746,8 @@ public class EntityFactoryTests
 
     private sealed record FactoryNode : Node
     {
+        public string Id { get; init; } = string.Empty;
+
         public string Name { get; init; } = string.Empty;
 
         public string? OptionalNote { get; init; }
@@ -848,7 +815,7 @@ public class EntityFactoryTests
             var node = (FactoryNode)obj;
             var simpleProperties = new Dictionary<string, Property>
             {
-                [nameof(FactoryNode.Id)] = SimpleProperty(typeof(Node), nameof(Node.Id), node.Id, typeof(string)),
+                [nameof(FactoryNode.Id)] = SimpleProperty(typeof(FactoryNode), nameof(FactoryNode.Id), node.Id, typeof(string)),
                 [nameof(FactoryNode.Labels)] = CollectionProperty(typeof(Node), nameof(Node.Labels), node.Labels, typeof(string)),
                 [nameof(FactoryNode.Name)] = SimpleProperty(typeof(FactoryNode), nameof(FactoryNode.Name), node.Name, typeof(string)),
                 [nameof(FactoryNode.OptionalNote)] = SimpleProperty(typeof(FactoryNode), nameof(FactoryNode.OptionalNote), node.OptionalNote, typeof(string)),
@@ -915,7 +882,7 @@ public class EntityFactoryTests
         {
             var simpleProperties = new Dictionary<string, PropertySchema>
             {
-                [nameof(FactoryNode.Id)] = SimpleSchema(typeof(Node), nameof(Node.Id), typeof(string)),
+                [nameof(FactoryNode.Id)] = SimpleSchema(typeof(FactoryNode), nameof(FactoryNode.Id), typeof(string)),
                 [nameof(FactoryNode.Labels)] = SimpleCollectionSchema(typeof(Node), nameof(Node.Labels), typeof(string)),
                 [nameof(FactoryNode.Name)] = SimpleSchema(typeof(FactoryNode), nameof(FactoryNode.Name), typeof(string)),
                 [nameof(FactoryNode.OptionalNote)] = SimpleSchema(typeof(FactoryNode), nameof(FactoryNode.OptionalNote), typeof(string), true),

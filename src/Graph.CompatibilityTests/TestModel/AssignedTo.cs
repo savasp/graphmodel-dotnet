@@ -8,9 +8,6 @@ using Cvoya.Graph;
 [Relationship(Label = "ASSIGNED_TO")]
 public record AssignedTo : Relationship
 {
-    public AssignedTo() : base(string.Empty, string.Empty) { }
-    public AssignedTo(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     [Property(IsRequired = true)]
     public DateTime AssignedDate { get; init; } = DateTime.UtcNow;
 

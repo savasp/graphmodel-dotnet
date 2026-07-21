@@ -42,7 +42,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         }
         catch (GraphQueryTranslationException exception)
         {
-            throw PreserveLegacyProviderException(exception);
+            throw PreserveProviderException(exception);
         }
 
         var rendered = new CypherRenderer(Neo4jDialect.Instance).Render(statement);
@@ -158,7 +158,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         return builder.ToString();
     }
 
-    private static Exception PreserveLegacyProviderException(GraphQueryTranslationException exception)
+    private static Exception PreserveProviderException(GraphQueryTranslationException exception)
     {
         if (exception.Message.StartsWith(
             "Cannot translate the correlated grouped projection:", StringComparison.Ordinal))

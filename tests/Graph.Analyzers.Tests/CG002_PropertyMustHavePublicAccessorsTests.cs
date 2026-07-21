@@ -134,8 +134,6 @@ public class CG002_PropertyMustHavePublicAccessorsTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public string {|#0:Type|} { get; private set; } = string.Empty;
             }
             """;

@@ -39,9 +39,6 @@ public record Publisher : Node
 [Relationship(Label = "WROTE")]
 public record Wrote : Relationship
 {
-    public Wrote() : base(string.Empty, string.Empty) { }
-    public Wrote(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     public DateTime WrittenDate { get; set; }
     public string WritingStyle { get; set; } = string.Empty;
 }
@@ -49,9 +46,6 @@ public record Wrote : Relationship
 [Relationship(Label = "PUBLISHED")]
 public record Published : Relationship
 {
-    public Published() : base(string.Empty, string.Empty) { }
-    public Published(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     public DateTime PublishedDate { get; set; }
     public string Edition { get; set; } = string.Empty;
     public string MarketingCampaign { get; set; } = string.Empty;
@@ -60,9 +54,6 @@ public record Published : Relationship
 [Relationship(Label = "COLLABORATED")]
 public record Collaborated : Relationship
 {
-    public Collaborated() : base(string.Empty, string.Empty) { }
-    public Collaborated(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     public string ProjectType { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
 }

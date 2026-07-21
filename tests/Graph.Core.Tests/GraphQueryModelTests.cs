@@ -642,7 +642,7 @@ public class GraphQueryModelTests
         public string Name { get; init; } = string.Empty;
     }
 
-    private sealed record Knows(string Start, string End) : Relationship(Start, End)
+    private sealed record Knows : Relationship
     {
         public int Since { get; init; }
     }

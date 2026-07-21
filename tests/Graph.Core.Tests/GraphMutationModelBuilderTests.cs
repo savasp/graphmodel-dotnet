@@ -124,7 +124,7 @@ public sealed class GraphMutationModelBuilderTests
     }
 
     [Fact]
-    public void BuildUpdate_AcceptsOrdinaryUserPropertiesWithLegacyStructuralNames()
+    public void BuildUpdate_AcceptsOrdinaryUserPropertiesWithFormerStructuralNames()
     {
         Expression<Func<GraphPropertySetters<UserNamedNode>, GraphPropertySetters<UserNamedNode>>> nodeSetters = builder =>
             builder.SetProperty(node => node.Id, "domain-id");
@@ -132,7 +132,8 @@ public sealed class GraphMutationModelBuilderTests
             .SetProperty(relationship => relationship.Id, "domain-id")
             .SetProperty(relationship => relationship.StartNodeId, "domain-start")
             .SetProperty(relationship => relationship.EndNodeId, "domain-end")
-            .SetProperty(relationship => relationship.Direction, "domain-direction");
+            .SetProperty(relationship => relationship.Direction, "domain-direction")
+            .SetProperty(relationship => relationship.Type, "domain-type");
 
         var nodeMutation = GraphMutationModelBuilder.Build(UpdateCall(Root<UserNamedNode>(), nodeSetters));
         var relationshipMutation = GraphMutationModelBuilder.Build(
@@ -140,18 +141,8 @@ public sealed class GraphMutationModelBuilderTests
 
         Assert.Equal(["domain_id"], nodeMutation.Assignments.Select(assignment => assignment.StorageName));
         Assert.Equal(
-            ["domain_id", "domain_start", "domain_end", "domain_direction"],
+            ["domain_id", "domain_start", "domain_end", "domain_direction", "domain_type"],
             relationshipMutation.Assignments.Select(assignment => assignment.StorageName));
-    }
-
-    [Fact]
-    public void BuildUpdate_RejectsUserPropertyNamedTypeBecauseItRemainsStructuralMetadata()
-    {
-        Expression<Func<GraphPropertySetters<UserNamedRelationship>, GraphPropertySetters<UserNamedRelationship>>> setters =
-            builder => builder.SetProperty(relationship => relationship.Type, "domain-type");
-
-        Assert.Throws<GraphQueryTranslationException>(() =>
-            GraphMutationModelBuilder.Build(UpdateCall(Root<UserNamedRelationship>(), setters)));
     }
 
     [Theory]
@@ -372,7 +363,7 @@ public sealed class GraphMutationModelBuilderTests
 
         var mutation = GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), setters));
 
-        Assert.Equal(nameof(IEntity.Id), Assert.Single(mutation.Assignments).StorageName);
+        Assert.Equal(nameof(Person.Id), Assert.Single(mutation.Assignments).StorageName);
     }
 
     [Fact]
@@ -430,6 +421,8 @@ public sealed class GraphMutationModelBuilderTests
     [Node("COMMAND_PERSON")]
     private sealed record Person : Node
     {
+        public string Id { get; init; } = string.Empty;
+
         public string FirstName { get; init; } = string.Empty;
 
         public string LastName { get; init; } = string.Empty;
@@ -468,15 +461,13 @@ public sealed class GraphMutationModelBuilderTests
     }
 
     [Relationship(Label = "COMMAND_KNOWS")]
-    private sealed record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+    private sealed record Knows : Relationship
     {
         public DateTime Since { get; init; }
     }
 
     private sealed class UserNamedNode : INode
     {
-        string IEntity.Id { get; init; } = string.Empty;
-
         IReadOnlyList<string> INode.Labels => [];
 
         [Property(Label = "domain_id")]
@@ -485,17 +476,12 @@ public sealed class GraphMutationModelBuilderTests
 
     private sealed class UserNamedRelationship : IRelationship
     {
-        string IEntity.Id { get; init; } = string.Empty;
-
         string IRelationship.Type => string.Empty;
-
-        string IRelationship.StartNodeId { get; init; } = string.Empty;
-
-        string IRelationship.EndNodeId { get; init; } = string.Empty;
 
         [Property(Label = "domain_id")]
         public string Id { get; init; } = string.Empty;
 
+        [Property(Label = "domain_type")]
         public string Type { get; init; } = string.Empty;
 
         [Property(Label = "domain_direction")]

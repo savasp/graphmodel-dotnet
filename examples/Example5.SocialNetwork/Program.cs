@@ -31,6 +31,12 @@ var loggerFactory = LoggerFactory.Create(builder =>
 
 var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null, loggerFactory);
 var graph = store.Graph;
+IGraphQueryable<User> UserSelection(string username) =>
+    graph.Nodes<User>().Where(user => user.Username == username);
+IGraphQueryable<Post> PostSelection(string content) =>
+    graph.Nodes<Post>().Where(post => post.Content == content);
+IGraphQueryable<Comment> CommentSelection(string content) =>
+    graph.Nodes<Comment>().Where(comment => comment.Content == content);
 
 try
 {
@@ -79,13 +85,20 @@ try
     // ==== CREATE FRIENDSHIPS ====
     Console.WriteLine("2. Creating friendships...");
 
-    await graph.CreateRelationshipAsync(new Follows(alice.Id, bob.Id, DateTime.UtcNow.AddYears(-1)));
-    await graph.CreateRelationshipAsync(new Follows(bob.Id, alice.Id, DateTime.UtcNow.AddYears(-1)));
-    await graph.CreateRelationshipAsync(new Follows(alice.Id, charlie.Id, DateTime.UtcNow.AddMonths(-6)));
-    await graph.CreateRelationshipAsync(new Follows(charlie.Id, alice.Id, DateTime.UtcNow.AddMonths(-5)));
-    await graph.CreateRelationshipAsync(new Follows(bob.Id, charlie.Id, DateTime.UtcNow.AddMonths(-4)));
-    await graph.CreateRelationshipAsync(new Follows(charlie.Id, diana.Id, DateTime.UtcNow.AddMonths(-2)));
-    await graph.CreateRelationshipAsync(new Follows(diana.Id, charlie.Id, DateTime.UtcNow.AddMonths(-2)));
+    await graph.CreateRelationshipAsync(
+        UserSelection(alice.Username), new Follows { Since = DateTime.UtcNow.AddYears(-1) }, UserSelection(bob.Username));
+    await graph.CreateRelationshipAsync(
+        UserSelection(bob.Username), new Follows { Since = DateTime.UtcNow.AddYears(-1) }, UserSelection(alice.Username));
+    await graph.CreateRelationshipAsync(
+        UserSelection(alice.Username), new Follows { Since = DateTime.UtcNow.AddMonths(-6) }, UserSelection(charlie.Username));
+    await graph.CreateRelationshipAsync(
+        UserSelection(charlie.Username), new Follows { Since = DateTime.UtcNow.AddMonths(-5) }, UserSelection(alice.Username));
+    await graph.CreateRelationshipAsync(
+        UserSelection(bob.Username), new Follows { Since = DateTime.UtcNow.AddMonths(-4) }, UserSelection(charlie.Username));
+    await graph.CreateRelationshipAsync(
+        UserSelection(charlie.Username), new Follows { Since = DateTime.UtcNow.AddMonths(-2) }, UserSelection(diana.Username));
+    await graph.CreateRelationshipAsync(
+        UserSelection(diana.Username), new Follows { Since = DateTime.UtcNow.AddMonths(-2) }, UserSelection(charlie.Username));
 
     Console.WriteLine("✓ Created friendship connections\n");
 
@@ -117,9 +130,9 @@ try
     await graph.CreateNodeAsync(post2);
     await graph.CreateNodeAsync(post3);
 
-    await graph.CreateRelationshipAsync(new Posted(alice.Id, post1.Id));
-    await graph.CreateRelationshipAsync(new Posted(bob.Id, post2.Id));
-    await graph.CreateRelationshipAsync(new Posted(charlie.Id, post3.Id));
+    await graph.CreateRelationshipAsync(UserSelection(alice.Username), new Posted(), PostSelection(post1.Content));
+    await graph.CreateRelationshipAsync(UserSelection(bob.Username), new Posted(), PostSelection(post2.Content));
+    await graph.CreateRelationshipAsync(UserSelection(charlie.Username), new Posted(), PostSelection(post3.Content));
 
     Console.WriteLine("✓ Created posts\n");
 
@@ -127,10 +140,14 @@ try
     Console.WriteLine("4. Creating interactions...");
 
     // Likes
-    await graph.CreateRelationshipAsync(new Likes(bob.Id, post1.Id, DateTime.UtcNow.AddHours(-20)));
-    await graph.CreateRelationshipAsync(new Likes(charlie.Id, post1.Id, DateTime.UtcNow.AddHours(-18)));
-    await graph.CreateRelationshipAsync(new Likes(alice.Id, post2.Id, DateTime.UtcNow.AddHours(-10)));
-    await graph.CreateRelationshipAsync(new Likes(diana.Id, post3.Id, DateTime.UtcNow.AddHours(-4)));
+    await graph.CreateRelationshipAsync(
+        UserSelection(bob.Username), new Likes { LikedAt = DateTime.UtcNow.AddHours(-20) }, PostSelection(post1.Content));
+    await graph.CreateRelationshipAsync(
+        UserSelection(charlie.Username), new Likes { LikedAt = DateTime.UtcNow.AddHours(-18) }, PostSelection(post1.Content));
+    await graph.CreateRelationshipAsync(
+        UserSelection(alice.Username), new Likes { LikedAt = DateTime.UtcNow.AddHours(-10) }, PostSelection(post2.Content));
+    await graph.CreateRelationshipAsync(
+        UserSelection(diana.Username), new Likes { LikedAt = DateTime.UtcNow.AddHours(-4) }, PostSelection(post3.Content));
 
     // Comments
     var comment1 = new Comment
@@ -148,11 +165,13 @@ try
     await graph.CreateNodeAsync(comment1);
     await graph.CreateNodeAsync(comment2);
 
-    await graph.CreateRelationshipAsync(new CommentedOn(comment1.Id, post1.Id));
-    await graph.CreateRelationshipAsync(new CommentedOn(comment2.Id, post1.Id));
-    await graph.CreateRelationshipAsync(new Wrote(bob.Id, comment1.Id, DateTime.UtcNow.AddHours(-19)));
-    await graph.CreateRelationshipAsync(new Wrote(alice.Id, comment2.Id, DateTime.UtcNow.AddHours(-18)));
-    await graph.CreateRelationshipAsync(new ReplyTo(comment2.Id, comment1.Id));
+    await graph.CreateRelationshipAsync(CommentSelection(comment1.Content), new CommentedOn(), PostSelection(post1.Content));
+    await graph.CreateRelationshipAsync(CommentSelection(comment2.Content), new CommentedOn(), PostSelection(post1.Content));
+    await graph.CreateRelationshipAsync(
+        UserSelection(bob.Username), new Wrote { WrittenAt = DateTime.UtcNow.AddHours(-19) }, CommentSelection(comment1.Content));
+    await graph.CreateRelationshipAsync(
+        UserSelection(alice.Username), new Wrote { WrittenAt = DateTime.UtcNow.AddHours(-18) }, CommentSelection(comment2.Content));
+    await graph.CreateRelationshipAsync(CommentSelection(comment2.Content), new ReplyTo(), CommentSelection(comment1.Content));
 
     Console.WriteLine("✓ Created likes and comments\n");
 
@@ -182,7 +201,7 @@ try
         .ToListAsync();
 
     var likeCounts = postsWithLikes
-        .GroupBy(p => p.EndNode.Id)
+        .GroupBy(p => p.EndNode.Content)
         .Select(g => new { Post = g.First().EndNode, LikeCount = g.Count() })
         .OrderByDescending(x => x.LikeCount)
         .ToList();
@@ -202,10 +221,10 @@ try
         .PathSegments<User, Follows, User>()
         .ToListAsync();
 
-    var followedUserIds = aliceFollowing.Select(p => p.EndNode.Id).ToHashSet();
+    var followedUsernames = aliceFollowing.Select(p => p.EndNode.Username).ToHashSet();
 
     var feedPosts = await graph.Nodes<User>()
-        .Where(u => followedUserIds.Contains(u.Id))
+        .Where(u => followedUsernames.Contains(u.Username))
         .PathSegments<User, Posted, Post>()
         .ToListAsync();
 
@@ -226,11 +245,11 @@ try
         .PathSegments<User, Follows, User>()
         .ToListAsync();
 
-    var charlieFollowingIds = charlieFollowing.Select(p => p.EndNode.Id).ToHashSet();
+    var charlieFollowingUsernames = charlieFollowing.Select(p => p.EndNode.Username).ToHashSet();
 
     // Find who Charlie's friends are following
     var friendsOfFriends = await graph.Nodes<User>()
-        .Where(u => charlieFollowingIds.Contains(u.Id))
+        .Where(u => charlieFollowingUsernames.Contains(u.Username))
         .PathSegments<User, Follows, User>()
         .ToListAsync();
 
@@ -240,11 +259,11 @@ try
 
     if (charlie != null)
     {
-        charlieFollowingIds.Add(charlie.Id); // Don't recommend self
+        charlieFollowingUsernames.Add(charlie.Username); // Don't recommend self
 
         var recommendations = friendsOfFriends
-            .Where(p => !charlieFollowingIds.Contains(p.EndNode.Id))
-            .GroupBy(p => p.EndNode.Id)
+            .Where(p => !charlieFollowingUsernames.Contains(p.EndNode.Username))
+            .GroupBy(p => p.EndNode.Username)
             .OrderByDescending(g => g.Count()) // More mutual connections = higher score
             .Take(2)
             .Select(g => g.First().EndNode)
@@ -254,7 +273,7 @@ try
         foreach (var user in recommendations)
         {
             var mutualCount = friendsOfFriends
-                .Count(p => p.EndNode.Id == user.Id);
+                .Count(p => p.EndNode.Username == user.Username);
 
             Console.WriteLine($"  - {user.Username} ({mutualCount} mutual connections)");
             Console.WriteLine($"    Bio: {user.Bio}");

@@ -52,56 +52,8 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating node of type {NodeType}")]
     internal static partial void LogDebugNeo4jGraph162(this ILogger logger, global::System.String nodeType);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully created node {NodeId}")]
-    internal static partial void LogDebugNeo4jGraph174(this ILogger logger, global::System.String nodeId);
-
     [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to create node of type {NodeType}")]
     internal static partial void LogErrorNeo4jGraph183(this ILogger logger, Exception exception, global::System.String nodeType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating relationship of type {RelationshipType}")]
-    internal static partial void LogDebugNeo4jGraph209(this ILogger logger, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully created relationship {RelationshipId}")]
-    internal static partial void LogDebugNeo4jGraph225(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to create relationship of type {RelationshipType}")]
-    internal static partial void LogErrorNeo4jGraph234(this ILogger logger, Exception exception, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Updating node {NodeId} of type {NodeType}")]
-    internal static partial void LogDebugNeo4jGraph262(this ILogger logger, global::System.String nodeId, global::System.String nodeType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully updated node {NodeId}")]
-    internal static partial void LogDebugNeo4jGraph280(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to update node {NodeId} of type {NodeType}")]
-    internal static partial void LogErrorNeo4jGraph289(this ILogger logger, Exception exception, global::System.String nodeId, global::System.String nodeType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Updating relationship {RelationshipId} of type {RelationshipType}")]
-    internal static partial void LogDebugNeo4jGraph317(this ILogger logger, global::System.String relationshipId, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully updated relationship {RelationshipId}")]
-    internal static partial void LogDebugNeo4jGraph335(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to update relationship {RelationshipId} of type {RelationshipType}")]
-    internal static partial void LogErrorNeo4jGraph344(this ILogger logger, Exception exception, global::System.String relationshipId, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Deleting node {NodeId}")]
-    internal static partial void LogDebugNeo4jGraph366(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully deleted node {NodeId}")]
-    internal static partial void LogDebugNeo4jGraph384(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to delete node {NodeId}")]
-    internal static partial void LogErrorNeo4jGraph394(this ILogger logger, Exception exception, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Deleting relationship {RelationshipId}")]
-    internal static partial void LogDebugNeo4jGraph415(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully deleted relationship {RelationshipId}")]
-    internal static partial void LogDebugNeo4jGraph429(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to delete relationship {RelationshipId}")]
-    internal static partial void LogErrorNeo4jGraph438(this ILogger logger, Exception exception, global::System.String relationshipId);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Building dynamic nodes queryable")]
     internal static partial void LogDebugNeo4jGraph454(this ILogger logger);
@@ -163,74 +115,14 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Created subgraph for relationship {RelationshipId}")]
     internal static partial void LogInformationNeo4jSubgraphManager54(this ILogger logger, global::System.String relationshipId);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating node of type {NodeType} with ID {NodeId}")]
-    internal static partial void LogDebugNeo4jNodeManager54(this ILogger logger, global::System.String nodeType, global::System.String nodeId);
+    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating node of type {NodeType}")]
+    internal static partial void LogDebugNeo4jNodeManager54(this ILogger logger, global::System.String nodeType);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Created node of type {NodeType} with ID {NodeId}")]
-    internal static partial void LogInformationNeo4jNodeManager75(this ILogger logger, global::System.String nodeType, global::System.String nodeId);
+    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Created node of type {NodeType}")]
+    internal static partial void LogInformationNeo4jNodeManager75(this ILogger logger, global::System.String nodeType);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error creating node of type {NodeType}")]
     internal static partial void LogErrorNeo4jNodeManager85(this ILogger logger, Exception exception, global::System.String nodeType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Updating node of type {NodeType} with ID {NodeId}")]
-    internal static partial void LogDebugNeo4jNodeManager98(this ILogger logger, global::System.String nodeType, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Node with ID {NodeId} not found for update")]
-    internal static partial void LogWarningNeo4jNodeManager118(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Updated node of type {NodeType} with ID {NodeId}")]
-    internal static partial void LogInformationNeo4jNodeManager126(this ILogger logger, global::System.String nodeType, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error updating node {NodeId} of type {NodeType}")]
-    internal static partial void LogErrorNeo4jNodeManager131(this ILogger logger, Exception exception, global::System.String nodeId, global::System.String nodeType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Deleting node with ID: {NodeId}, cascade: {CascadeDelete}")]
-    internal static partial void LogDebugNeo4jNodeManager144(this ILogger logger, global::System.String nodeId, global::System.Boolean cascadeDelete);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Node with ID {NodeId} not found for deletion")]
-    internal static partial void LogWarningNeo4jNodeManager156(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Node with ID {NodeId} not found for deletion")]
-    internal static partial void LogWarningNeo4jNodeManager216(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Deleted node with ID {NodeId}")]
-    internal static partial void LogInformationNeo4jNodeManager220(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error deleting node with ID: {NodeId}")]
-    internal static partial void LogErrorNeo4jNodeManager225(this ILogger logger, Exception exception, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating relationship of type {RelationshipType} from {StartNodeId} to {EndNodeId}")]
-    internal static partial void LogDebugNeo4jRelationshipManager39(this ILogger logger, global::System.String relationshipType, global::System.String startNodeId, global::System.String endNodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Created relationship of type {RelationshipType} with ID {RelationshipId}")]
-    internal static partial void LogInformationNeo4jRelationshipManager77(this ILogger logger, global::System.String relationshipType, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error creating relationship of type {RelationshipType}")]
-    internal static partial void LogErrorNeo4jRelationshipManager84(this ILogger logger, Exception exception, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Updating relationship of type {RelationshipType} with ID {RelationshipId}")]
-    internal static partial void LogDebugNeo4jRelationshipManager97(this ILogger logger, global::System.String relationshipType, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Relationship with ID {RelationshipId} not found for update")]
-    internal static partial void LogWarningNeo4jRelationshipManager126(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Updated relationship of type {RelationshipType} with ID {RelationshipId}")]
-    internal static partial void LogInformationNeo4jRelationshipManager141(this ILogger logger, global::System.String relationshipType, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error updating relationship {RelationshipId} of type {RelationshipType}")]
-    internal static partial void LogErrorNeo4jRelationshipManager148(this ILogger logger, Exception exception, global::System.String relationshipId, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Deleting relationship with ID {RelationshipId}")]
-    internal static partial void LogDebugNeo4jRelationshipManager161(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Relationship with ID {RelationshipId} not found for deletion")]
-    internal static partial void LogWarningNeo4jRelationshipManager176(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Deleted relationship with ID {RelationshipId}")]
-    internal static partial void LogInformationNeo4jRelationshipManager180(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error deleting relationship with ID {RelationshipId}")]
-    internal static partial void LogErrorNeo4jRelationshipManager185(this ILogger logger, Exception exception, global::System.String relationshipId);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Executing query for type {Type}")]
     internal static partial void LogDebugCypherEngine60(this ILogger logger, global::System.String type);
@@ -340,9 +232,6 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully processed relationship schema for type: {Type}")]
     internal static partial void LogDebugNeo4jSchemaManager216(this ILogger logger, global::System.String type);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created unique Id constraint for label {Label}")]
-    internal static partial void LogDebugNeo4jSchemaManager239(this ILogger logger, global::System.String label);
-
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created key tuple constraint for properties {Properties} on label {Label}")]
     internal static partial void LogDebugNeo4jSchemaManager261(this ILogger logger, global::System.String properties, global::System.String label);
 
@@ -360,9 +249,6 @@ internal static partial class LogMessages
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to create constraints for node label: {Label}")]
     internal static partial void LogErrorNeo4jSchemaManager323(this ILogger logger, Exception exception, global::System.String label);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created unique Id constraint for relationship type {Type}")]
-    internal static partial void LogDebugNeo4jSchemaManager348(this ILogger logger, global::System.String type);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created key tuple constraint for properties {Properties} on relationship type {Type}")]
     internal static partial void LogDebugNeo4jSchemaManager370(this ILogger logger, global::System.String properties, global::System.String type);

@@ -311,8 +311,6 @@ public class CG010_CircularReferenceWithoutNullableTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public CircularMetadata {|#0:Metadata|} { get; set; } = new();
             }
             """;

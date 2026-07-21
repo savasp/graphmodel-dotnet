@@ -1,5 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true })
 RETURN count(CASE WHEN src.Age >= $p0 THEN 1 END) = count(1) AS exists
 
 == Parameters ==

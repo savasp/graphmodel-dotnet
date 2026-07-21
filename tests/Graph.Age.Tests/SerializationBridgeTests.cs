@@ -32,4 +32,15 @@ public sealed class SerializationBridgeTests
         Assert.DoesNotContain(", Version=", identity, StringComparison.Ordinal);
         Assert.Equal(type, Type.GetType(identity));
     }
+
+    [Fact]
+    public void NativeNameWithEncodedPrefix_IsNotClassifiedAsEncodedStorage()
+    {
+        const string label = "CvoyaN_NOT_AN_ENCODED_LABEL";
+
+        var storageName = SerializationBridge.GetRootStorageName(label, relationship: false);
+
+        Assert.Equal(label, storageName);
+        Assert.False(SerializationBridge.IsEncodedRootStorageName(storageName, relationship: false));
+    }
 }

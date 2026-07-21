@@ -18,11 +18,5 @@ public record Person : Node
 [Relationship(Label = "KNOWS")]
 public record Knows : Relationship
 {
-    public Knows() : base(string.Empty, string.Empty) { }
-
-    public Knows(string startNodeId, string endNodeId) : base(startNodeId, endNodeId)
-    {
-    }
-
     public DateTime Since { get; set; }
 }

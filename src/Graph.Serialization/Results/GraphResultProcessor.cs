@@ -230,20 +230,13 @@ public sealed class GraphResultProcessor
         if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
         {
             simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(node.Properties);
-            if (!simpleProperties.ContainsKey(nameof(Graph.IEntity.Id)) && node.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
-            {
-                simpleProperties[nameof(Graph.IEntity.Id)] = new Property(
-                    PropertyInfo: default!,
-                    Label: nameof(Graph.IEntity.Id),
-                    IsNullable: false,
-                    Value: new SimpleValue(idValue ?? string.Empty, typeof(string))
-                );
-            }
         }
         else
         {
             simpleProperties = ExtractSimpleProperties(node.Properties, actualType);
         }
+
+        AddNodeLabelsProperty(simpleProperties, actualType, node.Labels);
 
         var entityInfo = new EntityInfo(
             ActualType: actualType,
@@ -841,7 +834,7 @@ public sealed class GraphResultProcessor
         var result = new Dictionary<string, Property>();
         foreach (var (key, value) in properties)
         {
-            if (key is GraphValueConverter.MetadataPropertyName or GraphValueConverter.EntityKindPropertyName)
+            if (key == GraphValueConverter.MetadataPropertyName)
                 continue;
 
             Serialized serializedValue;
@@ -872,7 +865,6 @@ public sealed class GraphResultProcessor
     private static void RemoveDynamicComplexValueStructuralProperties(
         Dictionary<string, Property> simpleProperties)
     {
-        simpleProperties.Remove(nameof(Graph.IEntity.Id));
         simpleProperties.Remove(nameof(Graph.INode.Labels));
     }
 
@@ -912,37 +904,13 @@ public sealed class GraphResultProcessor
         if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
         {
             simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(node.Properties);
-            // Add Id property if not present
-            if (!simpleProperties.ContainsKey(nameof(Graph.IEntity.Id)) && node.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
-            {
-                simpleProperties[nameof(Graph.IEntity.Id)] = new Property(
-                    PropertyInfo: default!, // null is expected for dynamic
-                    Label: nameof(Graph.IEntity.Id),
-                    IsNullable: false,
-                    Value: new SimpleValue(idValue ?? string.Empty, typeof(string))
-                );
-            }
         }
         else
         {
             simpleProperties = ExtractSimpleProperties(node.Properties, actualType);
         }
 
-        // Add Labels property for all nodes (both dynamic and typed)
-        // This enables filtering by labels in LINQ queries
-        var labelsProperty = actualType.GetProperty(nameof(Graph.INode.Labels));
-        if (labelsProperty != null)
-        {
-            var labelsValue = node.Labels.ToList();
-            simpleProperties[nameof(Graph.INode.Labels)] = new Property(
-                PropertyInfo: labelsProperty,
-                Label: nameof(Graph.INode.Labels),
-                IsNullable: false,
-                Value: new SimpleCollection(
-                    labelsValue.Select(l => new SimpleValue(l, typeof(string))).ToList(),
-                    typeof(string))
-            );
-        }
+        AddNodeLabelsProperty(simpleProperties, actualType, node.Labels);
 
         return new EntityInfo(
             ActualType: actualType,
@@ -951,6 +919,26 @@ public sealed class GraphResultProcessor
             SimpleProperties: simpleProperties,
             ComplexProperties: new Dictionary<string, Property>()
         );
+    }
+
+    private static void AddNodeLabelsProperty(
+        Dictionary<string, Property> simpleProperties,
+        Type actualType,
+        IReadOnlyList<string> labels)
+    {
+        var labelsProperty = actualType.GetProperty(nameof(Graph.INode.Labels));
+        if (labelsProperty is null)
+        {
+            return;
+        }
+
+        simpleProperties[nameof(Graph.INode.Labels)] = new Property(
+            PropertyInfo: labelsProperty,
+            Label: nameof(Graph.INode.Labels),
+            IsNullable: false,
+            Value: new SimpleCollection(
+                labels.Select(label => new SimpleValue(label, typeof(string))).ToList(),
+                typeof(string)));
     }
 
     private EntityInfo CreateEntityInfoFromRelationship(GraphValue relationship, Type targetType)
@@ -969,31 +957,10 @@ public sealed class GraphResultProcessor
         if (typeof(Graph.DynamicRelationship).IsAssignableFrom(actualType))
         {
             simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(relationship.Properties);
-            // Add Id property if not present
-            if (!simpleProperties.ContainsKey(nameof(Graph.IEntity.Id)) && relationship.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
-            {
-                simpleProperties[nameof(Graph.IEntity.Id)] = new Property(
-                    PropertyInfo: default!, // null is expected for dynamic
-                    Label: nameof(Graph.IEntity.Id),
-                    IsNullable: false,
-                    Value: new SimpleValue(idValue ?? string.Empty, typeof(string))
-                );
-            }
         }
         else
         {
             simpleProperties = ExtractSimpleProperties(relationship.Properties, actualType);
-            // A raw relationship may not carry a modeled Id property; never substitute native identity.
-            if (actualType.GetProperty(nameof(Graph.IEntity.Id)) is { } idProperty &&
-                relationship.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
-            {
-                simpleProperties[nameof(Graph.IEntity.Id)] = new Property(
-                    PropertyInfo: idProperty,
-                    Label: nameof(Graph.IEntity.Id),
-                    IsNullable: false,
-                    Value: new SimpleValue(idValue, typeof(string))
-                );
-            }
         }
 
         // Add Type property for all relationships (both dynamic and typed)

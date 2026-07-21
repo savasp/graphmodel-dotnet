@@ -19,7 +19,7 @@ public class TransactionTests(AgeHarness harness) : AgeTest(harness), ITransacti
         try
         {
             await Graph.CreateNodeAsync(
-                new DynamicNode(["CvoyaNode"], new Dictionary<string, object?>()),
+                new DynamicNode(["invalid\nlabel"], new Dictionary<string, object?>()),
                 transaction,
                 cancellationToken);
             await transaction.CommitAsync();
@@ -29,9 +29,8 @@ public class TransactionTests(AgeHarness harness) : AgeTest(harness), ITransacti
             await transaction.RollbackAsync();
         }
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            Graph.GetNodeAsync<Person>(first.Id, cancellationToken: cancellationToken));
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            Graph.GetNodeAsync<Person>(second.Id, cancellationToken: cancellationToken));
+        Assert.Empty(await Graph.Nodes<Person>()
+            .Where(candidate => candidate.TestKey == first.TestKey || candidate.TestKey == second.TestKey)
+            .ToListAsync(cancellationToken));
     }
 }

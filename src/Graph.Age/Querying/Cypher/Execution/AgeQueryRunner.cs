@@ -159,10 +159,10 @@ internal sealed partial class AgeQueryRunner
             """;
         command.Parameters.AddWithValue("graphName", graphName);
         command.Parameters.AddWithValue("labelKind", relationship ? "e" : "v");
-        command.Parameters.AddWithValue("reservedNodeTable", SerializationBridge.PhysicalNodeLabel);
+        command.Parameters.AddWithValue("reservedNodeTable", SerializationBridge.ComplexNodeLabel);
         command.Parameters.AddWithValue(
             "reservedRelationshipTable",
-            SerializationBridge.PhysicalRelationshipType);
+            SerializationBridge.ComplexRelationshipType);
         await using var commandLease = command.ConfigureAwait(false);
 
         try

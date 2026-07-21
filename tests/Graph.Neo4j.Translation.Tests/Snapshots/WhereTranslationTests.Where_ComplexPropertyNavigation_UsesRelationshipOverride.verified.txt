@@ -2,7 +2,7 @@
 MATCH (src:Person|Manager)
 OPTIONAL MATCH (src)-[:MAILING_ADDRESS]->(src_mailingaddress:Address)
 WITH *
-WHERE src_mailingaddress.City = $p0
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND src_mailingaddress.City = $p0
 OPTIONAL MATCH src_path = (src)-[rels*1..5]->(prop)
 WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)
 WITH src,

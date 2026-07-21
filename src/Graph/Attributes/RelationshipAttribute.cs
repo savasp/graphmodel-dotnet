@@ -18,12 +18,8 @@ using System;
 /// <example>
 /// <code>
 /// [Relationship(Label = "FOLLOWS")]
-/// public class Follows : IRelationship&lt;Person, Person&gt;
+/// public class Follows : Relationship
 /// {
-///     public string Id { get; set; } = Guid.NewGuid().ToString();
-///     public string StartNodeId { get; set; } = string.Empty;
-///     public string EndNodeId { get; set; } = string.Empty;
-///     public bool Direction { get; set; }
 ///     public DateTime Since { get; set; }
 /// }
 /// </code>

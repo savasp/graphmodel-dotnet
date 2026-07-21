@@ -70,6 +70,9 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
 
     IGraphTransaction? IGraphCommandProvider.BoundTransaction => transaction;
 
+    Task IGraphCommandProvider.PrepareRelationshipCreationAsync(CancellationToken cancellationToken) =>
+        context.SchemaManager.InitializeSchemaAsync(cancellationToken);
+
     async Task<TResult> IGraphCommandProvider.InWriteTransactionAsync<TResult>(
         Func<IGraphCommandExecutionContext, CancellationToken, Task<TResult>> command,
         CancellationToken cancellationToken)

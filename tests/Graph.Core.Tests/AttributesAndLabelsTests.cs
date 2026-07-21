@@ -123,9 +123,9 @@ public class AttributesAndLabelsTests
     private sealed record GenericNode<T> : Node;
 
     [Relationship("CORE_ATTRIBUTED_REL")]
-    private sealed record AttributedRelationship(string Start, string End) : Relationship(Start, End);
+    private sealed record AttributedRelationship : Relationship;
 
-    private sealed record PlainRelationship(string Start, string End) : Relationship(Start, End);
+    private sealed record PlainRelationship : Relationship;
 
     private sealed class PropertyLabelOwner
     {

@@ -14,7 +14,7 @@ public interface IBasicTests : IGraphTest
     {
         var person = new Person { FirstName = "John", LastName = "Doe" };
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
-        var fetched = await this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, null, TestContext.Current.CancellationToken);
         Assert.Equal("John", fetched.FirstName);
         Assert.Equal("Doe", fetched.LastName);
     }
@@ -24,7 +24,7 @@ public interface IBasicTests : IGraphTest
     {
         var person = new PersonWithComplexProperty { FirstName = "John", LastName = "Doe", Address = new AddressValue { Street = "123 Main St", City = "Somewhere" } };
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
-        var fetched = await this.Graph.GetNodeAsync<PersonWithComplexProperty>(person.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.FindNodeByTestKeyAsync<PersonWithComplexProperty>(person.TestKey, null, TestContext.Current.CancellationToken);
         Assert.Equal("John", fetched.FirstName);
         Assert.Equal("Doe", fetched.LastName);
         Assert.Equal("123 Main St", fetched.Address.Street);
@@ -41,13 +41,12 @@ public interface IBasicTests : IGraphTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
         var dateTime = DateTime.UtcNow;
-        var knows = new Knows { StartNodeId = p1.Id, EndNodeId = p2.Id, Since = dateTime };
+        var knows = new Knows { Since = dateTime };
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var fetched = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
-        Assert.Equal(p1.Id, fetched.StartNodeId);
-        Assert.Equal(p2.Id, fetched.EndNodeId);
+        var fetched = await this.Graph.FindRelationshipByTestKeyAsync<Knows>(
+            knows.TestKey, null, TestContext.Current.CancellationToken);
         Assert.Equal(dateTime, fetched.Since);
     }
 
@@ -61,18 +60,16 @@ public interface IBasicTests : IGraphTest
 
         var knows = new Knows
         {
-            StartNodeId = p1.Id,
-            EndNodeId = p2.Id,
-            Direction = RelationshipDirection.Outgoing,
             Since = DateTime.UtcNow
         };
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var fetched = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
-        Assert.Equal(p1.Id, fetched.StartNodeId);
-        Assert.Equal(p2.Id, fetched.EndNodeId);
-        Assert.Equal(RelationshipDirection.Outgoing, fetched.Direction);
+        var segment = await this.Graph.Nodes<Person>()
+            .Where(person => person.TestKey == p1.TestKey)
+            .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Both)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(RelationshipDirection.Outgoing, segment.Direction);
     }
 
     [Fact]
@@ -85,22 +82,25 @@ public interface IBasicTests : IGraphTest
 
         var knows = new Knows
         {
-            StartNodeId = p1.Id,
-            EndNodeId = p2.Id,
-            Direction = RelationshipDirection.Incoming,
             Since = DateTime.UtcNow
         };
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(
+            p1,
+            knows,
+            p2,
+            RelationshipDirection.Incoming,
+            cancellationToken: TestContext.Current.CancellationToken);
 
-        var fetched = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
-        Assert.Equal(p1.Id, fetched.StartNodeId);
-        Assert.Equal(p2.Id, fetched.EndNodeId);
-        Assert.Equal(RelationshipDirection.Incoming, fetched.Direction);
+        var segment = await this.Graph.Nodes<Person>()
+            .Where(person => person.TestKey == p1.TestKey)
+            .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Both)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(RelationshipDirection.Incoming, segment.Direction);
     }
 
     [Fact]
-    public async Task RelationshipDirection_ChangedOnUpdate_Throws()
+    public async Task RelationshipModeledProperty_UpdateAsync_Succeeds()
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
@@ -110,36 +110,24 @@ public interface IBasicTests : IGraphTest
         var originalSince = DateTime.UtcNow;
         var knows = new Knows
         {
-            StartNodeId = p1.Id,
-            EndNodeId = p2.Id,
-            Direction = RelationshipDirection.Outgoing,
             Since = originalSince
         };
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var changedDirection = knows with
-        {
-            Direction = RelationshipDirection.Incoming,
-            Since = originalSince.AddDays(1)
-        };
+        var updatedSince = originalSince.AddDays(1);
+        var affected = await this.Graph.RelationshipsByTestKey<Knows>(knows.TestKey)
+            .UpdateAsync(
+                setters => setters.SetProperty(relationship => relationship.Since, updatedSince),
+                TestContext.Current.CancellationToken);
 
-        var exception = await Assert.ThrowsAsync<GraphException>(async () =>
-            await this.Graph.UpdateRelationshipAsync(changedDirection, null, TestContext.Current.CancellationToken));
-
-        Assert.Contains(
-            "Direction cannot be changed on update; delete and recreate the relationship",
-            exception.Message);
-
-        var fetched = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
-        Assert.Equal(RelationshipDirection.Outgoing, fetched.Direction);
-        Assert.Equal(p1.Id, fetched.StartNodeId);
-        Assert.Equal(p2.Id, fetched.EndNodeId);
-        Assert.Equal(originalSince, fetched.Since);
+        var fetched = await this.Graph.FindRelationshipByTestKeyAsync<Knows>(knows.TestKey, null, TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(updatedSince, fetched.Since);
     }
 
     [Fact]
-    public async Task RelationshipDirection_ChangedOnUpdate_IncomingToOutgoing_Throws()
+    public async Task RelationshipModeledPropertyUpdate_PreservesPathOrientation()
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
@@ -149,32 +137,30 @@ public interface IBasicTests : IGraphTest
         var originalSince = DateTime.UtcNow;
         var knows = new Knows
         {
-            StartNodeId = p1.Id,
-            EndNodeId = p2.Id,
-            Direction = RelationshipDirection.Incoming,
             Since = originalSince
         };
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(
+            p1,
+            knows,
+            p2,
+            RelationshipDirection.Incoming,
+            cancellationToken: TestContext.Current.CancellationToken);
 
-        var changedDirection = knows with
-        {
-            Direction = RelationshipDirection.Outgoing,
-            Since = originalSince.AddDays(1)
-        };
+        var updatedSince = originalSince.AddDays(1);
+        var affected = await this.Graph.RelationshipsByTestKey<Knows>(knows.TestKey)
+            .UpdateAsync(
+                setters => setters.SetProperty(relationship => relationship.Since, updatedSince),
+                TestContext.Current.CancellationToken);
 
-        var exception = await Assert.ThrowsAsync<GraphException>(async () =>
-            await this.Graph.UpdateRelationshipAsync(changedDirection, null, TestContext.Current.CancellationToken));
-
-        Assert.Contains(
-            "Direction cannot be changed on update; delete and recreate the relationship",
-            exception.Message);
-
-        var fetched = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
-        Assert.Equal(RelationshipDirection.Incoming, fetched.Direction);
-        Assert.Equal(p1.Id, fetched.StartNodeId);
-        Assert.Equal(p2.Id, fetched.EndNodeId);
-        Assert.Equal(originalSince, fetched.Since);
+        var fetched = await this.Graph.FindRelationshipByTestKeyAsync<Knows>(knows.TestKey, null, TestContext.Current.CancellationToken);
+        var segment = await this.Graph.Nodes<Person>()
+            .Where(person => person.TestKey == p1.TestKey)
+            .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Both)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(updatedSince, fetched.Since);
+        Assert.Equal(RelationshipDirection.Incoming, segment.Direction);
     }
 
     [Fact]
@@ -187,22 +173,19 @@ public interface IBasicTests : IGraphTest
 
         var knows = new Knows
         {
-            StartNodeId = p1.Id,
-            EndNodeId = p2.Id,
-            Direction = RelationshipDirection.Incoming,
             Since = DateTime.UtcNow
         };
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
 
         var updatedSince = knows.Since.AddDays(1);
-        var updatedKnows = knows with { Since = updatedSince };
-        await this.Graph.UpdateRelationshipAsync(updatedKnows, null, TestContext.Current.CancellationToken);
+        var affected = await this.Graph.RelationshipsByTestKey<Knows>(knows.TestKey)
+            .UpdateAsync(
+                setters => setters.SetProperty(relationship => relationship.Since, updatedSince),
+                TestContext.Current.CancellationToken);
 
-        var fetched = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
-        Assert.Equal(RelationshipDirection.Incoming, fetched.Direction);
-        Assert.Equal(p1.Id, fetched.StartNodeId);
-        Assert.Equal(p2.Id, fetched.EndNodeId);
+        var fetched = await this.Graph.FindRelationshipByTestKeyAsync<Knows>(knows.TestKey, null, TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
         Assert.Equal(updatedSince, fetched.Since);
     }
 
@@ -216,24 +199,19 @@ public interface IBasicTests : IGraphTest
 
         var knows = new Knows
         {
-            StartNodeId = p1.Id,
-            EndNodeId = p2.Id,
-            Direction = RelationshipDirection.Incoming,
             Since = DateTime.UtcNow
         };
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
 
         // Exercises the relationship-valued anonymous projection path. Endpoint and orientation
         // information is deliberately available only from a path segment.
         var projection = await this.Graph.Relationships<Knows>()
-            .Where(r => r.Id == knows.Id)
+            .Where(r => r.TestKey == knows.TestKey)
             .Select(r => new { Relationship = r })
             .FirstAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(knows.Id, projection.Relationship.Id);
-        Assert.Empty(projection.Relationship.StartNodeId);
-        Assert.Empty(projection.Relationship.EndNodeId);
+        Assert.Equal(knows.TestKey, projection.Relationship.TestKey);
         Assert.Equal(knows.Since, projection.Relationship.Since);
     }
 
@@ -247,21 +225,16 @@ public interface IBasicTests : IGraphTest
 
         var knows = new Knows
         {
-            StartNodeId = p1.Id,
-            EndNodeId = p2.Id,
-            Direction = RelationshipDirection.Outgoing,
             Since = DateTime.UtcNow
         };
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
 
         var projection = await this.Graph.Relationships<Knows>()
-            .Where(r => r.Id == knows.Id)
+            .Where(r => r.TestKey == knows.TestKey)
             .FirstAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(knows.Id, projection.Id);
-        Assert.Empty(projection.StartNodeId);
-        Assert.Empty(projection.EndNodeId);
+        Assert.Equal(knows.TestKey, projection.TestKey);
         Assert.Equal(knows.Since, projection.Since);
     }
 
@@ -276,23 +249,18 @@ public interface IBasicTests : IGraphTest
         var since = DateTime.UtcNow;
         var knows = new Knows
         {
-            StartNodeId = p1.Id,
-            EndNodeId = p2.Id,
-            Direction = RelationshipDirection.Incoming,
             Since = since
         };
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
 
         var projection = await this.Graph.Relationships<Knows>()
-            .Where(r => r.Id == knows.Id)
+            .Where(r => r.TestKey == knows.TestKey)
             .Select(r => new { r.Since, Relationship = r })
             .FirstAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(since, projection.Since);
-        Assert.Equal(knows.Id, projection.Relationship.Id);
-        Assert.Empty(projection.Relationship.StartNodeId);
-        Assert.Empty(projection.Relationship.EndNodeId);
+        Assert.Equal(knows.TestKey, projection.Relationship.TestKey);
         Assert.Equal(since, projection.Relationship.Since);
     }
 
@@ -301,12 +269,14 @@ public interface IBasicTests : IGraphTest
     {
         var person = new Person { FirstName = "John", LastName = "Doe" };
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
-        person.LastName = "Smith";
+        var affected = await this.Graph.SelectNode(person)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.LastName, "Smith"),
+                TestContext.Current.CancellationToken);
 
-        await this.Graph.UpdateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        var updated = await this.Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, null, TestContext.Current.CancellationToken);
 
-        var updated = await this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken);
-
+        Assert.Equal(1, affected);
         Assert.Equal("Smith", updated.LastName);
     }
 
@@ -315,8 +285,11 @@ public interface IBasicTests : IGraphTest
     {
         var person = new Person { FirstName = "ToDelete" };
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
-        await this.Graph.DeleteNodeAsync(person.Id, false, null, TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<EntityNotFoundException>(async () => await this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
+        var affected = await this.Graph.SelectNode(person).DeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var deleted = await this.Graph.NodesByTestKey<Person>(person.TestKey)
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Null(deleted);
     }
 
     [Fact]
@@ -327,11 +300,15 @@ public interface IBasicTests : IGraphTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var knows = new Knows { StartNodeId = p1.Id, EndNodeId = p2.Id, Since = DateTime.UtcNow };
+        var knows = new Knows { Since = DateTime.UtcNow };
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
-        await this.Graph.DeleteRelationshipAsync(knows.Id, null, TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<EntityNotFoundException>(async () => await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken));
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
+        var affected = await this.Graph.SelectRelationship(knows)
+            .DeleteAsync(TestContext.Current.CancellationToken);
+        var deleted = await this.Graph.RelationshipsByTestKey<Knows>(knows.TestKey)
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Null(deleted);
     }
 
     [Fact]
@@ -341,11 +318,11 @@ public interface IBasicTests : IGraphTest
         var p2 = new Person { FirstName = "B" };
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
-        var ids = new[] { p1.Id, p2.Id };
-        var fetched = await this.Graph.Nodes<Person>().Where(x => ids.Contains(x.Id)).ToListAsync(TestContext.Current.CancellationToken);
+        var ids = new[] { p1.TestKey, p2.TestKey };
+        var fetched = await this.Graph.Nodes<Person>().Where(x => ids.Contains(x.TestKey)).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, ((ICollection<Person>)fetched).Count);
-        Assert.Contains(fetched, x => x.Id == p1.Id);
-        Assert.Contains(fetched, x => x.Id == p2.Id);
+        Assert.Contains(fetched, x => x.TestKey == p1.TestKey);
+        Assert.Contains(fetched, x => x.TestKey == p2.TestKey);
     }
 
     [Fact]
@@ -357,17 +334,17 @@ public interface IBasicTests : IGraphTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
-        var knows1 = new Knows { StartNodeId = p1.Id, EndNodeId = p2.Id, Since = DateTime.UtcNow };
-        var knows2 = new Knows { StartNodeId = p2.Id, EndNodeId = p3.Id, Since = DateTime.UtcNow };
-        await this.Graph.CreateRelationshipAsync(knows1, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
-        var relationshipIds = new[] { knows1.Id, knows2.Id };
+        var knows1 = new Knows { Since = DateTime.UtcNow };
+        var knows2 = new Knows { Since = DateTime.UtcNow };
+        await this.Graph.ConnectAsync(p1, knows1, p2, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(p2, knows2, p3, cancellationToken: TestContext.Current.CancellationToken);
+        var relationshipIds = new[] { knows1.TestKey, knows2.TestKey };
         var rels = await this.Graph.Relationships<Knows>()
-            .Where(r => relationshipIds.Contains(r.Id))
+            .Where(r => relationshipIds.Contains(r.TestKey))
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, rels.Count);
-        Assert.Contains(rels, r => r.Id == knows1.Id);
-        Assert.Contains(rels, r => r.Id == knows2.Id);
+        Assert.Contains(rels, r => r.TestKey == knows1.TestKey);
+        Assert.Contains(rels, r => r.TestKey == knows2.TestKey);
     }
 
     [Fact]
@@ -378,19 +355,21 @@ public interface IBasicTests : IGraphTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var knows = new Knows { StartNodeId = p1.Id, EndNodeId = p2.Id, Since = DateTime.UtcNow };
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
-        knows.Since = DateTime.UtcNow.AddYears(-1);
-        await this.Graph.UpdateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
-        var updated = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
-        Assert.Equal(knows.Id, updated.Id);
-        Assert.Equal(p1.Id, updated.StartNodeId);
-        Assert.Equal(p2.Id, updated.EndNodeId);
-        Assert.Equal(knows.Since, updated.Since);
+        var knows = new Knows { Since = DateTime.UtcNow };
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
+        var updatedSince = DateTime.UtcNow.AddYears(-1);
+        var affected = await this.Graph.SelectRelationship(knows)
+            .UpdateAsync(
+                setters => setters.SetProperty(relationship => relationship.Since, updatedSince),
+                TestContext.Current.CancellationToken);
+        var updated = await this.Graph.FindRelationshipByTestKeyAsync<Knows>(knows.TestKey, null, TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(knows.TestKey, updated.TestKey);
+        Assert.Equal(updatedSince, updated.Since);
     }
 
     [Fact]
-    public async Task RelationshipType_ChangedOnUpdate_ThrowsAndPreservesOriginalRelationship()
+    public async Task RelationshipType_SetMutationIsRejectedAndPreservesOriginalRelationship()
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
@@ -400,39 +379,24 @@ public interface IBasicTests : IGraphTest
         var originalSince = DateTime.UtcNow;
         var knows = new Knows
         {
-            StartNodeId = p1.Id,
-            EndNodeId = p2.Id,
-            Direction = RelationshipDirection.Incoming,
             Since = originalSince
         };
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var friend = new Friend(p1.Id, p2.Id)
-        {
-            Id = knows.Id,
-            Direction = RelationshipDirection.Incoming,
-            Since = originalSince.AddDays(1)
-        };
+        await Assert.ThrowsAsync<GraphQueryTranslationException>(() =>
+            this.Graph.SelectRelationship(knows).UpdateAsync(
+                setters => setters.SetProperty(relationship => relationship.Type, "FRIENDOF"),
+                TestContext.Current.CancellationToken));
 
-        var exception = await Assert.ThrowsAsync<GraphException>(() =>
-            this.Graph.UpdateRelationshipAsync(friend, null, TestContext.Current.CancellationToken));
-
-        Assert.StartsWith(
-            "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.",
-            exception.Message);
-
-        var fetched = await this.Graph.GetRelationshipAsync<Knows>(
-            knows.Id,
+        var fetched = await this.Graph.FindRelationshipByTestKeyAsync<Knows>(
+            knows.TestKey,
             null,
             TestContext.Current.CancellationToken);
         Assert.Equal(Labels.GetLabelFromType(typeof(Knows)), fetched.Type);
-        Assert.Equal(p1.Id, fetched.StartNodeId);
-        Assert.Equal(p2.Id, fetched.EndNodeId);
-        Assert.Equal(RelationshipDirection.Incoming, fetched.Direction);
         Assert.Equal(originalSince, fetched.Since);
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            this.Graph.GetRelationshipAsync<Friend>(knows.Id, null, TestContext.Current.CancellationToken));
+        Assert.Null(await this.Graph.RelationshipsByTestKey<Friend>(knows.TestKey)
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -444,51 +408,26 @@ public interface IBasicTests : IGraphTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
         var relationship = new DynamicRelationship(
-            p1.Id,
-            p2.Id,
             "DYNAMIC_TYPE_A",
             new Dictionary<string, object?> { ["status"] = "original" });
-        await this.Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(p1, relationship, p2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var validUpdate = new DynamicRelationship(
-            p1.Id,
-            p2.Id,
-            "DYNAMIC_TYPE_A",
-            new Dictionary<string, object?> { ["status"] = "updated" })
-        {
-            Id = relationship.Id
-        };
-        await this.Graph.UpdateRelationshipAsync(validUpdate, null, TestContext.Current.CancellationToken);
-
-        var changedType = new DynamicRelationship(
-            p1.Id,
-            p2.Id,
-            "DYNAMIC_TYPE_B",
-            new Dictionary<string, object?> { ["status"] = "rejected" })
-        {
-            Id = relationship.Id
-        };
-
-        var exception = await Assert.ThrowsAsync<GraphException>(() =>
-            this.Graph.UpdateRelationshipAsync(changedType, null, TestContext.Current.CancellationToken));
-
-        Assert.StartsWith(
-            "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.",
-            exception.Message);
-
-        var fetched = await this.Graph.GetDynamicRelationshipAsync(
-            relationship.Id,
-            null,
+        var selected = this.Graph.DynamicRelationships().Where(candidate => candidate.Type == "DYNAMIC_TYPE_A");
+        var affected = await selected.UpdateAsync(
+            setters => setters.SetProperty(candidate => candidate.Properties["status"], "updated"),
             TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<GraphQueryTranslationException>(() => selected.UpdateAsync(
+            setters => setters.SetProperty(candidate => candidate.Type, "DYNAMIC_TYPE_B"),
+            TestContext.Current.CancellationToken));
+
+        var fetched = await selected.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
         Assert.Equal("DYNAMIC_TYPE_A", fetched.Type);
-        Assert.Equal(p1.Id, fetched.StartNodeId);
-        Assert.Equal(p2.Id, fetched.EndNodeId);
-        Assert.Equal(RelationshipDirection.Outgoing, fetched.Direction);
         Assert.Equal("updated", fetched.Properties["status"]);
     }
 
     [Fact]
-    public async Task RelationshipConcreteClrType_ChangedWithSameStoredType_ThrowsAndPreservesOriginalRelationship()
+    public async Task RelationshipConcreteClrType_IsPreservedWhenMaterialized()
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
@@ -496,36 +435,19 @@ public interface IBasicTests : IGraphTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
         var originalSince = DateTime.UtcNow;
-        var knows = new Knows(p1.Id, p2.Id) { Since = originalSince };
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        var knows = new Knows { Since = originalSince };
+        await this.Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var friend = new Friend(p1.Id, p2.Id)
-        {
-            Id = knows.Id,
-            Type = Labels.GetLabelFromType(typeof(Knows)),
-            Direction = RelationshipDirection.Outgoing,
-            Since = originalSince.AddDays(1)
-        };
-
-        var exception = await Assert.ThrowsAsync<GraphException>(() =>
-            this.Graph.UpdateRelationshipAsync(friend, null, TestContext.Current.CancellationToken));
-
-        Assert.StartsWith(
-            "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.",
-            exception.Message);
-
-        var fetched = await this.Graph.GetRelationshipAsync<Knows>(
-            knows.Id,
+        var fetched = await this.Graph.FindRelationshipByTestKeyAsync<Knows>(
+            knows.TestKey,
             null,
             TestContext.Current.CancellationToken);
         Assert.Equal(Labels.GetLabelFromType(typeof(Knows)), fetched.Type);
-        Assert.Equal(p1.Id, fetched.StartNodeId);
-        Assert.Equal(p2.Id, fetched.EndNodeId);
-        Assert.Equal(RelationshipDirection.Outgoing, fetched.Direction);
         Assert.Equal(originalSince, fetched.Since);
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            this.Graph.GetRelationshipAsync<Friend>(knows.Id, null, TestContext.Current.CancellationToken));
+        Assert.IsType<Knows>(fetched);
+        Assert.Null(await this.Graph.RelationshipsByTestKey<Friend>(knows.TestKey)
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -535,7 +457,8 @@ public interface IBasicTests : IGraphTest
         var person = new Person { FirstName = "TxTest" };
         await this.Graph.CreateNodeAsync(person, tx, TestContext.Current.CancellationToken);
         await tx.DisposeAsync(); // Rollback
-        await Assert.ThrowsAsync<EntityNotFoundException>(async () => await this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
+        Assert.Null(await this.Graph.NodesByTestKey<Person>(person.TestKey)
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
     }
 
     public record PersonWithCycle : Node
@@ -576,7 +499,8 @@ public interface IBasicTests : IGraphTest
 
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        var fetched = await this.Graph.GetNodeAsync<PersonWithGenericCollectionOfPrimitiveProperty>(person.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.Nodes<PersonWithGenericCollectionOfPrimitiveProperty>()
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("A", fetched.FirstName);
         Assert.Equal(person.GenericProperty.Count, fetched.GenericProperty.Count);
         Assert.All(fetched.GenericProperty, item => Assert.Contains(item, person.GenericProperty));
@@ -616,12 +540,9 @@ public interface IBasicTests : IGraphTest
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        var fetched = await Graph.GetNodeAsync<ValueTypeCollectionNode>(
-            node.Id,
-            null,
-            TestContext.Current.CancellationToken);
+        var fetched = await Graph.Nodes<ValueTypeCollectionNode>()
+            .SingleAsync(TestContext.Current.CancellationToken);
         var queried = await Graph.Nodes<ValueTypeCollectionNode>()
-            .Where(candidate => candidate.Id == node.Id)
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 
         AssertValueTypeCollections(node, fetched);
@@ -648,19 +569,19 @@ public interface IBasicTests : IGraphTest
 
         await Graph.CreateNodeAsync(start, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(end, null, TestContext.Current.CancellationToken);
-        var relationship = new DynamicRelationship(
-            start.Id,
-            end.Id,
-            "DYNAMIC_COLLECTION_RELATIONSHIP",
-            properties);
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        var relationship = new DynamicRelationship("DYNAMIC_COLLECTION_RELATIONSHIP", properties);
+        await Graph.CreateRelationshipAsync(
+            Graph.DynamicNodes().OfLabel("DynamicCollectionStart"),
+            relationship,
+            Graph.DynamicNodes().OfLabel("DynamicCollectionEnd"),
+            cancellationToken: TestContext.Current.CancellationToken);
 
-        var fetchedNode = await Graph.GetDynamicNodeAsync(
-            start.Id,
+        var fetchedNode = await Graph.FindDynamicNodeByTestKeyAsync(
+            "DynamicCollectionStart",
             null,
             TestContext.Current.CancellationToken);
-        var fetchedRelationship = await Graph.GetDynamicRelationshipAsync(
-            relationship.Id,
+        var fetchedRelationship = await Graph.FindDynamicRelationshipByTestKeyAsync(
+            "DYNAMIC_COLLECTION_RELATIONSHIP",
             null,
             TestContext.Current.CancellationToken);
 
@@ -675,31 +596,37 @@ public interface IBasicTests : IGraphTest
         INode endNode = new SpacedLabelVenue { Name = "End" };
         var dynamicStart = startNode.ToDynamic();
         var dynamicEnd = endNode.ToDynamic();
+        var startSelector = $"DynamicStart-{Guid.NewGuid():N}";
+        var endSelector = $"DynamicEnd-{Guid.NewGuid():N}";
+        dynamicStart.Labels = [.. dynamicStart.Labels, startSelector];
+        dynamicEnd.Labels = [.. dynamicEnd.Labels, endSelector];
 
         await Graph.CreateNodeAsync(dynamicStart, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(dynamicEnd, null, TestContext.Current.CancellationToken);
 
-        IRelationship relationship = new KnowsWell(dynamicStart.Id, dynamicEnd.Id)
+        IRelationship relationship = new KnowsWell
         {
             HowWell = "Very well",
         };
         var dynamicRelationship = relationship.ToDynamic();
-        await Graph.CreateRelationshipAsync(dynamicRelationship, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            Graph.DynamicNodes().OfLabel(startSelector),
+            dynamicRelationship,
+            Graph.DynamicNodes().OfLabel(endSelector),
+            cancellationToken: TestContext.Current.CancellationToken);
 
-        var fetchedNode = await Graph.GetDynamicNodeAsync(
-            dynamicStart.Id,
+        var fetchedNode = await Graph.FindDynamicNodeByTestKeyAsync(
+            startSelector,
             null,
             TestContext.Current.CancellationToken);
-        var fetchedRelationship = await Graph.GetDynamicRelationshipAsync(
-            dynamicRelationship.Id,
+        var fetchedRelationship = await Graph.FindDynamicRelationshipByTestKeyAsync(
+            dynamicRelationship.Type,
             null,
             TestContext.Current.CancellationToken);
 
         Assert.Contains(Labels.GetLabelFromType(startNode.GetType()), fetchedNode.Labels);
         Assert.Equal("Start", fetchedNode.Properties[nameof(SpacedLabelVenue.Name)]);
         Assert.Equal(Labels.GetLabelFromType(relationship.GetType()), fetchedRelationship.Type);
-        Assert.Equal(relationship.StartNodeId, fetchedRelationship.StartNodeId);
-        Assert.Equal(relationship.EndNodeId, fetchedRelationship.EndNodeId);
         Assert.Equal(
             ((KnowsWell)relationship).HowWell,
             fetchedRelationship.Properties[nameof(KnowsWell.HowWell)]);
@@ -729,8 +656,8 @@ public interface IBasicTests : IGraphTest
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        var fetched = await Graph.GetDynamicNodeAsync(
-            node.Id,
+        var fetched = await Graph.FindDynamicNodeByTestKeyAsync(
+            "DynamicNestedComplex",
             null,
             TestContext.Current.CancellationToken);
 
@@ -805,7 +732,6 @@ public interface IBasicTests : IGraphTest
     {
         var memory = new Memory
         {
-            Id = Guid.NewGuid().ToString("N"),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
             CapturedBy = new MemorySource
@@ -826,7 +752,7 @@ public interface IBasicTests : IGraphTest
         Assert.NotNull(memories);
 
         var retrievedMemory = await this.Graph.Nodes<Memory>()
-            .Where(m => m.Id == memory.Id)
+            .Where(m => m.Text == memory.Text)
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 
         Assert.NotNull(retrievedMemory);
@@ -849,7 +775,7 @@ public interface IBasicTests : IGraphTest
         await this.Graph.CreateNodeAsync(user, null, TestContext.Current.CancellationToken);
 
         var fetchedUser = await this.Graph.Nodes<User>()
-            .Where(u => u.Id == user.Id)
+            .Where(u => u.Email == user.Email)
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 
         Assert.NotNull(fetchedUser);

@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH (src:`Label With Space`)
-WHERE src.Name = $p0
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND src.Name = $p0
 RETURN {
                 Node: src,
                 ComplexProperties: []

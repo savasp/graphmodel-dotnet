@@ -290,8 +290,6 @@ public class CG006_ComplexTypeContainsGraphInterfaceTypesTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public InvalidMetadata {|#0:Metadata|} { get; set; } = new();
             }
             """;

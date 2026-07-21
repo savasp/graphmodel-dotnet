@@ -1,6 +1,7 @@
 == Cypher ==
 CALL db.index.fulltext.queryRelationships('rel_fulltext_index', $p0) YIELD relationship AS r
 MATCH (src)-[r:WORKS_AT]->(tgt)
+WHERE r.__graphModelComplexProperty IS NULL
 RETURN r AS Relationship
 
 == Parameters ==

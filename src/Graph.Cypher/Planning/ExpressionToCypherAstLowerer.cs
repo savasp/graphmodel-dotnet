@@ -124,6 +124,12 @@ internal sealed class ExpressionToCypherAstLowerer(
             return pathMember;
         }
 
+        if (node.Member is PropertyInfo structuralProperty &&
+            TryLowerStructuralGraphMember(structuralProperty, node.Expression, aliases, out var structuralMember))
+        {
+            return structuralMember;
+        }
+
         if (TryLowerTemporalMember(node.Member.DeclaringType, node.Member.Name, Lower(node.Expression, aliases), out temporal))
         {
             return temporal;
@@ -134,6 +140,38 @@ internal sealed class ExpressionToCypherAstLowerer(
             ? Labels.GetLabelFromProperty(property)
             : node.Member.Name;
         return new PropertyAccess(target, propertyName);
+    }
+
+    private bool TryLowerStructuralGraphMember(
+        PropertyInfo property,
+        Expression targetExpression,
+        IReadOnlyDictionary<ParameterExpression, string> aliases,
+        out CypherExpression expression)
+    {
+        expression = null!;
+        var target = Lower(targetExpression, aliases);
+
+        if (property.Name == nameof(IRelationship.Type) &&
+            property.DeclaringType is { } relationshipDeclaringType &&
+            (relationshipDeclaringType == typeof(IRelationship) ||
+             relationshipDeclaringType == typeof(Relationship) ||
+             relationshipDeclaringType == typeof(DynamicRelationship)))
+        {
+            expression = Function("type", target);
+            return true;
+        }
+
+        if (property.Name == nameof(INode.Labels) &&
+            property.DeclaringType is { } nodeDeclaringType &&
+            (nodeDeclaringType == typeof(INode) ||
+             nodeDeclaringType == typeof(Node) ||
+             nodeDeclaringType == typeof(DynamicNode)))
+        {
+            expression = Function("labels", target);
+            return true;
+        }
+
+        return false;
     }
 
     private CypherExpression LowerStaticMember(MemberExpression node)

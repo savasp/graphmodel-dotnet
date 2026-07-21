@@ -19,25 +19,31 @@ public sealed class SchemaInitializationTests : Neo4jTest
     }
 
     [Fact]
-    public async Task UpdateNodeAsync_NonExistentNode_UninitializedRegistry_ThrowsEntityNotFound()
+    public async Task UpdateAsync_EmptySelection_UninitializedRegistry_ReturnsZero()
     {
         Assert.False(Graph.SchemaRegistry.IsInitialized);
-        var node = new Class1 { Id = Guid.NewGuid().ToString("N") };
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.UpdateNodeAsync(node, null, TestContext.Current.CancellationToken));
+        var affected = await Graph.Nodes<Class1>()
+            .Where(node => node.Property1 == "missing")
+            .UpdateAsync(
+                setters => setters.SetProperty(node => node.Property1, "updated"),
+                TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, affected);
     }
 
     [Fact]
-    public async Task DeleteNodeAsync_LegacyNodeWithoutEntityKind_Deletes()
+    public async Task DeleteAsync_RawNodeWithoutFrameworkMetadata_Deletes()
     {
         Assert.False(Graph.SchemaRegistry.IsInitialized);
-        var nodeId = Guid.NewGuid().ToString("N");
-        await CreateLegacyNodeAsync(nodeId);
+        var testKey = Guid.NewGuid().ToString("N");
+        await CreateRawNodeAsync(testKey);
 
-        await Graph.DeleteNodeAsync(nodeId, false, null, TestContext.Current.CancellationToken);
+        var affected = await Graph.DynamicNodes().OfLabel("RawNativeNode")
+            .DeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(0, await CountLegacyNodesAsync(nodeId));
+        Assert.Equal(1, affected);
+        Assert.Equal(0, await CountRawNodesAsync(testKey));
     }
 
     [Fact]
@@ -101,7 +107,7 @@ public sealed class SchemaInitializationTests : Neo4jTest
         Assert.Contains("Class1", fullTextLabels);
 
         var searchResults = await Graph.SearchNodes<Class1>("managed rebuild token").ToListAsync(cancellationToken);
-        Assert.Contains(indexedNode.Id, searchResults.Select(node => node.Id));
+        Assert.Contains(searchResults, node => node.Property1 == indexedNode.Property1);
     }
 
     [Theory]
@@ -157,17 +163,17 @@ public sealed class SchemaInitializationTests : Neo4jTest
 
         await Task.WhenAll(
             firstStore.Graph.CreateNodeAsync(
-                new Class1 { Id = Guid.NewGuid().ToString("N"), Property1 = "first" },
+                new Class1 { Property1 = "first" },
                 null,
                 cancellationToken),
             secondStore.Graph.CreateNodeAsync(
-                new Class1 { Id = Guid.NewGuid().ToString("N"), Property1 = "second" },
+                new Class1 { Property1 = "second" },
                 null,
                 cancellationToken));
 
         var constraints = await GetManagedConstraintNamesAsync();
         var indexes = await GetManagedIndexNamesAsync();
-        Assert.Contains("unique_configtestperson_id", constraints);
+        Assert.Contains("unique_configtestperson_email", constraints);
         Assert.Contains("idx_configtestperson_firstname", indexes);
         Assert.Contains("node_fulltext_index", indexes);
         Assert.Contains("rel_fulltext_index", indexes);
@@ -309,24 +315,24 @@ public sealed class SchemaInitializationTests : Neo4jTest
         }
     }
 
-    private async Task CreateLegacyNodeAsync(string nodeId)
+    private async Task CreateRawNodeAsync(string testKey)
     {
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var neo4jTransaction = (GraphTransaction)transaction;
 
-        const string cypher = "CREATE (:Class1 {Id: $nodeId, Property1: 'legacy'})";
-        var result = await neo4jTransaction.Transaction.RunAsync(cypher, new { nodeId });
+        const string cypher = "CREATE (:RawNativeNode {testKey: $testKey, value: 'raw'})";
+        var result = await neo4jTransaction.Transaction.RunAsync(cypher, new { testKey });
         await result.ConsumeAsync();
         await transaction.CommitAsync();
     }
 
-    private async Task<int> CountLegacyNodesAsync(string nodeId)
+    private async Task<int> CountRawNodesAsync(string testKey)
     {
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var neo4jTransaction = (GraphTransaction)transaction;
 
-        const string cypher = "MATCH (n:Class1 {Id: $nodeId}) RETURN COUNT(n) AS count";
-        var result = await neo4jTransaction.Transaction.RunAsync(cypher, new { nodeId });
+        const string cypher = "MATCH (n:RawNativeNode {testKey: $testKey}) RETURN COUNT(n) AS count";
+        var result = await neo4jTransaction.Transaction.RunAsync(cypher, new { testKey });
         var record = await result.SingleAsync(TestContext.Current.CancellationToken);
 
         return record["count"].As<int>();

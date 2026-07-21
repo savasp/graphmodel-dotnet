@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH (src)-[r:KNOWS]->(tgt)
-WHERE r.Since > $p0
+WHERE r.__graphModelComplexProperty IS NULL AND r.Since > $p0
 RETURN r AS Relationship
 
 == Parameters ==

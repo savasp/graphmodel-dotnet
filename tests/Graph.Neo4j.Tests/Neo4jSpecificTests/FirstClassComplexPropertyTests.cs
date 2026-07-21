@@ -17,14 +17,15 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
         };
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetNodeAsync<ComplexPropertyOwner>(
-            node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await Graph.Nodes<ComplexPropertyOwner>()
+            .Where(owner => owner.TestKey == node.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(node.Address, fetched.Address);
         Assert.Equal(1, await CountAsync(
-            "MATCH (:ComplexPropertyOwner {Id: $id})-[r:PRIMARY_ADDRESS]->(:ComplexAddress) " +
+            "MATCH (:ComplexPropertyOwner {TestKey: $id})-[r:PRIMARY_ADDRESS]->(:ComplexAddress) " +
             "WHERE r.__graphModelComplexProperty = true RETURN count(r) AS count",
-            new { id = node.Id }));
+            new { id = node.TestKey }));
     }
 
     [Fact]
@@ -39,12 +40,12 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
 
         Assert.Equal(2, await CountAsync(
             "MATCH (owner:ComplexPropertyOwner)-[:PRIMARY_ADDRESS]->(address:ComplexAddress) " +
-            "WHERE owner.Id IN $ids RETURN count(DISTINCT address) AS count",
-            new { ids = new[] { first.Id, second.Id } }));
+            "WHERE owner.TestKey IN $ids RETURN count(DISTINCT address) AS count",
+            new { ids = new[] { first.TestKey, second.TestKey } }));
     }
 
     [Fact]
-    public async Task SlimOwner_CanCoLoadRelatedValueThroughPathProjection()
+    public async Task MarkerOwnedValue_IsNotExposedThroughOrdinaryPathProjection()
     {
         var node = new ComplexPropertyOwner
         {
@@ -52,20 +53,16 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
         };
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        var segment = await Graph.Nodes<Cvoya.Graph.INode>()
-            .Where(owner => owner.Id == node.Id)
-            .PathSegments<Cvoya.Graph.INode, PrimaryAddress, ComplexAddressNode>()
-            .SingleAsync(TestContext.Current.CancellationToken);
+        var segment = await Graph.Nodes<ComplexPropertyOwner>()
+            .Where(owner => owner.TestKey == node.TestKey)
+            .PathSegments<ComplexPropertyOwner, PrimaryAddress, ComplexAddressNode>()
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(node.Id, segment.StartNode.Id);
-        Assert.Equal("Vancouver", segment.EndNode.City);
-        Assert.Empty(segment.Relationship.StartNodeId);
-        Assert.Empty(segment.Relationship.EndNodeId);
-        Assert.Equal(RelationshipDirection.Outgoing, segment.Direction);
+        Assert.Null(segment);
     }
 
     [Fact]
-    public async Task UpdateNodeAsync_ComplexProperty_RoundTripsNewValue()
+    public async Task UpdateAsync_ComplexProperty_RoundTripsNewValue()
     {
         var node = new ComplexPropertyOwner
         {
@@ -74,17 +71,20 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
         var replacement = new ComplexAddress { City = "Denver", Street = "16th St" };
-        var updated = node with { Address = replacement };
-        await Graph.UpdateNodeAsync(updated, null, TestContext.Current.CancellationToken);
+        await Graph.Nodes<ComplexPropertyOwner>().Where(owner => owner.TestKey == node.TestKey)
+            .UpdateAsync(
+                setters => setters.SetProperty(owner => owner.Address, replacement),
+                TestContext.Current.CancellationToken);
 
-        var fetched = await Graph.GetNodeAsync<ComplexPropertyOwner>(
-            node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await Graph.Nodes<ComplexPropertyOwner>()
+            .Where(owner => owner.TestKey == node.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(replacement, fetched.Address);
     }
 
     [Fact]
-    public async Task UpdateNodeAsync_ComplexProperty_DeletesOrphanedValueNode()
+    public async Task UpdateAsync_ComplexProperty_DeletesOrphanedValueNode()
     {
         var original = new ComplexAddress { City = "Seattle", Street = "1st Ave" };
         var replacement = new ComplexAddress { City = "Denver", Street = "16th St" };
@@ -92,13 +92,15 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
         var node = new ComplexPropertyOwner { Address = original };
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        var updated = node with { Address = replacement };
-        await Graph.UpdateNodeAsync(updated, null, TestContext.Current.CancellationToken);
+        await Graph.Nodes<ComplexPropertyOwner>().Where(owner => owner.TestKey == node.TestKey)
+            .UpdateAsync(
+                setters => setters.SetProperty(owner => owner.Address, replacement),
+                TestContext.Current.CancellationToken);
 
         Assert.Equal(1, await CountAsync(
-            "MATCH (:ComplexPropertyOwner {Id: $id})-[r:PRIMARY_ADDRESS]->(:ComplexAddress) " +
+            "MATCH (:ComplexPropertyOwner {TestKey: $id})-[r:PRIMARY_ADDRESS]->(:ComplexAddress) " +
             "WHERE r.__graphModelComplexProperty = true RETURN count(r) AS count",
-            new { id = node.Id }));
+            new { id = node.TestKey }));
 
         Assert.Equal(0, await CountAsync(
             "MATCH (a:ComplexAddress) WHERE a.City = $city AND a.Street = $street RETURN count(a) AS count",
@@ -106,7 +108,7 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
     }
 
     [Fact]
-    public async Task UpdateNodeAsync_ComplexPropertyCollection_ReplacesItemsInOrderAndDeletesOrphans()
+    public async Task UpdateAsync_ComplexPropertyCollection_ReplacesItemsInOrderAndDeletesOrphans()
     {
         var original = new List<ComplexAddress>
         {
@@ -123,18 +125,21 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
             new() { City = "Denver", Street = "16th St" },
             new() { City = "Austin", Street = "Congress Ave" }
         };
-        var updated = node with { Addresses = replacement };
-        await Graph.UpdateNodeAsync(updated, null, TestContext.Current.CancellationToken);
+        await Graph.Nodes<ComplexPropertyCollectionOwner>().Where(owner => owner.TestKey == node.TestKey)
+            .UpdateAsync(
+                setters => setters.SetProperty(owner => owner.Addresses, replacement),
+                TestContext.Current.CancellationToken);
 
-        var fetched = await Graph.GetNodeAsync<ComplexPropertyCollectionOwner>(
-            node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await Graph.Nodes<ComplexPropertyCollectionOwner>()
+            .Where(owner => owner.TestKey == node.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(replacement, fetched.Addresses);
 
         Assert.Equal(2, await CountAsync(
-            "MATCH (:ComplexPropertyCollectionOwner {Id: $id})-[r:Addresses]->(:ComplexAddress) " +
+            "MATCH (:ComplexPropertyCollectionOwner {TestKey: $id})-[r:Addresses]->(:ComplexAddress) " +
             "WHERE r.__graphModelComplexProperty = true RETURN count(r) AS count",
-            new { id = node.Id }));
+            new { id = node.TestKey }));
 
         Assert.Equal(0, await CountAsync(
             "MATCH (a:ComplexAddress) WHERE a.City IN $cities RETURN count(a) AS count",
@@ -142,7 +147,7 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
     }
 
     [Fact]
-    public async Task UpdateNodeAsync_NestedComplexProperty_ReplacesEntireChainAndDeletesOrphansAtBothLevels()
+    public async Task UpdateAsync_NestedComplexProperty_ReplacesEntireChainAndDeletesOrphansAtBothLevels()
     {
         var originalOffice = new ComplexOffice
         {
@@ -158,19 +163,22 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
             Name = "Branch",
             Address = new ComplexAddress { City = "Denver", Street = "16th St" }
         };
-        var updated = node with { Office = replacementOffice };
-        await Graph.UpdateNodeAsync(updated, null, TestContext.Current.CancellationToken);
+        await Graph.Nodes<NestedComplexPropertyOwner>().Where(owner => owner.TestKey == node.TestKey)
+            .UpdateAsync(
+                setters => setters.SetProperty(owner => owner.Office, replacementOffice),
+                TestContext.Current.CancellationToken);
 
-        var fetched = await Graph.GetNodeAsync<NestedComplexPropertyOwner>(
-            node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await Graph.Nodes<NestedComplexPropertyOwner>()
+            .Where(owner => owner.TestKey == node.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(replacementOffice, fetched.Office);
 
         Assert.Equal(1, await CountAsync(
-            "MATCH (:NestedComplexPropertyOwner {Id: $id})-[r1:Office]->(o:ComplexOffice)-[r2:Address]->(a:ComplexAddress) " +
+            "MATCH (:NestedComplexPropertyOwner {TestKey: $id})-[r1:Office]->(o:ComplexOffice)-[r2:Address]->(a:ComplexAddress) " +
             "WHERE r1.__graphModelComplexProperty = true AND r2.__graphModelComplexProperty = true " +
             "AND o.Name = $name AND a.City = $city RETURN count(a) AS count",
-            new { id = node.Id, name = replacementOffice.Name, city = replacementOffice.Address.City }));
+            new { id = node.TestKey, name = replacementOffice.Name, city = replacementOffice.Address.City }));
 
         Assert.Equal(0, await CountAsync(
             "MATCH (o:ComplexOffice) WHERE o.Name = $name RETURN count(o) AS count",
@@ -182,7 +190,7 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
     }
 
     [Fact]
-    public async Task UpdateNodeAsync_ComplexProperty_DoesNotAffectOtherOwners()
+    public async Task UpdateAsync_ComplexProperty_DoesNotAffectOtherOwners()
     {
         var addressA = new ComplexAddress { City = "Seattle", Street = "1st Ave" };
         var addressB = new ComplexAddress { City = "Portland", Street = "Burnside" };
@@ -193,18 +201,21 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
         await Graph.CreateNodeAsync(ownerB, null, TestContext.Current.CancellationToken);
 
         var replacementA = new ComplexAddress { City = "Denver", Street = "16th St" };
-        var updatedA = ownerA with { Address = replacementA };
-        await Graph.UpdateNodeAsync(updatedA, null, TestContext.Current.CancellationToken);
+        await Graph.Nodes<ComplexPropertyOwner>().Where(owner => owner.TestKey == ownerA.TestKey)
+            .UpdateAsync(
+                setters => setters.SetProperty(owner => owner.Address, replacementA),
+                TestContext.Current.CancellationToken);
 
-        var fetchedB = await Graph.GetNodeAsync<ComplexPropertyOwner>(
-            ownerB.Id, null, TestContext.Current.CancellationToken);
+        var fetchedB = await Graph.Nodes<ComplexPropertyOwner>()
+            .Where(owner => owner.TestKey == ownerB.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(addressB, fetchedB.Address);
         Assert.Equal(1, await CountAsync(
-            "MATCH (:ComplexPropertyOwner {Id: $id})-[r:PRIMARY_ADDRESS]->(a:ComplexAddress) " +
+            "MATCH (:ComplexPropertyOwner {TestKey: $id})-[r:PRIMARY_ADDRESS]->(a:ComplexAddress) " +
             "WHERE r.__graphModelComplexProperty = true AND a.City = $city AND a.Street = $street " +
             "RETURN count(a) AS count",
-            new { id = ownerB.Id, city = addressB.City, street = addressB.Street }));
+            new { id = ownerB.TestKey, city = addressB.City, street = addressB.Street }));
     }
 
     [Fact]
@@ -221,20 +232,21 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
         var node = new LargeComplexCollectionOwner { Offices = offices };
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        var fetched = await Graph.GetNodeAsync<LargeComplexCollectionOwner>(
-            node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await Graph.Nodes<LargeComplexCollectionOwner>()
+            .Where(owner => owner.TestKey == node.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(offices, fetched.Offices);
 
         Assert.Equal(50, await CountAsync(
-            "MATCH (:LargeComplexCollectionOwner {Id: $id})-[r:Offices]->(:ComplexOffice) " +
+            "MATCH (:LargeComplexCollectionOwner {TestKey: $id})-[r:Offices]->(:ComplexOffice) " +
             "WHERE r.__graphModelComplexProperty = true RETURN count(r) AS count",
-            new { id = node.Id }));
+            new { id = node.TestKey }));
 
         Assert.Equal(50, await CountAsync(
-            "MATCH (:LargeComplexCollectionOwner {Id: $id})-[:Offices]->(:ComplexOffice)-[r:Address]->(:ComplexAddress) " +
+            "MATCH (:LargeComplexCollectionOwner {TestKey: $id})-[:Offices]->(:ComplexOffice)-[r:Address]->(:ComplexAddress) " +
             "WHERE r.__graphModelComplexProperty = true RETURN count(r) AS count",
-            new { id = node.Id }));
+            new { id = node.TestKey }));
     }
 
     [Fact]
@@ -243,8 +255,9 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
         var node = new ComplexPropertyCollectionOwner { Addresses = [] };
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        var fetchedEmpty = await Graph.GetNodeAsync<ComplexPropertyCollectionOwner>(
-            node.Id, null, TestContext.Current.CancellationToken);
+        var fetchedEmpty = await Graph.Nodes<ComplexPropertyCollectionOwner>()
+            .Where(owner => owner.TestKey == node.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.NotNull(fetchedEmpty.Addresses);
         Assert.Empty(fetchedEmpty.Addresses);
@@ -254,11 +267,14 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
             new() { City = "Seattle", Street = "1st Ave" },
             new() { City = "Tacoma", Street = "2nd Ave" }
         };
-        var updated = node with { Addresses = items };
-        await Graph.UpdateNodeAsync(updated, null, TestContext.Current.CancellationToken);
+        await Graph.Nodes<ComplexPropertyCollectionOwner>().Where(owner => owner.TestKey == node.TestKey)
+            .UpdateAsync(
+                setters => setters.SetProperty(owner => owner.Addresses, items),
+                TestContext.Current.CancellationToken);
 
-        var fetchedWithItems = await Graph.GetNodeAsync<ComplexPropertyCollectionOwner>(
-            node.Id, null, TestContext.Current.CancellationToken);
+        var fetchedWithItems = await Graph.Nodes<ComplexPropertyCollectionOwner>()
+            .Where(owner => owner.TestKey == node.TestKey)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(items, fetchedWithItems.Addresses);
     }
@@ -277,6 +293,8 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
 [Node("ComplexPropertyOwner")]
 public sealed record ComplexPropertyOwner : Node
 {
+    public string TestKey { get; init; } = Guid.NewGuid().ToString("N");
+
     [ComplexProperty(RelationshipType = "PRIMARY_ADDRESS")]
     public ComplexAddress Address { get; init; } = new();
 }
@@ -297,12 +315,13 @@ public sealed record ComplexAddressNode : Node
 }
 
 [Relationship("PRIMARY_ADDRESS")]
-public sealed record PrimaryAddress(string StartNodeId, string EndNodeId)
-    : Relationship(StartNodeId, EndNodeId);
+public sealed record PrimaryAddress : Relationship;
 
 [Node("ComplexPropertyCollectionOwner")]
 public sealed record ComplexPropertyCollectionOwner : Node
 {
+    public string TestKey { get; init; } = Guid.NewGuid().ToString("N");
+
     public List<ComplexAddress> Addresses { get; init; } = [];
 }
 
@@ -316,11 +335,15 @@ public sealed record ComplexOffice
 [Node("NestedComplexPropertyOwner")]
 public sealed record NestedComplexPropertyOwner : Node
 {
+    public string TestKey { get; init; } = Guid.NewGuid().ToString("N");
+
     public ComplexOffice Office { get; init; } = new();
 }
 
 [Node("LargeComplexCollectionOwner")]
 public sealed record LargeComplexCollectionOwner : Node
 {
+    public string TestKey { get; init; } = Guid.NewGuid().ToString("N");
+
     public List<ComplexOffice> Offices { get; init; } = [];
 }

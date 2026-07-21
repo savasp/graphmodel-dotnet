@@ -48,6 +48,9 @@ public sealed class Neo4jDialect : ICypherDialect
     public string ComplexPropertyRelationshipMarker => ComplexPropertyStorage.RelationshipMarkerProperty;
 
     /// <inheritdoc/>
+    public bool RequiresPlannerComplexStorageIsolation => true;
+
+    /// <inheritdoc/>
     public string RenderParameter(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

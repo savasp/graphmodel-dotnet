@@ -49,9 +49,9 @@ public sealed class GraphCommandTests(AgeHarness harness) : AgeTest(harness), IG
         Assert.Equal(1, await loserWrite);
         await loser.CommitAsync();
 
-        var stored = await Graph.GetNodeAsync<ComplexCommandNode>(
-            node.Id,
-            cancellationToken: cancellationToken);
+        var stored = await Graph.Nodes<ComplexCommandNode>()
+            .Where(candidate => candidate.Group == marker)
+            .SingleAsync(cancellationToken);
         Assert.Equal(loserName, stored.Contact?.Name);
         Assert.Equal(
             0,
@@ -94,27 +94,31 @@ public sealed class GraphCommandTests(AgeHarness harness) : AgeTest(harness), IG
             };
 
             await Assert.ThrowsAsync<GraphException>(() => GraphCommandExtensions.UpdateAsync(
-                Graph.DynamicNodes(transaction).Where(candidate => candidate.Id == node.Id),
+                Graph.DynamicNodes(transaction).OfLabel(label),
                 setters => setters
                     .SetProperty(candidate => candidate.Properties["status"], "after")
                     .SetProperty(candidate => candidate.Properties["profile"], invalidReplacement),
                 cancellationToken));
 
-            var restored = await Graph.GetDynamicNodeAsync(node.Id, transaction, cancellationToken);
+            var restored = await Graph.DynamicNodes(transaction)
+                .OfLabel(label)
+                .SingleAsync(cancellationToken);
             Assert.Equal("before", restored.Properties["status"]);
             var restoredProfile = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(
                 restored.Properties["profile"]);
             Assert.Equal("before", restoredProfile["name"]);
 
             var affected = await GraphCommandExtensions.UpdateAsync(
-                Graph.DynamicNodes(transaction).Where(candidate => candidate.Id == node.Id),
+                Graph.DynamicNodes(transaction).OfLabel(label),
                 setters => setters.SetProperty(candidate => candidate.Properties["status"], "survived"),
                 cancellationToken);
             Assert.Equal(1, affected);
             await transaction.CommitAsync();
         }
 
-        var committed = await Graph.GetDynamicNodeAsync(node.Id, cancellationToken: cancellationToken);
+        var committed = await Graph.DynamicNodes()
+            .OfLabel(label)
+            .SingleAsync(cancellationToken);
         Assert.Equal("survived", committed.Properties["status"]);
         var committedProfile = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(
             committed.Properties["profile"]);

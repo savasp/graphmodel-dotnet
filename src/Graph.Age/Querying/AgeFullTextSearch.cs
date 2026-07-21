@@ -260,8 +260,8 @@ internal static class AgeFullTextSearch
     internal static bool IsSearchablePhysicalTable(string table)
     {
         if (table is "_ag_label_vertex" or "_ag_label_edge"
-            || string.Equals(table, SerializationBridge.PhysicalNodeLabel, StringComparison.Ordinal)
-            || string.Equals(table, SerializationBridge.PhysicalRelationshipType, StringComparison.Ordinal))
+            || string.Equals(table, SerializationBridge.ComplexNodeLabel, StringComparison.Ordinal)
+            || string.Equals(table, SerializationBridge.ComplexRelationshipType, StringComparison.Ordinal))
         {
             return false;
         }

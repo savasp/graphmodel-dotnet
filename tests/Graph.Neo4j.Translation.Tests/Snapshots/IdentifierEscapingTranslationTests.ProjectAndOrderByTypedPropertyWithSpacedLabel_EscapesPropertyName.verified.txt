@@ -1,5 +1,6 @@
 == Cypher ==
 MATCH (src:HostilePropertyLabelNode)
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true })
 ORDER BY src.`family name`
 RETURN src.`family name`
 

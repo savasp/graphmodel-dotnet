@@ -5,6 +5,8 @@ namespace Cvoya.Graph.CompatibilityTests;
 
 public record MemorySourceNode : Node
 {
+    public string TestKey { get; init; } = Guid.NewGuid().ToString("N");
+
     public required string Name { get; init; }
     public required string Description { get; init; }
     public required string Version { get; init; }

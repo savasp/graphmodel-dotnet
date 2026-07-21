@@ -210,14 +210,13 @@ public class SchemaRegistryTests
         Assert.False(nodeSchema.HasKey());
         Assert.False(nodeSchema.HasCompositeKey());
         Assert.Empty(nodeSchema.GetKeyProperties());
-        Assert.False(nodeSchema.Properties[nameof(IEntity.Id)].IsKey);
-        Assert.False(nodeSchema.Properties[nameof(IEntity.Id)].IsUnique);
+        Assert.DoesNotContain("Id", nodeSchema.Properties.Keys);
 
         Assert.NotNull(relationshipSchema);
         Assert.False(relationshipSchema.HasKey());
         Assert.False(relationshipSchema.HasCompositeKey());
         Assert.Empty(relationshipSchema.GetKeyProperties());
-        Assert.False(relationshipSchema.Properties[nameof(IEntity.Id)].IsKey);
+        Assert.DoesNotContain("Id", relationshipSchema.Properties.Keys);
     }
 
     [Fact]
@@ -392,7 +391,7 @@ public class SchemaRegistryTests
     }
 
     [Relationship("CORE_REGISTRY_REL")]
-    private sealed record RegistryRelationship(string Start, string End) : Relationship(Start, End)
+    private sealed record RegistryRelationship : Relationship
     {
         [Property(IsIndexed = true)]
         public DateOnly Since { get; init; }
@@ -415,7 +414,7 @@ public class SchemaRegistryTests
     }
 
     [Relationship("CORE_COMPOSITE_KEY_REGISTRY_REL")]
-    private sealed record CompositeKeyRegistryRelationship(string Start, string End) : Relationship(Start, End)
+    private sealed record CompositeKeyRegistryRelationship : Relationship
     {
         [Property(Label = "right_key", IsKey = true)]
         public string Right { get; init; } = string.Empty;

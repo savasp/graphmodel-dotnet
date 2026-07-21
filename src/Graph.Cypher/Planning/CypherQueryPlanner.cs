@@ -200,6 +200,14 @@ public sealed class CypherQueryPlanner
         if (optionalStep is not null)
         {
             clauses.Add(BuildTraversalMatch(model.Root, [optionalStep], pathAlias: null, optional: true));
+            if (dialect.RequiresPlannerComplexStorageIsolation)
+            {
+                var relationshipAlias = new VariableRef("r");
+                clauses.Add(new WhereClause(new AstBinaryExpression(
+                    CypherBinaryOperator.Or,
+                    new AstUnaryExpression(CypherUnaryOperator.IsNull, relationshipAlias),
+                    BuildOrdinaryTraversalPredicate(optionalStep, index: 0))));
+            }
         }
 
         if (selection is not null)
@@ -1308,12 +1316,12 @@ public sealed class CypherQueryPlanner
             searchFilterParameter);
     }
 
-    private static List<CypherExpression> LowerPredicates(
+    private List<CypherExpression> LowerPredicates(
         GraphQueryModel model,
         PlanningState state,
         ExpressionToCypherAstLowerer lowerer)
     {
-        var predicates = new List<CypherExpression>();
+        var predicates = BuildInternalStoragePredicates(model.Root, state);
 
         if (model.Root is SearchRoot search)
         {
@@ -1351,6 +1359,10 @@ public sealed class CypherQueryPlanner
         {
             var step = explicitTraversal[index];
             var relationshipAlias = index == 0 ? "r" : $"r_{index + 1}";
+            if (dialect.RequiresPlannerComplexStorageIsolation && !step.IsOptional)
+            {
+                predicates.Add(BuildOrdinaryTraversalPredicate(step, index));
+            }
             foreach (var predicate in step.RelationshipPredicates)
             {
                 if (step.Depth is { Min: 1, Max: 1 })
@@ -1401,6 +1413,65 @@ public sealed class CypherQueryPlanner
         return predicates;
     }
 
+    private CypherExpression BuildOrdinaryTraversalPredicate(TraversalStep step, int index)
+    {
+        var relationshipAlias = index == 0 ? "r" : $"r_{index + 1}";
+        if (step.Depth is { Min: 1, Max: 1 })
+        {
+            return IsOrdinaryRelationship(new VariableRef(relationshipAlias));
+        }
+
+        var iteratorAlias = $"__ordinaryRelationship_{index}";
+        return new AllExpression(
+            iteratorAlias,
+            new VariableRef(relationshipAlias),
+            IsOrdinaryRelationship(new VariableRef(iteratorAlias)));
+    }
+
+    private List<CypherExpression> BuildInternalStoragePredicates(QueryRoot root, PlanningState state)
+    {
+        if (!dialect.RequiresPlannerComplexStorageIsolation)
+        {
+            return [];
+        }
+
+        if (root is RelationshipRoot ||
+            root is DynamicRoot { ElementType: { } dynamicType } &&
+            typeof(IRelationship).IsAssignableFrom(dynamicType) ||
+            root is SearchRoot { Target: SearchRootTarget.Relationships })
+        {
+            return [IsOrdinaryRelationship(new VariableRef(state.RootAlias))];
+        }
+
+        if (root is NodeRoot or DynamicRoot ||
+            root is SearchRoot { Target: SearchRootTarget.Nodes })
+        {
+            const string ownerAlias = "__complexRootOwner";
+            var markedIncomingRelationship = new PatternSubqueryExpression(
+                PatternSubqueryKind.Exists,
+                new PathPattern(
+                [
+                    new NodePattern(alias: null, labels: []),
+                    new RelationshipPattern(ownerAlias, CypherDirection.Outgoing, depth: null, types: []),
+                    new NodePattern(state.RootAlias, labels: []),
+                ]),
+                new AstBinaryExpression(
+                    CypherBinaryOperator.Equal,
+                    new PropertyAccess(
+                        new VariableRef(ownerAlias),
+                        dialect.ComplexPropertyRelationshipMarker),
+                    new Literal(true)));
+            return [new AstUnaryExpression(CypherUnaryOperator.Not, markedIncomingRelationship)];
+        }
+
+        return [];
+    }
+
+    private AstUnaryExpression IsOrdinaryRelationship(CypherExpression relationship) =>
+        new(
+            CypherUnaryOperator.IsNull,
+            new PropertyAccess(relationship, dialect.ComplexPropertyRelationshipMarker));
+
     private static CypherExpression? LowerTerminalPredicate(
         GraphQueryModel model,
         PlanningState state,
@@ -1419,7 +1490,7 @@ public sealed class CypherQueryPlanner
         return lowerer.LowerLambda(predicate, alias);
     }
 
-    private static PatternSubqueryExpression LowerRelationshipExistence(
+    private PatternSubqueryExpression LowerRelationshipExistence(
         GraphQueryModel model,
         PlanningState state,
         RelationshipExistenceFragment existence,
@@ -1446,9 +1517,20 @@ public sealed class CypherQueryPlanner
                 Labels.GetCompatibleLabels(existence.RelationshipType)),
             new NodePattern(targetAlias, []),
         ]);
-        var predicate = existence.Predicate is null
+        CypherExpression? predicate = existence.Predicate is null
             ? null
             : LowerRelationshipPredicate(lowerer, existence.Predicate.Predicate, relationshipAlias);
+        if (dialect.RequiresPlannerComplexStorageIsolation)
+        {
+            var ordinaryRelationship = IsOrdinaryRelationship(new VariableRef(relationshipAlias));
+            predicate = predicate is null
+                ? ordinaryRelationship
+                : new ConjunctionExpression(
+            [
+                ordinaryRelationship,
+                predicate,
+            ]);
+        }
         return new PatternSubqueryExpression(PatternSubqueryKind.Exists, pattern, predicate);
     }
 

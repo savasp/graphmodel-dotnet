@@ -15,7 +15,7 @@ public sealed class AgeLabelPatternPassTests
     private readonly CypherRenderer renderer = new(AgeDialect.Instance);
 
     [Fact]
-    public void LowersNodeAndAliasedSingleHopRelationshipLabelsToNativeOrLegacyPredicates()
+    public void LowersNodeAndAliasedSingleHopRelationshipLabelsToNativeOrHierarchyPredicates()
     {
         var statement = Statement(
             Match(
@@ -150,7 +150,7 @@ public sealed class AgeLabelPatternPassTests
     }
 
     [Fact]
-    public void LowersSingleLabelToNativeOrLegacyPredicate()
+    public void LowersSingleLabelToNativeOrHierarchyPredicate()
     {
         var statement = Statement(
             Match(

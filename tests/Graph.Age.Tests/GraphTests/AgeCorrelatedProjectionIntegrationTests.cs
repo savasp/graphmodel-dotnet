@@ -24,8 +24,8 @@ public sealed class AgeCorrelatedProjectionIntegrationTests(AgeHarness harness) 
         await this.Graph.CreateNodeAsync(alice, null, ct);
         await this.Graph.CreateNodeAsync(kid, null, ct);
         await this.Graph.CreateNodeAsync(adult, null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, kid), null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, adult), null, ct);
+        await this.Graph.ConnectAsync(alice, new Knows(), kid, cancellationToken: ct);
+        await this.Graph.ConnectAsync(alice, new Knows(), adult, cancellationToken: ct);
 
         var row = await this.Graph.Nodes<Person>()
             .PathSegments<Person, Knows, Person>()
@@ -55,9 +55,9 @@ public sealed class AgeCorrelatedProjectionIntegrationTests(AgeHarness harness) 
         await this.Graph.CreateNodeAsync(kid, null, ct);
         await this.Graph.CreateNodeAsync(senior, null, ct);
         await this.Graph.CreateNodeAsync(adult, null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, kid), null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, senior), null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, adult), null, ct);
+        await this.Graph.ConnectAsync(alice, new Knows(), kid, cancellationToken: ct);
+        await this.Graph.ConnectAsync(alice, new Knows(), senior, cancellationToken: ct);
+        await this.Graph.ConnectAsync(alice, new Knows(), adult, cancellationToken: ct);
 
         var row = await this.Graph.Nodes<Person>()
             .PathSegments<Person, Knows, Person>()
@@ -87,8 +87,8 @@ public sealed class AgeCorrelatedProjectionIntegrationTests(AgeHarness harness) 
         await this.Graph.CreateNodeAsync(bob, null, ct);
         await this.Graph.CreateNodeAsync(kid, null, ct);
         await this.Graph.CreateNodeAsync(adult, null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, kid), null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, adult), null, ct);
+        await this.Graph.ConnectAsync(alice, new Knows(), kid, cancellationToken: ct);
+        await this.Graph.ConnectAsync(bob, new Knows(), adult, cancellationToken: ct);
 
         var rows = await this.Graph.Nodes<Person>()
             .PathSegments<Person, Knows, Person>()
@@ -161,9 +161,9 @@ public sealed class AgeCorrelatedProjectionIntegrationTests(AgeHarness harness) 
         await this.Graph.CreateNodeAsync(alice, null, ct);
         await this.Graph.CreateNodeAsync(bob, null, ct);
         await this.Graph.CreateNodeAsync(charlie, null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, ct);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: ct);
+        await this.Graph.ConnectAsync(alice, new Knows(), charlie, cancellationToken: ct);
+        await this.Graph.ConnectAsync(bob, new Knows(), charlie, cancellationToken: ct);
 
         var names = await this.Graph.Nodes<Person>()
             .Where(person => person.CountRelationships<Knows>(GraphTraversalDirection.Outgoing) > 1)
@@ -206,8 +206,8 @@ public sealed class AgeCorrelatedProjectionIntegrationTests(AgeHarness harness) 
         await this.Graph.CreateNodeAsync(alice, null, ct);
         await this.Graph.CreateNodeAsync(bob, null, ct);
         await this.Graph.CreateNodeAsync(address, null, ct);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, ct);
-        await this.Graph.CreateRelationshipAsync(new LivesAt(alice, address), null, ct);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: ct);
+        await this.Graph.ConnectAsync(alice, new LivesAt(), address, cancellationToken: ct);
 
         var row = await this.Graph.Nodes<Person>()
             .PathSegments<Person, Knows, Person>()

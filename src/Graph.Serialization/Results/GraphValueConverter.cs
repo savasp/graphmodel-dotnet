@@ -10,7 +10,6 @@ namespace Cvoya.Graph.Serialization.Results;
 internal static class GraphValueConverter
 {
     internal const string MetadataPropertyName = "__metadata__";
-    internal const string EntityKindPropertyName = "__graphModelEntityKind__";
     private const string TypeNameKey = "type";
 
     public static object? ConvertTo(object? value, Type targetType)

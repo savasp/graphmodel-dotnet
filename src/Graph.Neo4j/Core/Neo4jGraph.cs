@@ -5,6 +5,7 @@ namespace Cvoya.Graph.Neo4j.Core;
 
 using Cvoya.Graph.Neo4j.Querying.Linq.Providers;
 using Cvoya.Graph.Neo4j.Querying.Linq.Queryables;
+using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Querying.Linq;
 
 using Microsoft.Extensions.Logging;
@@ -110,30 +111,6 @@ internal class Neo4jGraph : IGraph
         return new GraphRelationshipQueryable<R>(provider);
     }
 
-    /// <inheritdoc />
-    public async Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : class, Graph.INode
-    {
-        var query = Nodes<N>(transaction)
-            .Where(n => n.Id == id);
-
-        return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new EntityNotFoundException($"Node with ID {id} not found");
-    }
-
-    /// <inheritdoc />
-    public async Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, Graph.IRelationship
-    {
-        var query = Nodes<Graph.INode>(transaction)
-            .PathSegments<Graph.INode, R, Graph.INode>(GraphTraversalDirection.Both)
-            .Where(segment => segment.Relationship.Id == id);
-
-        var segment = await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new EntityNotFoundException($"Relationship with ID {id} not found");
-        return LegacyRelationshipEndpoints.Populate<R>(segment);
-    }
-
     /// <summary>
     /// Converts a public <see cref="IGraphTransaction"/> to the internal <see cref="GraphTransaction"/>
     /// used by queryable construction, or <see langword="null"/> if none was given (in which case
@@ -164,9 +141,6 @@ internal class Neo4jGraph : IGraph
         if (node is null)
             throw new ArgumentException("Node cannot be null.", nameof(node));
 
-        if (string.IsNullOrEmpty(node.Id))
-            throw new ArgumentException("Node ID cannot be null or empty.", nameof(node));
-
         cancellationToken.ThrowIfCancellationRequested();
         EnsureOwnedTransaction(transaction);
 
@@ -184,7 +158,6 @@ internal class Neo4jGraph : IGraph
                 $"Failed to create node of type {typeof(N).Name}",
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebugNeo4jGraph174(node.Id);
         }
         catch (OperationCanceledException)
         {
@@ -206,319 +179,25 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, Graph.IRelationship
-    {
-        if (relationship is null)
-            throw new ArgumentException("Relationship cannot be null.", nameof(relationship));
-
-        if (string.IsNullOrEmpty(relationship.Id))
-            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship));
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        try
-        {
-            _logger.LogDebugNeo4jGraph209(typeof(R).Name);
-
-            // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to create relationship of type {typeof(R).Name}",
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebugNeo4jGraph225(relationship.Id);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to create relationship of type {typeof(R).Name}";
-            _logger.LogErrorNeo4jGraph234(ex, typeof(R).Name);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task CreateAsync<TSource, TRelationship, TTarget>(
+    public Task CreateAsync<TSource, TRelationship, TTarget>(
         TSource source,
         TRelationship relationship,
         TTarget target,
-        GraphOperationOptions? options = null,
+        RelationshipDirection direction = RelationshipDirection.Outgoing,
         IGraphTransaction? transaction = null,
         CancellationToken cancellationToken = default)
         where TSource : class, Graph.INode
         where TRelationship : class, Graph.IRelationship
         where TTarget : class, Graph.INode
-    {
-        SubgraphArguments.Validate(source, relationship, target);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        var createMissingEndpoints = options?.CreateMissingEndpoints ?? false;
-
-        try
-        {
-            _logger.LogDebugNeo4jGraph162(typeof(TRelationship).Name);
-
-            // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.SubgraphManager.CreateSubgraphAsync(
-                        source, relationship, target, createMissingEndpoints, tx, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to create subgraph for relationship of type {typeof(TRelationship).Name}",
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to create subgraph for relationship of type {typeof(TRelationship).Name}";
-            _logger.LogErrorNeo4jGraph234(ex, typeof(TRelationship).Name);
-
-            if (ex is GraphException)
-            {
-                throw;
-            }
-
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : class, Graph.INode
-    {
-        if (node is null)
-            throw new ArgumentException("Node cannot be null.", nameof(node));
-
-        if (string.IsNullOrEmpty(node.Id))
-            throw new ArgumentException("Node ID cannot be null or empty.", nameof(node));
-
-        GraphDataModel.EnforceGraphConstraintsForNode(node);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        try
-        {
-            _logger.LogDebugNeo4jGraph262(node.Id, typeof(N).Name);
-
-            // Ensure schema is created before any transaction (to avoid mixing schema and data
-            // operations). The update path validates properties against the schema registry, so
-            // this must not depend on a prior create having initialized it (#227).
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.NodeManager.UpdateNodeAsync(node, tx, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to update node {node.Id} of type {typeof(N).Name}",
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebugNeo4jGraph280(node.Id);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to update node {node.Id} of type {typeof(N).Name}";
-            _logger.LogErrorNeo4jGraph289(ex, node.Id, typeof(N).Name);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, Graph.IRelationship
-    {
-        if (relationship is null)
-            throw new ArgumentException("Relationship cannot be null.", nameof(relationship));
-
-        if (string.IsNullOrEmpty(relationship.Id))
-            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship));
-
-        GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        try
-        {
-            _logger.LogDebugNeo4jGraph317(relationship.Id, typeof(R).Name);
-
-            // Ensure schema is created before any transaction (to avoid mixing schema and data
-            // operations). The update path validates properties against the schema registry, so
-            // this must not depend on a prior create having initialized it (#227).
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.RelationshipManager.UpdateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}",
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebugNeo4jGraph335(relationship.Id);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}";
-            _logger.LogErrorNeo4jGraph344(ex, relationship.Id, typeof(R).Name);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task DeleteNodeAsync(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrEmpty(id))
-            throw new ArgumentException("Node ID cannot be null or empty.", nameof(id));
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        try
-        {
-            _logger.LogDebugNeo4jGraph366(id);
-
-            // Delete-by-ID needs the complete registered-label set to recognize legacy nodes
-            // written before EntityKind was stored. Initialize before opening the data
-            // transaction so a cold registry cannot turn an existing node into not-found (#239).
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.NodeManager.DeleteNodeAsync(id, tx, cascadeDelete, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to delete node {id}",
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebugNeo4jGraph384(id);
-
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to delete node {id}";
-            _logger.LogErrorNeo4jGraph394(ex, id);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrEmpty(id))
-            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(id));
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        try
-        {
-            _logger.LogDebugNeo4jGraph415(id);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.RelationshipManager.DeleteRelationshipAsync(id, tx, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to delete relationship {id}",
-                _logger,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebugNeo4jGraph429(id);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to delete relationship {id}";
-            _logger.LogErrorNeo4jGraph438(ex, id);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-            throw new GraphException(message, ex);
-        }
-    }
+        => GraphCommandExtensions.CreateNewAsync(
+            this,
+            source,
+            relationship,
+            target,
+            direction,
+            GraphRelationshipCreationMode.Standard,
+            transaction,
+            cancellationToken);
 
     // Dynamic entity methods
 
@@ -540,28 +219,6 @@ internal class Neo4jGraph : IGraph
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
         return new GraphRelationshipQueryable<DynamicRelationship>(provider);
-    }
-
-    /// <inheritdoc />
-    public async Task<DynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-    {
-        var query = DynamicNodes(transaction)
-            .Where(n => n.Id == id);
-
-        return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new EntityNotFoundException($"Dynamic node with ID {id} not found");
-    }
-
-    /// <inheritdoc />
-    public async Task<DynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-    {
-        var query = Nodes<Graph.INode>(transaction)
-            .PathSegments<Graph.INode, DynamicRelationship, Graph.INode>(GraphTraversalDirection.Both)
-            .Where(segment => segment.Relationship.Id == id);
-
-        var segment = await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new EntityNotFoundException($"Dynamic relationship with ID {id} not found");
-        return LegacyRelationshipEndpoints.Populate<DynamicRelationship>(segment);
     }
 
     /// <inheritdoc />

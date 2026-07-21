@@ -83,7 +83,7 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
             cancellationToken);
     }
 
-    internal Task PrepareRelationshipCreationAsync(CancellationToken cancellationToken) =>
+    Task IGraphCommandProvider.PrepareRelationshipCreationAsync(CancellationToken cancellationToken) =>
         context.SchemaManager.InitializeSchemaAsync(cancellationToken);
 
     protected override Task<GraphTransaction> GetOrCreateTransactionAsync(CancellationToken cancellationToken) =>

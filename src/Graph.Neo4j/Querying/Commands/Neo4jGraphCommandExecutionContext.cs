@@ -36,70 +36,64 @@ internal sealed class Neo4jGraphCommandExecutionContext(
     }
 
     public Task CreateRelationshipAsync(
-        SelectedGraphElement source,
+        GraphCommandEndpoint source,
         IRelationship relationship,
-        SelectedGraphElement target,
+        GraphCommandEndpoint target,
         RelationshipDirection direction,
+        GraphRelationshipCreationMode mode,
         CancellationToken cancellationToken) =>
-        context.SubgraphManager.CreateRelationshipAsync(
-            GetNodeElementId(source, GraphEndpointRole.Source),
-            relationship,
-            GetNodeElementId(target, GraphEndpointRole.Target),
-            direction,
-            transaction,
-            cancellationToken);
-
-    public Task CreateAsync(
-        SelectedGraphElement source,
-        IRelationship relationship,
-        INode newTarget,
-        RelationshipDirection direction,
-        CancellationToken cancellationToken) =>
-        context.SubgraphManager.CreateAsync(
-            GetNodeElementId(source, GraphEndpointRole.Source),
-            relationship,
-            newTarget,
-            direction,
-            transaction,
-            cancellationToken);
-
-    public Task CreateAsync(
-        INode newSource,
-        IRelationship relationship,
-        SelectedGraphElement target,
-        RelationshipDirection direction,
-        CancellationToken cancellationToken) =>
-        context.SubgraphManager.CreateAsync(
-            newSource,
-            relationship,
-            GetNodeElementId(target, GraphEndpointRole.Target),
-            direction,
-            transaction,
-            cancellationToken);
-
-    public Task CreateAsync(
-        INode newSource,
-        IRelationship relationship,
-        INode newTarget,
-        RelationshipDirection direction,
-        CancellationToken cancellationToken) =>
-        context.SubgraphManager.CreateAsync(
-            newSource,
-            relationship,
-            newTarget,
-            direction,
-            transaction,
-            cancellationToken);
-
-    public Task CreateSelfLoopAsync(
-        INode node,
-        IRelationship relationship,
-        CancellationToken cancellationToken) =>
-        context.SubgraphManager.CreateSelfLoopAsync(
-            node,
-            relationship,
-            transaction,
-            cancellationToken);
+        (source, target, mode) switch
+        {
+            (SelectedGraphCommandEndpoint selectedSource,
+                SelectedGraphCommandEndpoint selectedTarget,
+                GraphRelationshipCreationMode.Standard) =>
+                context.SubgraphManager.CreateRelationshipAsync(
+                    GetNodeElementId(selectedSource.Element, GraphEndpointRole.Source),
+                    relationship,
+                    GetNodeElementId(selectedTarget.Element, GraphEndpointRole.Target),
+                    direction,
+                    transaction,
+                    cancellationToken),
+            (SelectedGraphCommandEndpoint selectedSource,
+                NewGraphCommandEndpoint newTarget,
+                GraphRelationshipCreationMode.Standard) =>
+                context.SubgraphManager.CreateAsync(
+                    GetNodeElementId(selectedSource.Element, GraphEndpointRole.Source),
+                    relationship,
+                    newTarget.Node,
+                    direction,
+                    transaction,
+                    cancellationToken),
+            (NewGraphCommandEndpoint newSource,
+                SelectedGraphCommandEndpoint selectedTarget,
+                GraphRelationshipCreationMode.Standard) =>
+                context.SubgraphManager.CreateAsync(
+                    newSource.Node,
+                    relationship,
+                    GetNodeElementId(selectedTarget.Element, GraphEndpointRole.Target),
+                    direction,
+                    transaction,
+                    cancellationToken),
+            (NewGraphCommandEndpoint newSource,
+                NewGraphCommandEndpoint newTarget,
+                GraphRelationshipCreationMode.Standard) =>
+                context.SubgraphManager.CreateAsync(
+                    newSource.Node,
+                    relationship,
+                    newTarget.Node,
+                    direction,
+                    transaction,
+                    cancellationToken),
+            (NewGraphCommandEndpoint newSource,
+                NewGraphCommandEndpoint,
+                GraphRelationshipCreationMode.SelfLoop) =>
+                context.SubgraphManager.CreateSelfLoopAsync(
+                    newSource.Node,
+                    relationship,
+                    transaction,
+                    cancellationToken),
+            _ => throw new GraphException("The relationship endpoint command has an invalid operand combination."),
+        };
 
     private static string GetNodeElementId(SelectedGraphElement selected, GraphEndpointRole role)
     {

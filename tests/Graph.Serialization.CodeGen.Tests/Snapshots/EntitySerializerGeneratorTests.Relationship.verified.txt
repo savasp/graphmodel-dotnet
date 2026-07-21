@@ -35,59 +35,9 @@ internal sealed class KnowsSerializer : IEntitySerializer
 
     public object Deserialize(EntityInfo entity)
     {
-        // Extracting value for parameter 'StartNodeId'
-        string StartNodeId;
-        // Look for property 'StartNodeId' in both simple and complex properties
-        var startnodeidPropRep = entity.SimpleProperties.TryGetValue("StartNodeId", out var startnodeidSimpleProp) ? startnodeidSimpleProp
-                    : entity.ComplexProperties.TryGetValue("StartNodeId", out var startnodeidComplexProp) ? startnodeidComplexProp : null;
-        // Extract simple value - no conversion, just cast
-        StartNodeId = startnodeidPropRep is null
-            ? string.Empty
-            : startnodeidPropRep.Value is SimpleValue startnodeidPropRepSimpleValue
-                ? (string)startnodeidPropRepSimpleValue.Object
-                : string.Empty;
-        // Extracting value for parameter 'EndNodeId'
-        string EndNodeId;
-        // Look for property 'EndNodeId' in both simple and complex properties
-        var endnodeidPropRep = entity.SimpleProperties.TryGetValue("EndNodeId", out var endnodeidSimpleProp) ? endnodeidSimpleProp
-                    : entity.ComplexProperties.TryGetValue("EndNodeId", out var endnodeidComplexProp) ? endnodeidComplexProp : null;
-        // Extract simple value - no conversion, just cast
-        EndNodeId = endnodeidPropRep is null
-            ? string.Empty
-            : endnodeidPropRep.Value is SimpleValue endnodeidPropRepSimpleValue
-                ? (string)endnodeidPropRepSimpleValue.Object
-                : string.Empty;
-        // Extracting init-only property 'Direction'
-        Cvoya.Graph.RelationshipDirection directionValue;
-        // Look for property 'Direction' in both simple and complex properties
-        var directionPropRep = entity.SimpleProperties.TryGetValue("Direction", out var directionSimpleProp) ? directionSimpleProp
-                    : entity.ComplexProperties.TryGetValue("Direction", out var directionComplexProp) ? directionComplexProp : null;
-        // Extract simple value - no conversion, just cast
-        directionValue = directionPropRep is null
-            ? default(Cvoya.Graph.RelationshipDirection)
-            : directionPropRep.Value is SimpleValue directionPropRepSimpleValue
-                ? (Cvoya.Graph.RelationshipDirection)directionPropRepSimpleValue.Object
-                : default(Cvoya.Graph.RelationshipDirection);
-        // Extracting init-only property 'Id'
-        string idValue;
-        // Look for property 'Id' in both simple and complex properties
-        var idPropRep = entity.SimpleProperties.TryGetValue("Id", out var idSimpleProp) ? idSimpleProp
-                    : entity.ComplexProperties.TryGetValue("Id", out var idComplexProp) ? idComplexProp : null;
-        // Extract simple value - no conversion, just cast
-        idValue = idPropRep is null
-            ? string.Empty
-            : idPropRep.Value is SimpleValue idPropRepSimpleValue
-                ? (string)idPropRepSimpleValue.Object
-                : string.Empty;
 
         var result = new TestNamespace.Knows(
-            StartNodeId,
-            EndNodeId
-        )
-        {
-            Direction = directionValue,
-            Id = idValue
-        };
+        );
 
         // Set remaining properties with setters
         // Look for property 'Since' in both simple and complex properties
@@ -135,92 +85,6 @@ internal sealed class KnowsSerializer : IEntitySerializer
                 Value: serializedValue
             );
             simpleProperties["Since"] = propertyRep;
-        }
-
-        // Serialize property: StartNodeId
-        {
-            var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("StartNodeId")!;
-            var value = entity.StartNodeId;
-            Serialized? serializedValue;
-
-            serializedValue = value is null
-                ? null
-                : new SimpleValue(
-                    Object: value,
-                    Type: typeof(string)
-                );
-
-            var propertyRep = new Property(
-                PropertyInfo: propInfo,
-                Label: "StartNodeId",
-                IsNullable: false,
-                Value: serializedValue
-            );
-            simpleProperties["StartNodeId"] = propertyRep;
-        }
-
-        // Serialize property: EndNodeId
-        {
-            var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("EndNodeId")!;
-            var value = entity.EndNodeId;
-            Serialized? serializedValue;
-
-            serializedValue = value is null
-                ? null
-                : new SimpleValue(
-                    Object: value,
-                    Type: typeof(string)
-                );
-
-            var propertyRep = new Property(
-                PropertyInfo: propInfo,
-                Label: "EndNodeId",
-                IsNullable: false,
-                Value: serializedValue
-            );
-            simpleProperties["EndNodeId"] = propertyRep;
-        }
-
-        // Serialize property: Direction
-        {
-            var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("Direction")!;
-            var value = entity.Direction;
-            Serialized? serializedValue;
-
-            serializedValue = new SimpleValue(
-                Object: value!,
-                Type: typeof(Cvoya.Graph.RelationshipDirection)
-            );
-
-            var propertyRep = new Property(
-                PropertyInfo: propInfo,
-                Label: "Direction",
-                IsNullable: false,
-                Value: serializedValue
-            );
-            simpleProperties["Direction"] = propertyRep;
-        }
-
-        // Serialize property: Id
-        {
-            var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("Id")!;
-            var value = entity.Id;
-            Serialized? serializedValue;
-
-            serializedValue = value is null
-                ? null
-                : new SimpleValue(
-                    Object: value,
-                    Type: typeof(string)
-                );
-
-            var propertyRep = new Property(
-                PropertyInfo: propInfo,
-                Label: "Id",
-                IsNullable: false,
-                Value: serializedValue
-            );
-            simpleProperties["Id"] = propertyRep;
         }
 
         // Serialize property: Type
@@ -313,59 +177,12 @@ internal sealed class KnowsSerializer : IEntitySerializer
             );
         }
 
-        // Schema for property: StartNodeId
-        {
-            var propInfo = typeof(TestNamespace.Knows).GetProperty("StartNodeId")
-                ?? typeof(Cvoya.Graph.IRelationship).GetProperty("StartNodeId")!;
-            simpleProperties["StartNodeId"] = new PropertySchema(
-                PropertyInfo: propInfo,
-                PropertyName: "StartNodeId",
-                PropertyType: PropertyType.Simple,
-                IsNullable: false
-            );
-        }
-
-        // Schema for property: EndNodeId
-        {
-            var propInfo = typeof(TestNamespace.Knows).GetProperty("EndNodeId")
-                ?? typeof(Cvoya.Graph.IRelationship).GetProperty("EndNodeId")!;
-            simpleProperties["EndNodeId"] = new PropertySchema(
-                PropertyInfo: propInfo,
-                PropertyName: "EndNodeId",
-                PropertyType: PropertyType.Simple,
-                IsNullable: false
-            );
-        }
-
-        // Schema for property: Id
-        {
-            var propInfo = typeof(TestNamespace.Knows).GetProperty("Id")
-                ?? typeof(Cvoya.Graph.IEntity).GetProperty("Id")!;
-            simpleProperties["Id"] = new PropertySchema(
-                PropertyInfo: propInfo,
-                PropertyName: "Id",
-                PropertyType: PropertyType.Simple,
-                IsNullable: false
-            );
-        }
-
         // Schema for property: Since
         {
             var propInfo = typeof(TestNamespace.Knows).GetProperty("Since")!;
             simpleProperties["Since"] = new PropertySchema(
                 PropertyInfo: propInfo,
                 PropertyName: "Since",
-                PropertyType: PropertyType.Simple,
-                IsNullable: false
-            );
-        }
-
-        // Schema for property: Direction
-        {
-            var propInfo = typeof(TestNamespace.Knows).GetProperty("Direction")!;
-            simpleProperties["Direction"] = new PropertySchema(
-                PropertyInfo: propInfo,
-                PropertyName: "Direction",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );

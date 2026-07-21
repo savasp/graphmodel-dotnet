@@ -9,8 +9,6 @@ using Cvoya.Graph.Neo4j.Querying.Cypher;
 using Cvoya.Graph.Neo4j.Serialization;
 using Cvoya.Graph.Serialization;
 using global::Neo4j.Driver;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 
 /// <summary>
@@ -21,17 +19,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </summary>
 internal sealed class Neo4jSubgraphManager(GraphContext context)
 {
-    private readonly ILogger<Neo4jSubgraphManager> _logger = context.LoggerFactory?.CreateLogger<Neo4jSubgraphManager>()
-        ?? NullLogger<Neo4jSubgraphManager>.Instance;
     private readonly EntityFactory _serializer = new(context.LoggerFactory);
-
-    /// <summary>
-    /// Transient marker recorded on an endpoint <c>ON CREATE</c> so its complex-property subtree is
-    /// created only when this statement actually created the endpoint (not when it matched an
-    /// existing one). Each endpoint gets a unique property name so the marker cannot overwrite a
-    /// mapped user property. It is removed within the same statement, so it is never committed or read.
-    /// </summary>
-    private const string TransientCreatedMarkerPrefix = "__graphModelSubgraphCreated";
 
     /// <summary>The composed single statement plus its parameters.</summary>
     internal sealed record SubgraphStatement(string Cypher, IDictionary<string, object> Parameters);
@@ -41,32 +29,6 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
         public static EndpointBinding New(EntityInfo entity) => new(entity, ElementId: null);
 
         public static EndpointBinding Selected(string elementId) => new(Entity: null, elementId);
-    }
-
-    public async Task CreateSubgraphAsync<TSource, TRelationship, TTarget>(
-        TSource source,
-        TRelationship relationship,
-        TTarget target,
-        bool createMissingEndpoints,
-        GraphTransaction transaction,
-        CancellationToken cancellationToken = default)
-        where TSource : class, Graph.INode
-        where TRelationship : class, Graph.IRelationship
-        where TTarget : class, Graph.INode
-    {
-        var statement = BuildStatement(source, relationship, target, createMissingEndpoints);
-
-        _logger.LogDebugNeo4jSubgraphManager44(typeof(TSource).Name, typeof(TRelationship).Name, typeof(TTarget).Name);
-
-        var result = await transaction.Transaction
-            .RunAsync(statement.Cypher, statement.Parameters).ConfigureAwait(false);
-
-        // Consume the summary so failures (e.g. a uniqueness-constraint violation on a duplicate
-        // endpoint id) surface here rather than being silently swallowed. The whole statement is
-        // one Neo4j unit, so a failure creates nothing.
-        await result.ConsumeAsync().ConfigureAwait(false);
-
-        _logger.LogInformationNeo4jSubgraphManager54(relationship.Id);
     }
 
     internal Task CreateRelationshipAsync(
@@ -159,46 +121,29 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(transaction);
         cancellationToken.ThrowIfCancellationRequested();
-        var result = await transaction.Transaction
-            .RunAsync(statement.Cypher, statement.Parameters)
-            .WaitAsync(cancellationToken).ConfigureAwait(false);
-        var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
-        if (records.Count != 1 || !records[0]["created"].As<bool>())
+        try
         {
-            throw new GraphException("The native-bound Neo4j subgraph command did not create one relationship.");
+            var result = await transaction.Transaction
+                .RunAsync(statement.Cypher, statement.Parameters)
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+            if (records.Count != 1 || !records[0]["created"].As<bool>())
+            {
+                throw new GraphException("The native-bound Neo4j subgraph command did not create one relationship.");
+            }
         }
-    }
-
-    /// <summary>
-    /// Composes the single subgraph-create statement. Exposed internally so its one-statement shape
-    /// is directly testable without a live Neo4j instance.
-    /// </summary>
-    internal SubgraphStatement BuildStatement<TSource, TRelationship, TTarget>(
-        TSource source,
-        TRelationship relationship,
-        TTarget target,
-        bool createMissingEndpoints)
-        where TSource : class, Graph.INode
-        where TRelationship : class, Graph.IRelationship
-        where TTarget : class, Graph.INode
-    {
-        // Serialize and validate each element the same way the per-entity managers do.
-        var sourceEntity = SerializeNode(source);
-        var targetEntity = SerializeNode(target);
-        var relationshipEntity = SerializeRelationship(relationship);
-
-        var parameters = new Dictionary<string, object>();
-        var builder = new StringBuilder();
-
-        AppendEndpoint(builder, parameters, "s", sourceEntity, createMissingEndpoints, source.Id);
-        AppendEndpoint(builder, parameters, "t", targetEntity, createMissingEndpoints, target.Id);
-        AppendEdge(
-            builder,
-            parameters,
-            relationshipEntity,
-            LegacyRelationshipEndpoints.LegacyDirection(relationship));
-
-        return new SubgraphStatement(builder.ToString(), parameters);
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (GraphException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new GraphException("Failed to create the Neo4j subgraph.", ex);
+        }
     }
 
     private EntityInfo SerializeNode<TNode>(TNode node) where TNode : class, Graph.INode
@@ -301,10 +246,7 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
         parameters[$"{variable}_props"] = Neo4jNodeManager.BuildElementBoundNodeProperties(entity);
         builder.Append("CREATE (").Append(variable).Append(labels)
             .Append(" $").Append(variable).Append("_props)\n");
-        AppendValueNodes(
-            builder,
-            parameters,
-            ComplexPropertyManager.CollectElementBoundValueNodeSpecs(variable, entity));
+        AppendValueNodes(builder, parameters, ComplexPropertyManager.CollectValueNodeSpecs(variable, entity));
     }
 
     private static void AppendElementBoundEdge(
@@ -324,48 +266,6 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
         parameters["rel_props"] = Neo4jRelationshipManager.BuildElementBoundRelationshipProperties(entity);
         builder.Append("CREATE (").Append(sourceVariable).Append(")-[r:").Append(relationshipType)
             .Append(" $rel_props]->(").Append(endVariable).Append(")\n");
-    }
-
-    private static void AppendEndpoint(
-        StringBuilder builder,
-        Dictionary<string, object> parameters,
-        string variable,
-        EntityInfo entity,
-        bool createMissingEndpoints,
-        string id)
-    {
-        var labelClause = BuildNodeLabelClause(entity);
-        parameters[$"{variable}_props"] = BuildNodeProperties(entity);
-        var specs = ComplexPropertyManager.CollectValueNodeSpecs(variable, entity);
-
-        if (createMissingEndpoints)
-        {
-            // MERGE by Id: a matched endpoint is reused entirely as-is — ON CREATE SET never runs on
-            // a match, so neither its simple properties nor its existing complex-property subtree are
-            // touched. A freshly created endpoint gets its full properties/labels, plus a transient
-            // marker that gates the subtree creation below so a matched endpoint's subtree is never
-            // duplicated.
-            parameters[$"{variable}_id"] = id;
-            var setLabels = labelClause is null ? string.Empty : $"{variable}:{labelClause}, ";
-            var transientMarker = specs.Count > 0
-                ? $"{TransientCreatedMarkerPrefix}_{Guid.NewGuid():N}"
-                : null;
-            var setMarker = transientMarker is null ? string.Empty : $", {variable}.{transientMarker} = true";
-
-            builder.Append("MERGE (").Append(variable).Append(" {Id: $").Append(variable).Append("_id}) ")
-                .Append("ON CREATE SET ").Append(setLabels)
-                .Append(variable).Append(" = $").Append(variable).Append("_props").Append(setMarker).Append('\n');
-
-            AppendGuardedValueNodes(builder, parameters, variable, transientMarker, specs);
-        }
-        else
-        {
-            var labels = labelClause is null ? string.Empty : $":{labelClause}";
-            builder.Append("CREATE (").Append(variable).Append(labels)
-                .Append(" $").Append(variable).Append("_props)\n");
-
-            AppendValueNodes(builder, parameters, specs);
-        }
     }
 
     private static void AppendValueNodes(
@@ -388,74 +288,6 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
         }
     }
 
-    /// <summary>
-    /// Emits the endpoint's complex-property subtree so it is created only when this statement
-    /// created the endpoint (see <see cref="TransientCreatedMarkerPrefix"/>). The whole subtree — arbitrary
-    /// nesting depth — is one CREATE of comma-separated patterns inside a single FOREACH: each value
-    /// node is bound to a variable a later pattern reuses as its parent, so BFS order (parent before
-    /// child) keeps the references valid. The marker is removed afterwards so it never persists.
-    /// </summary>
-    private static void AppendGuardedValueNodes(
-        StringBuilder builder,
-        Dictionary<string, object> parameters,
-        string variable,
-        string? transientMarker,
-        IReadOnlyList<ComplexPropertyManager.ValueNodeSpec> specs)
-    {
-        if (specs.Count == 0)
-        {
-            return;
-        }
-
-        builder.Append("FOREACH (_ IN CASE WHEN ").Append(variable).Append('.').Append(transientMarker)
-            .Append(" THEN [1] ELSE [] END |\n  CREATE ");
-
-        for (var i = 0; i < specs.Count; i++)
-        {
-            var spec = specs[i];
-            var relationshipType = CypherIdentifier.Escape(spec.RelationshipType, "complex-property relationship type");
-            var label = CypherIdentifier.Escape(spec.Label, "complex-property node label");
-
-            if (i > 0)
-            {
-                builder.Append(",\n    ");
-            }
-
-            builder.Append('(').Append(spec.ParentVariable).Append(")-[:").Append(relationshipType)
-                .Append(" $").Append(spec.Variable).Append("_rel]->(")
-                .Append(spec.Variable).Append(':').Append(label)
-                .Append(" $").Append(spec.Variable).Append("_props)");
-
-            parameters[$"{spec.Variable}_props"] = spec.NodeProperties;
-            parameters[$"{spec.Variable}_rel"] = spec.RelationshipProperties;
-        }
-
-        builder.Append("\n  REMOVE ").Append(variable).Append('.').Append(transientMarker).Append("\n)\n");
-    }
-
-    private static void AppendEdge(
-        StringBuilder builder,
-        Dictionary<string, object> parameters,
-        EntityInfo entity,
-        RelationshipDirection direction)
-    {
-        var relationshipType = CypherIdentifier.Escape(entity.Label, "relationship type");
-
-        // The endpoint variables are "s" (source) and "t" (target). The stored edge points from
-        // source to target for Outgoing, and from target to source for Incoming.
-        var (sourceVariable, targetVariable) = direction switch
-        {
-            RelationshipDirection.Outgoing => ("s", "t"),
-            RelationshipDirection.Incoming => ("t", "s"),
-            _ => throw new GraphException($"Unsupported relationship direction '{direction}'.")
-        };
-
-        parameters["rel_props"] = Neo4jRelationshipManager.BuildRelationshipProperties(entity);
-
-        builder.Append("CREATE (").Append(sourceVariable).Append(")-[r:").Append(relationshipType)
-            .Append(" $rel_props]->(").Append(targetVariable).Append(")\n");
-    }
-
     private static string? BuildNodeLabelClause(EntityInfo entity)
     {
         if (entity.ActualType.IsAssignableTo(typeof(Graph.DynamicNode)))
@@ -468,12 +300,4 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
         return CypherIdentifier.Escape(entity.Label, "node label");
     }
 
-    private static Dictionary<string, object?> BuildNodeProperties(EntityInfo entity)
-    {
-        var properties = SerializationHelpers.SerializeSimpleProperties(entity);
-        properties[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
-        properties[nameof(Graph.INode.Labels)] =
-            entity.ActualLabels is null || entity.ActualLabels.Count == 0 ? [entity.Label] : entity.ActualLabels;
-        return properties;
-    }
 }

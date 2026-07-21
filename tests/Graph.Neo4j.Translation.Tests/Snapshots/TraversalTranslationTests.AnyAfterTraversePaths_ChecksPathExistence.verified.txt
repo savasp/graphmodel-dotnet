@@ -1,5 +1,6 @@
 == Cypher ==
 MATCH p = (src:Person|Manager)-[r:KNOWS*1..3]->(tgt:Person|Manager)
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND ALL(__ordinaryRelationship_0 IN r WHERE __ordinaryRelationship_0.__graphModelComplexProperty IS NULL)
 RETURN count(p) > 0 AS exists
 
 == Parameters ==

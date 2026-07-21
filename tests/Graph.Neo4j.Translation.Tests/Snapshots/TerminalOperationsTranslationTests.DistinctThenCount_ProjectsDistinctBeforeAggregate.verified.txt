@@ -1,5 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true })
 WITH DISTINCT src.LastName AS __value0
 RETURN count(__value0)
 

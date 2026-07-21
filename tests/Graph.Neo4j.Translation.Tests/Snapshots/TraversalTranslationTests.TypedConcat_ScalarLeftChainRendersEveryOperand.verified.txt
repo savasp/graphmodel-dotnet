@@ -1,15 +1,15 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-WHERE src.Age >= $u0_u0_p0
-RETURN src.Id
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND src.Age >= $u0_u0_p0
+RETURN src.TestKey
 UNION ALL
 MATCH (src:Person|Manager)
-WHERE src.Age >= $u0_u1_p0
-RETURN src.Id
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND src.Age >= $u0_u1_p0
+RETURN src.TestKey
 UNION ALL
 MATCH (src:Person|Manager)
-WHERE src.Age >= $u1_p0
-RETURN src.Id
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND src.Age >= $u1_p0
+RETURN src.TestKey
 
 == Parameters ==
 u0_u0_p0 = 18

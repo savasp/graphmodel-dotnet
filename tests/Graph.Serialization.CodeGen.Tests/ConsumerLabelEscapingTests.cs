@@ -143,10 +143,8 @@ public class ConsumerLabelEscapingTests
 
             [Relationship({{Literal(label)}})]
             public sealed record Link(
-                string StartNodeId,
-                string EndNodeId,
                 [property: Property(Label = {{Literal(boundLabel)}})] string Note)
-                : Relationship(StartNodeId, EndNodeId);
+                : Relationship;
             """;
 
         var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(
@@ -155,7 +153,7 @@ public class ConsumerLabelEscapingTests
         var linkType = assembly.GetType("HostileRelationshipLabels.Link", throwOnError: true)!;
         var serializer = CreateSerializer(assembly, "HostileRelationshipLabels.Generated.LinkSerializer");
 
-        var link = Activator.CreateInstance(linkType, ["start", "end", "note"])!;
+        var link = Activator.CreateInstance(linkType, ["note"])!;
 
         var serialized = serializer.Serialize(link);
 

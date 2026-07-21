@@ -25,18 +25,14 @@ public sealed record DynamicRelationship : Relationship
     /// <summary>
     /// Initializes a new instance of the <see cref="DynamicRelationship"/> class.
     /// </summary>
-    public DynamicRelationship() : base(string.Empty, string.Empty, RelationshipDirection.Outgoing) { }
+    public DynamicRelationship() { }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DynamicRelationship"/> class with specified parameters.
     /// </summary>
-    /// <param name="startNodeId">The ID of the start node.</param>
-    /// <param name="endNodeId">The ID of the end node.</param>
     /// <param name="type">The type of the relationship.</param>
     /// <param name="properties">The properties of the relationship.</param>
-    /// <param name="direction">The direction of the relationship.</param>
-    public DynamicRelationship(string startNodeId, string endNodeId, string type,
-        IDictionary<string, object?> properties, RelationshipDirection direction = RelationshipDirection.Outgoing) : base(startNodeId, endNodeId, direction)
+    public DynamicRelationship(string type, IDictionary<string, object?> properties)
     {
         Type = type;
         Properties = new Dictionary<string, object?>(properties).AsReadOnly();

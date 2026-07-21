@@ -28,14 +28,14 @@ public class IdentifierEscapingTranslationTests : TranslationTestBase
     [Fact]
     public Task RelationshipRoot_WithPipeInTypeName_EscapesTypeAsSingleName()
     {
-        var query = Root.Relationships<PipeTypedRelationship>().Where(r => r.StartNodeId != "");
+        var query = Root.Relationships<PipeTypedRelationship>().Where(r => r.Marker != "");
         return VerifyTranslation(query);
     }
 
     [Fact]
     public Task RelationshipRoot_WithBacktickInTypeName_DoublesTheBacktick()
     {
-        var query = Root.Relationships<BacktickTypedRelationship>().Where(r => r.StartNodeId != "");
+        var query = Root.Relationships<BacktickTypedRelationship>().Where(r => r.Marker != "");
         return VerifyTranslation(query);
     }
 

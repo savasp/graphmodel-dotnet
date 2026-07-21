@@ -7,6 +7,8 @@ using Cvoya.Graph;
 
 public record Memory : Node
 {
+    public string TestKey { get; init; } = Guid.NewGuid().ToString("N");
+
     [Property(IsRequired = true)]
     public required DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 

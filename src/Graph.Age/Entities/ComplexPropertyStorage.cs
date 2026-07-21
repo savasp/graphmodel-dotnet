@@ -5,5 +5,6 @@ namespace Cvoya.Graph.Age.Entities;
 
 internal static class ComplexPropertyStorage
 {
+    public const string NodeMarkerProperty = "__graphModelComplexValue";
     public const string RelationshipMarkerProperty = "__graphModelComplexProperty";
 }

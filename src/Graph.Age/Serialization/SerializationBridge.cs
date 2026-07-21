@@ -5,18 +5,21 @@ namespace Cvoya.Graph.Age.Serialization;
 
 using System.Collections;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using Cvoya.Graph.Age.Querying.Cypher;
 
 /// <summary>Converts CLR property values to and from AGE-compatible agtype values.</summary>
 internal static class SerializationBridge
 {
     internal const string MetadataPropertyName = "__metadata__";
-    internal const string EntityKindPropertyName = "__graphModelEntityKind__";
-    internal const string NodeEntityKind = "Node";
-    // These names remain the legacy root storage and the provider-owned complex-value storage.
-    // New user roots must never claim either table name.
-    internal const string PhysicalNodeLabel = "CvoyaNode";
-    internal const string PhysicalRelationshipType = "CvoyaRelationship";
+    // AGE stores marker-protected complex values in provider-owned tables. User roots must never
+    // claim either name, and rows without the complex markers are not interpreted as graph roots.
+    internal const string ComplexNodeLabel = "CvoyaNode";
+    internal const string ComplexRelationshipType = "CvoyaRelationship";
+    private const string EncodedNodePrefix = "CvoyaN_";
+    private const string EncodedRelationshipPrefix = "CvoyaR_";
     private const string TypeNameKey = "type";
 
     public static object? ToAgeValue(object? value)
@@ -112,12 +115,45 @@ internal static class SerializationBridge
     internal static void ValidateRootStorageName(string name, string description)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        if (string.Equals(name, PhysicalNodeLabel, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(name, PhysicalRelationshipType, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(name, ComplexNodeLabel, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(name, ComplexRelationshipType, StringComparison.OrdinalIgnoreCase))
         {
             throw new GraphException(
-                $"The {description} '{name}' is reserved by the AGE provider for legacy and complex-value storage.");
+                $"The {description} '{name}' is reserved by the AGE provider for complex-value storage.");
         }
+    }
+
+    internal static string GetRootStorageName(string logicalName, bool relationship)
+    {
+        ValidateRootStorageName(logicalName, relationship ? "relationship type" : "node label");
+        if (CypherIdentifier.IsNativeLabelName(logicalName))
+        {
+            return logicalName;
+        }
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(logicalName));
+        return (relationship ? EncodedRelationshipPrefix : EncodedNodePrefix) +
+            Convert.ToHexString(hash.AsSpan(0, 24));
+    }
+
+    internal static bool IsEncodedRootStorageName(string storageName, bool relationship)
+    {
+        var prefix = relationship ? EncodedRelationshipPrefix : EncodedNodePrefix;
+        if (storageName.Length != prefix.Length + 48 ||
+            !storageName.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        foreach (var character in storageName.AsSpan(prefix.Length))
+        {
+            if (character is not (>= '0' and <= '9') and not (>= 'A' and <= 'F'))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static string RemoveAssemblyVersions(string assemblyQualifiedName)

@@ -37,7 +37,7 @@ public class CG018_InvalidPropertySchemaDeclarationTests
             #nullable enable
             using Cvoya.Graph;
 
-            public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+            public record Knows : Relationship
             {
                 [Property(IsKey = true)]
                 public int? {|#0:Sequence|} { get; set; }
@@ -227,7 +227,7 @@ public class CG018_InvalidPropertySchemaDeclarationTests
                 public string City { get; set; } = string.Empty;
             }
 
-            public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+            public record Knows : Relationship
             {
                 [Property(IsKey = true)]
                 public Address {|#0:Address|} { get; set; } = new();
@@ -251,7 +251,7 @@ public class CG018_InvalidPropertySchemaDeclarationTests
                 public string Name { get; set; } = string.Empty;
             }
 
-            public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+            public record Knows : Relationship
             {
                 public int Since { get; set; }
             }
@@ -275,7 +275,7 @@ public class CG018_InvalidPropertySchemaDeclarationTests
                 public long CustomerNumber { get; set; }
             }
 
-            public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+            public record Knows : Relationship
             {
                 [Property(IsKey = true)]
                 public int Sequence { get; set; }

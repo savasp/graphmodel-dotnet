@@ -264,9 +264,9 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
-    public void Plan_RelationshipEndpointLikeProperty_LowersAsOrdinaryRelationshipProperty()
+    public void Plan_RelationshipPayloadProperty_LowersAsOrdinaryRelationshipProperty()
     {
-        Expression<Func<Knows, string>> selector = relationship => relationship.StartNodeId;
+        Expression<Func<Knows, string>> selector = relationship => relationship.PayloadKey;
 
         var statement = planner.Plan(Model(
             root: new RelationshipRoot(typeof(Knows)),
@@ -275,7 +275,7 @@ public class CypherQueryPlannerTests
         var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
         var property = Assert.IsType<PropertyAccess>(item.Expression);
         Assert.Equal("r", Assert.IsType<VariableRef>(property.Target).Alias);
-        Assert.Equal(nameof(Knows.StartNodeId), property.Property);
+        Assert.Equal(nameof(Knows.PayloadKey), property.Property);
         new CypherAstValidator().Run(statement);
     }
 
@@ -956,7 +956,7 @@ public class CypherQueryPlannerTests
     [Fact]
     public void Plan_LowersJoinToTwoMatchesEqualityAndProjection()
     {
-        Expression<Func<Knows, string>> outerKey = relationship => relationship.StartNodeId;
+        Expression<Func<Knows, string>> outerKey = relationship => relationship.PayloadKey;
         Expression<Func<Person, string>> innerKey = person => person.Id;
         Expression<Func<Knows, Person, string>> result = (_, person) => person.Name;
         var join = new JoinFragment(
@@ -1716,6 +1716,8 @@ public class CypherQueryPlannerTests
     [Node("Person")]
     private sealed record Person : Node
     {
+        public string Id { get; init; } = string.Empty;
+
         public int Age { get; init; }
 
         public string Name { get; init; } = string.Empty;
@@ -1744,7 +1746,12 @@ public class CypherQueryPlannerTests
     }
 
     [Relationship(Label = "KNOWS")]
-    private sealed record Knows(string Start, string End) : Relationship(Start, End);
+    private sealed record Knows : Relationship
+    {
+        public string Id { get; init; } = string.Empty;
+
+        public string PayloadKey { get; init; } = string.Empty;
+    }
 
     private abstract record Animal : Node;
 

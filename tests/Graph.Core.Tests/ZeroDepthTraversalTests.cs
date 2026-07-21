@@ -174,5 +174,5 @@ public class ZeroDepthTraversalTests
     }
 
     [Relationship(Label = "ZERO_DEPTH_KNOWS")]
-    private sealed record Knows(string Start, string End) : Relationship(Start, End);
+    private sealed record Knows : Relationship;
 }

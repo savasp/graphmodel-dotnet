@@ -33,8 +33,7 @@ public class CG016_OpenGenericEntityUnsupportedTests
         const string test = """
             using Cvoya.Graph;
 
-            public record {|#0:GenericLink|}<T>(string StartNodeId, string EndNodeId)
-                : Relationship(StartNodeId, EndNodeId);
+            public record {|#0:GenericLink|}<T> : Relationship;
             """;
 
         var expected = Error().WithLocation(0).WithArguments("GenericLink");

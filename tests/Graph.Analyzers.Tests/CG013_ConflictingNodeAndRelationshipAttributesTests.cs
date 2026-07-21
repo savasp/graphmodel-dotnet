@@ -63,8 +63,6 @@ public class CG013_ConflictingNodeAndRelationshipAttributesTests
                 public IReadOnlyList<string> Labels { get; init; } = new List<string>();
                 public string Type { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             """;
 
@@ -120,8 +118,6 @@ public class CG013_ConflictingNodeAndRelationshipAttributesTests
                 public IReadOnlyList<string> Labels { get; init; } = new List<string>();
                 public string Type { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             """;
 

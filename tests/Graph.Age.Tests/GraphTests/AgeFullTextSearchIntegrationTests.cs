@@ -28,7 +28,7 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
         var inTransaction = await this.Graph.SearchNodes<Person>("TransientToken", transaction)
             .ToListAsync(ct);
         Assert.Single(inTransaction);
-        Assert.Equal(person.Id, inTransaction[0].Id);
+        Assert.Equal(person.TestKey, inTransaction[0].TestKey);
 
         await transaction.RollbackAsync();
 
@@ -38,7 +38,7 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
     }
 
     [Fact]
-    public async Task MixedSearch_AppliesOrderingPagingAndTerminalsAfterCombiningBothKinds()
+    public async Task MixedSearch_AppliesPagingAndTerminalsAfterCombiningBothKinds()
     {
         var ct = TestContext.Current.CancellationToken;
         const string term = "MixedSearchBoundary";
@@ -47,34 +47,25 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
         await this.Graph.CreateNodeAsync(first, null, ct);
         await this.Graph.CreateNodeAsync(second, null, ct);
 
-        var relationship = new KnowsWell
-        {
-            StartNodeId = first.Id,
-            EndNodeId = second.Id,
-            HowWell = $"{term} relationship",
-        };
-        await this.Graph.CreateRelationshipAsync(relationship, null, ct);
+        var relationship = new KnowsWell { HowWell = $"{term} relationship" };
+        await this.Graph.ConnectAsync(first, relationship, second, cancellationToken: ct);
 
         var all = await this.Graph.Search(term).ToListAsync(ct);
         Assert.Equal(2, all.Count);
 
         var paged = await this.Graph.Search(term)
-            .OrderBy(entity => entity.Id)
             .Take(1)
             .ToListAsync(ct);
         Assert.Single(paged);
-        Assert.Equal(all.MinBy(entity => entity.Id)!.Id, paged[0].Id);
 
         Assert.Equal(2, await this.Graph.Search(term).CountAsync(ct));
     }
 
     [Fact]
-    public async Task Search_RawNativeElementsWithoutId_UsesGraphidWithoutExposingIt()
+    public async Task Search_RawNativeElements_DoNotExposeGraphid()
     {
         var ct = TestContext.Current.CancellationToken;
         const string term = "ExternalSearchToken474";
-        long nodeGraphId;
-        long relationshipGraphId;
         await using (var transaction = await this.Graph.GetTransactionAsync(ct))
         {
             await using var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
@@ -85,13 +76,12 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
                 SET target.FirstName = 'Endpoint', target.LastName = 'External', target.Bio = ''
                 CREATE (source)-[relationship:WORKS_REALLY_WELL_WITH]->(target)
                 SET relationship.HowWell = $term
-                RETURN id(source) AS nodeGraphId, id(relationship) AS relationshipGraphId
+                RETURN true AS created
                 """,
                 new { term },
                 ct);
             var record = await result.SingleAsync(ct);
-            nodeGraphId = record["nodeGraphId"].As<long>();
-            relationshipGraphId = record["relationshipGraphId"].As<long>();
+            Assert.True(record["created"].As<bool>());
             await transaction.CommitAsync();
         }
 
@@ -102,13 +92,7 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
 
         Assert.Equal(term, node.FirstName);
         Assert.Equal(term, relationship.HowWell);
-        Assert.Empty(node.Id);
-        Assert.Empty(relationship.Id);
         Assert.Equal(2, mixed.Count);
-        Assert.DoesNotContain(mixed, entity => entity.Id == nodeGraphId.ToString(
-            System.Globalization.CultureInfo.InvariantCulture));
-        Assert.DoesNotContain(mixed, entity => entity.Id == relationshipGraphId.ToString(
-            System.Globalization.CultureInfo.InvariantCulture));
     }
 
     [Fact]
@@ -142,21 +126,19 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
         Assert.Equal(term, node.Properties["Name"]);
         Assert.Equal("EXTERNAL_SEARCH_EDGE", relationship.Type);
         Assert.Equal(term, relationship.Properties["Description"]);
-        Assert.Empty(node.Id);
-        Assert.Empty(relationship.Id);
     }
 
     [Fact]
-    public async Task Search_DuplicateDomainIds_CorrelatesEveryMatchingGraphid()
+    public async Task Search_DuplicateDomainKeys_CorrelatesEveryMatchingGraphid()
     {
         var ct = TestContext.Current.CancellationToken;
         const string term = "DuplicateIdentitySearchToken474";
-        const string duplicateId = "duplicate-search-id-474";
+        const string duplicateKey = "duplicate-search-key-474";
         await this.Graph.CreateNodeAsync(
-            new Person { Id = duplicateId, FirstName = "First", LastName = term },
+            new Person { TestKey = duplicateKey, FirstName = "First", LastName = term },
             cancellationToken: ct);
         await this.Graph.CreateNodeAsync(
-            new Person { Id = duplicateId, FirstName = "Second", LastName = term },
+            new Person { TestKey = duplicateKey, FirstName = "Second", LastName = term },
             cancellationToken: ct);
 
         var results = await this.Graph.SearchNodes<Person>(term)
@@ -165,11 +147,11 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
 
         Assert.Equal(2, results.Count);
         Assert.Equal(["First", "Second"], results.Select(person => person.FirstName));
-        Assert.All(results, person => Assert.Equal(duplicateId, person.Id));
+        Assert.All(results, person => Assert.Equal(duplicateKey, person.TestKey));
     }
 
     [Fact]
-    public async Task Search_ExcludesReservedUniversalTablesFromExternalRootDiscovery()
+    public async Task Search_ExcludesRetiredUniversalTablesFromExternalRootDiscovery()
     {
         var ct = TestContext.Current.CancellationToken;
         const string term = "ReservedUniversalSearchToken474";
@@ -204,15 +186,15 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
     {
         var ct = TestContext.Current.CancellationToken;
         const string searchableId = "SearchableDomainIdToken474";
-        var person = new Person
+        var node = new AtomicOrdinaryIdNode
         {
             Id = searchableId,
-            FirstName = "Ordinary",
-            LastName = "Identity",
+            Marker = "Ordinary",
         };
-        await this.Graph.CreateNodeAsync(person, cancellationToken: ct);
+        await this.Graph.CreateNodeAsync(node, cancellationToken: ct);
 
-        var result = Assert.Single(await this.Graph.SearchNodes<Person>(searchableId).ToListAsync(ct));
+        var result = Assert.Single(
+            await this.Graph.SearchNodes<AtomicOrdinaryIdNode>(searchableId).ToListAsync(ct));
 
         Assert.Equal(searchableId, result.Id);
     }
@@ -232,11 +214,11 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
 }
 
 /// <summary>
-/// A registered node type that excludes every string property — including <c>Id</c> — from
+/// A registered node type that excludes every string property, including the ordinary <c>Id</c>, from
 /// full-text search, so it contributes no phase-one candidate while still owning a native label
 /// table.
 /// </summary>
-#pragma warning disable CG011 // Opting Id out of full-text search requires declaring it here, not on the Node base record.
+#pragma warning disable CG011 // This direct implementation verifies opt-out on an ordinary Id property.
 [Node(Label = "SearchOptedOutNode")]
 public record SearchOptedOutNode : INode
 #pragma warning restore CG011

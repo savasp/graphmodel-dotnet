@@ -5,11 +5,9 @@ namespace Cvoya.Graph.InMemory;
 
 /// <summary>
 /// The at-rest form of one relationship. <paramref name="Key"/> is the only relationship identity,
-/// and every endpoint is represented by a non-null node record key. The optional
-/// <paramref name="CompatibilityId"/> exists solely for transitional direct-ID APIs.
+/// and every endpoint is represented by a non-null node record key.
 /// </summary>
 /// <param name="Key">Store-internal identity of this relationship record.</param>
-/// <param name="CompatibilityId">The transitional caller-visible relationship id, when present.</param>
 /// <param name="Type">The relationship type (for complex-property edges, the property name or
 /// its <c>[ComplexProperty]</c> override).</param>
 /// <param name="StartKey">The first logical endpoint's node record key.</param>
@@ -25,7 +23,6 @@ namespace Cvoya.Graph.InMemory;
 /// values); orders collection items on read.</param>
 internal sealed record RelationshipRecord(
     Guid Key,
-    string? CompatibilityId,
     string Type,
     Guid StartKey,
     Guid EndKey,

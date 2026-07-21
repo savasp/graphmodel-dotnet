@@ -73,8 +73,8 @@ public class SearchTranslationTests : TranslationTestBase
             .Where(segment => segment.Relationship.Since >= 2020)
             .Select(segment => new
             {
-                StartId = segment.StartNode.Id,
-                EndId = segment.EndNode.Id,
+                StartKey = segment.StartNode.TestKey,
+                EndKey = segment.EndNode.TestKey,
             });
 
         return VerifyTranslation(query);

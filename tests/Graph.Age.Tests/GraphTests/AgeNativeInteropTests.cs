@@ -5,26 +5,25 @@ namespace Cvoya.Graph.Age.Tests.GraphTests;
 
 using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
+using Cvoya.Graph.Age.Serialization;
 using Cvoya.Graph.CompatibilityTests;
-using Cvoya.Graph.Querying;
-using Cvoya.Graph.Querying.Commands;
 
-/// <summary>Native AGE shape and migration-free legacy interop coverage for issues #470-#472.</summary>
+/// <summary>Native AGE shape and external-data interoperability coverage.</summary>
 public sealed class AgeNativeInteropTests(AgeHarness harness)
     : AgeTest(harness, StoreIsolation.FreshStore)
 {
     [Node("Mapped Person")]
     public sealed record MappedPerson : Node
     {
+        public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
+
         public string Name { get; set; } = string.Empty;
     }
 
     [Relationship("MAPPED KNOWS")]
     public sealed record MappedKnows : Relationship
     {
-        public MappedKnows() : base(string.Empty, string.Empty) { }
-
-        public MappedKnows(INode source, INode target) : base(source.Id, target.Id) { }
+        public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
     }
 
     [Fact]
@@ -85,76 +84,56 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
         var dynamicNodes = await Graph.DynamicNodes().ToListAsync(cancellationToken);
 
         var root = Assert.Single(dynamicNodes);
-        Assert.Equal(person.Id, root.Id);
+        Assert.Equal(person.FirstName, root.Properties[nameof(Person.FirstName)]);
         Assert.DoesNotContain("CvoyaNode", root.Labels);
     }
 
     [Fact]
-    public async Task DirectIdMutationExcludesComplexValueNodeWithCollidingId()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var person = new PersonWithComplexProperty
-        {
-            FirstName = "Root",
-            Address = new AddressValue { Street = "Value node", City = "Nowhere" },
-        };
-        await Graph.CreateNodeAsync(person, cancellationToken: cancellationToken);
-        await RunRawAsync(
-            """
-            MATCH (owner {Id: $id})-[relationship]->(value)
-            WHERE relationship.__graphModelComplexProperty = true
-            SET value.Id = $id
-            RETURN true AS updated
-            """,
-            new { id = person.Id },
-            cancellationToken);
-
-        await Graph.DeleteNodeAsync(
-            person.Id,
-            cascadeDelete: true,
-            cancellationToken: cancellationToken);
-
-        var remaining = await RunRawForRecordAsync(
-            "MATCH (node) RETURN count(node) AS nodeCount",
-            new { },
-            cancellationToken);
-        Assert.Equal(0, remaining["nodeCount"].As<int>());
-    }
-
-    [Fact]
-    public async Task SubgraphWritesUseLegacyTablesForNonSymbolicMappedNames()
+    public async Task SubgraphWritesUseStableNativeStorageForNonSymbolicMappedNames()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var source = new MappedPerson { Name = "Source" };
         var target = new MappedPerson { Name = "Target" };
-        var relationship = new MappedKnows(source, target);
+        var relationship = new MappedKnows();
 
-        await Graph.CreateAsync(source, relationship, target, null, null, cancellationToken);
+        await Graph.CreateAsync(
+            source,
+            relationship,
+            target,
+            cancellationToken: cancellationToken);
 
         var shape = await RunRawForRecordAsync(
             """
-            MATCH (source {Id: $sourceId})-[relationship {Id: $relationshipId}]->(target {Id: $targetId})
+            MATCH (source {TestKey: $sourceKey})
+                  -[relationship {TestKey: $relationshipKey}]->
+                  (target {TestKey: $targetKey})
             RETURN head(labels(source)) AS sourceLabel,
                    type(relationship) AS relationshipType,
-                   head(source.inheritance_labels) AS logicalNodeLabel,
-                   relationship.Type AS logicalRelationshipType
+                   source.inheritance_labels[0] AS logicalNodeLabel,
+                   relationship.inheritance_labels[0] AS logicalRelationshipType,
+                   relationship.Type IS NULL AS noStoredType
             """,
             new
             {
-                sourceId = source.Id,
-                relationshipId = relationship.Id,
-                targetId = target.Id,
+                sourceKey = source.TestKey,
+                relationshipKey = relationship.TestKey,
+                targetKey = target.TestKey,
             },
             cancellationToken);
 
-        Assert.Equal("CvoyaNode", shape["sourceLabel"].As<string>());
-        Assert.Equal("CvoyaRelationship", shape["relationshipType"].As<string>());
+        Assert.Equal(
+            SerializationBridge.GetRootStorageName("Mapped Person", relationship: false),
+            shape["sourceLabel"].As<string>());
+        Assert.Equal(
+            SerializationBridge.GetRootStorageName("MAPPED KNOWS", relationship: true),
+            shape["relationshipType"].As<string>());
         Assert.Equal("Mapped Person", shape["logicalNodeLabel"].As<string>());
         Assert.Equal("MAPPED KNOWS", shape["logicalRelationshipType"].As<string>());
-        Assert.Equal("Source", (await Graph.GetNodeAsync<MappedPerson>(
-            source.Id, cancellationToken: cancellationToken)).Name);
-        Assert.Equal(relationship.Id, (await Graph.GetRelationshipAsync<MappedKnows>(
-            relationship.Id, cancellationToken: cancellationToken)).Id);
+        Assert.True(shape["noStoredType"].As<bool>());
+        Assert.Equal("Source", (await Graph.FindNodeAsync(source, cancellationToken: cancellationToken)).Name);
+        Assert.Equal(
+            relationship.TestKey,
+            (await Graph.FindRelationshipAsync(relationship, cancellationToken: cancellationToken)).TestKey);
     }
 
     [Fact]
@@ -162,21 +141,31 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var duplicateId = $"duplicate-{Guid.NewGuid():N}";
-        var source = new Person { Id = duplicateId, FirstName = "First" };
-        var duplicate = new Person { Id = duplicateId, FirstName = "Second" };
-        var target = new Person { FirstName = "Target" };
+        var targetId = $"target-{Guid.NewGuid():N}";
+        var source = new AtomicOrdinaryIdNode { Id = duplicateId, Marker = "First" };
+        var duplicate = new AtomicOrdinaryIdNode { Id = duplicateId, Marker = "Second" };
+        var target = new AtomicOrdinaryIdNode { Id = targetId, Marker = "Target" };
         await Graph.CreateNodeAsync(source, cancellationToken: cancellationToken);
         await Graph.CreateNodeAsync(target, cancellationToken: cancellationToken);
-        var relationship = new Knows(source, target) { Since = DateTime.UnixEpoch };
-        await Graph.CreateRelationshipAsync(relationship, cancellationToken: cancellationToken);
+        var sourceQuery = Graph.Nodes<AtomicOrdinaryIdNode>().Where(node => node.Id == duplicateId);
+        var targetQuery = Graph.Nodes<AtomicOrdinaryIdNode>().Where(node => node.Id == targetId);
         await Graph.CreateRelationshipAsync(
-            relationship with { },
+            sourceQuery,
+            new AtomicMutationRelationship { Code = Guid.NewGuid().ToString("N") },
+            targetQuery,
+            cancellationToken: cancellationToken);
+        await Graph.CreateRelationshipAsync(
+            sourceQuery,
+            new AtomicMutationRelationship { Code = Guid.NewGuid().ToString("N") },
+            targetQuery,
             cancellationToken: cancellationToken);
         await Graph.CreateNodeAsync(duplicate, cancellationToken: cancellationToken);
 
         var shape = await RunRawForRecordAsync(
             """
-            MATCH (source {Id: $sourceId})-[relationship {Id: $relationshipId}]->(target {Id: $targetId})
+            MATCH (source:AtomicOrdinaryIdNode {ordinary_id: $sourceId})
+                  -[relationship:ATOMIC_MUTATION_RELATIONSHIP]->
+                  (target:AtomicOrdinaryIdNode {ordinary_id: $targetId})
             RETURN head(labels(source)) AS sourceLabel,
                    type(relationship) AS relationshipType,
                    source.inheritance_labels IS NULL AS noNodeHierarchy,
@@ -188,55 +177,58 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
             new
             {
                 sourceId = source.Id,
-                relationshipId = relationship.Id,
                 targetId = target.Id,
             },
             cancellationToken);
 
-        Assert.Equal("Person", shape["sourceLabel"].As<string>());
-        Assert.Equal("KNOWS", shape["relationshipType"].As<string>());
+        Assert.Equal("AtomicOrdinaryIdNode", shape["sourceLabel"].As<string>());
+        Assert.Equal("ATOMIC_MUTATION_RELATIONSHIP", shape["relationshipType"].As<string>());
         Assert.True(shape["noNodeHierarchy"].As<bool>());
         Assert.True(shape["noEntityKind"].As<bool>());
         Assert.True(shape["noStoredType"].As<bool>());
         Assert.True(shape["noRelationshipHierarchy"].As<bool>());
         Assert.Equal(2, shape["relationshipCount"].As<int>());
-        Assert.Equal(2, await Graph.Nodes<Person>()
-            .Where(person => person.Id == duplicateId)
+        Assert.Equal(2, await Graph.Nodes<AtomicOrdinaryIdNode>()
+            .Where(node => node.Id == duplicateId)
             .CountAsync(cancellationToken));
-        await Assert.ThrowsAsync<GraphException>(() =>
-            Graph.UpdateNodeAsync(source with { FirstName = "Ambiguous" }, cancellationToken: cancellationToken));
+        Assert.Equal(2, await GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<AtomicOrdinaryIdNode>().Where(node => node.Id == duplicateId),
+            setters => setters.SetProperty(node => node.Marker, "Updated"),
+            cancellationToken));
     }
 
     [Fact]
     public async Task SetBasedMutationKeepsFrozenNativeIdentityWhenIdPropertyChanges()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var person = new Person { FirstName = "Before" };
+        var oldId = $"before-{Guid.NewGuid():N}";
+        var person = new AtomicOrdinaryIdNode { Id = oldId, Marker = "Before" };
         await Graph.CreateNodeAsync(person, cancellationToken: cancellationToken);
-        var oldId = person.Id;
         var newId = $"changed-{Guid.NewGuid():N}";
 
         var affected = await GraphCommandExtensions.UpdateAsync(
-            Graph.Nodes<Person>().Where(candidate => candidate.Id == oldId),
+            Graph.Nodes<AtomicOrdinaryIdNode>().Where(candidate => candidate.Id == oldId),
             setters => setters
                 .SetProperty(candidate => candidate.Id, newId)
-                .SetProperty(candidate => candidate.FirstName, "After"),
+                .SetProperty(candidate => candidate.Marker, "After"),
             cancellationToken);
 
         Assert.Equal(1, affected);
-        Assert.Equal("After", (await Graph.GetNodeAsync<Person>(
-            newId, cancellationToken: cancellationToken)).FirstName);
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            Graph.GetNodeAsync<Person>(oldId, cancellationToken: cancellationToken));
+        Assert.Equal("After", (await Graph.Nodes<AtomicOrdinaryIdNode>()
+            .Where(candidate => candidate.Id == newId)
+            .SingleAsync(cancellationToken)).Marker);
+        Assert.Empty(await Graph.Nodes<AtomicOrdinaryIdNode>()
+            .Where(candidate => candidate.Id == oldId)
+            .ToListAsync(cancellationToken));
     }
 
     [Fact]
-    public async Task ConstrainedNodeUpdateSeesRawNativeRowsButNotLegacyUniversalRows()
+    public async Task ConstrainedNodeUpdateSeesRawNativeRowsButNotUnrelatedLabels()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var marker = $"atomic-node-{Guid.NewGuid():N}";
         var externalEmail = $"external-{Guid.NewGuid():N}@example.test";
-        var legacyEmail = $"legacy-{Guid.NewGuid():N}@example.test";
+        var unrelatedEmail = $"unrelated-{Guid.NewGuid():N}@example.test";
         await Graph.CreateNodeAsync(
             new AtomicMutationNode
             {
@@ -253,13 +245,13 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
                 external.KeyCode = 'external',
                 external.Email = $externalEmail,
                 external.Marker = 'raw-native'
-            CREATE (legacy:CvoyaNode)
-            SET legacy.inheritance_labels = ['AtomicMutationNode'],
-                legacy.Email = $legacyEmail,
-                legacy.Marker = 'legacy-universal'
+            CREATE (unrelated:CvoyaNode)
+            SET unrelated.inheritance_labels = ['AtomicMutationNode'],
+                unrelated.Email = $unrelatedEmail,
+                unrelated.Marker = 'unrelated-label'
             RETURN true AS created
             """,
-            new { marker, externalEmail, legacyEmail },
+            new { marker, externalEmail, unrelatedEmail },
             cancellationToken);
 
         await Assert.ThrowsAsync<GraphException>(() => GraphCommandExtensions.UpdateAsync(
@@ -271,7 +263,7 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
 
         var affected = await GraphCommandExtensions.UpdateAsync(
             Graph.Nodes<AtomicMutationNode>().Where(candidate => candidate.Marker == marker),
-            setters => setters.SetProperty(candidate => candidate.Email, legacyEmail),
+            setters => setters.SetProperty(candidate => candidate.Email, unrelatedEmail),
             cancellationToken);
         var storedEmail = await Graph.Nodes<AtomicMutationNode>()
             .Where(candidate => candidate.Marker == marker)
@@ -279,39 +271,47 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
             .SingleAsync(cancellationToken);
 
         Assert.Equal(1, affected);
-        Assert.Equal(legacyEmail, storedEmail);
+        Assert.Equal(unrelatedEmail, storedEmail);
     }
 
     [Fact]
-    public async Task ConstrainedRelationshipUpdateSeesRawNativeRowsButNotLegacyUniversalRows()
+    public async Task ConstrainedRelationshipUpdateSeesRawNativeRowsButNotUnrelatedTypes()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var marker = $"atomic-relationship-{Guid.NewGuid():N}";
         var externalCode = $"external-{Guid.NewGuid():N}";
-        var legacyCode = $"legacy-{Guid.NewGuid():N}";
+        var unrelatedCode = $"unrelated-{Guid.NewGuid():N}";
         var source = new Person { FirstName = marker + "-source" };
         var target = new Person { FirstName = marker + "-target" };
         await Graph.CreateNodeAsync(source, cancellationToken: cancellationToken);
         await Graph.CreateNodeAsync(target, cancellationToken: cancellationToken);
-        await Graph.CreateRelationshipAsync(
-            new AtomicMutationRelationship(source.Id, target.Id)
+        await Graph.ConnectAsync(
+            source,
+            new AtomicMutationRelationship
             {
                 Code = $"selected-{Guid.NewGuid():N}",
                 Marker = marker,
             },
+            target,
             cancellationToken: cancellationToken);
         await RunRawAsync(
             """
-            MATCH (source:Person {Id: $sourceId}), (target:Person {Id: $targetId})
+            MATCH (source:Person {TestKey: $sourceKey}), (target:Person {TestKey: $targetKey})
             CREATE (source)-[external:ATOMIC_MUTATION_RELATIONSHIP]->(target)
             SET external.Code = $externalCode, external.Marker = 'raw-native'
-            CREATE (source)-[legacy:CvoyaRelationship]->(target)
-            SET legacy.Type = 'ATOMIC_MUTATION_RELATIONSHIP',
-                legacy.Code = $legacyCode,
-                legacy.Marker = 'legacy-universal'
+            CREATE (source)-[unrelated:CvoyaRelationship]->(target)
+            SET unrelated.Type = 'ATOMIC_MUTATION_RELATIONSHIP',
+                unrelated.Code = $unrelatedCode,
+                unrelated.Marker = 'unrelated-type'
             RETURN true AS created
             """,
-            new { sourceId = source.Id, targetId = target.Id, externalCode, legacyCode },
+            new
+            {
+                sourceKey = source.TestKey,
+                targetKey = target.TestKey,
+                externalCode,
+                unrelatedCode,
+            },
             cancellationToken);
 
         await Assert.ThrowsAsync<GraphException>(() => GraphCommandExtensions.UpdateAsync(
@@ -323,7 +323,7 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
 
         var affected = await GraphCommandExtensions.UpdateAsync(
             Graph.Relationships<AtomicMutationRelationship>().Where(candidate => candidate.Marker == marker),
-            setters => setters.SetProperty(candidate => candidate.Code, legacyCode),
+            setters => setters.SetProperty(candidate => candidate.Code, unrelatedCode),
             cancellationToken);
         var storedCode = await Graph.Relationships<AtomicMutationRelationship>()
             .Where(candidate => candidate.Marker == marker)
@@ -331,7 +331,7 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
             .SingleAsync(cancellationToken);
 
         Assert.Equal(1, affected);
-        Assert.Equal(legacyCode, storedCode);
+        Assert.Equal(unrelatedCode, storedCode);
     }
 
     [Fact]
@@ -342,65 +342,59 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
         var selectedTarget = new Person { FirstName = "Selected target" };
         await Graph.CreateNodeAsync(selectedSource, cancellationToken: cancellationToken);
         await Graph.CreateNodeAsync(selectedTarget, cancellationToken: cancellationToken);
-        var sourceQuery = Graph.Nodes<Person>().Where(node => node.Id == selectedSource.Id);
-        var targetQuery = Graph.Nodes<Person>().Where(node => node.Id == selectedTarget.Id);
+        var sourceQuery = Graph.Nodes<Person>().Where(node => node.TestKey == selectedSource.TestKey);
+        var targetQuery = Graph.Nodes<Person>().Where(node => node.TestKey == selectedTarget.TestKey);
 
-        await CreateWithSelectionsAsync(
+        await Graph.CreateRelationshipAsync(
             sourceQuery,
-            new Knows(string.Empty, string.Empty),
+            new Knows(),
             targetQuery,
             RelationshipDirection.Outgoing,
             cancellationToken);
-        await CreateHybridAsync(
+        await Graph.CreateAsync(
             sourceQuery,
-            new Knows(string.Empty, string.Empty),
+            new Knows(),
             new Person { FirstName = "New target" },
-            newEndpointIsTarget: true,
-            cancellationToken);
-        await CreateHybridAsync(
-            targetQuery,
-            new Knows(string.Empty, string.Empty),
+            cancellationToken: cancellationToken);
+        await Graph.CreateAsync(
             new Person { FirstName = "New source" },
-            newEndpointIsTarget: false,
-            cancellationToken);
+            new Knows(),
+            targetQuery,
+            cancellationToken: cancellationToken);
 
         var allNewSource = new Person { FirstName = "All-new source" };
         var allNewTarget = new Person { FirstName = "All-new target" };
-        await CreateAllNewAsync(
+        await Graph.CreateAsync(
             allNewSource,
-            new Knows(string.Empty, string.Empty),
+            new Knows(),
             allNewTarget,
-            selfLoop: false,
-            cancellationToken);
+            cancellationToken: cancellationToken);
         var selfLoop = new Person { FirstName = "Self loop" };
-        await CreateAllNewAsync(
+        await Graph.CreateSelfLoopAsync(
             selfLoop,
-            new Knows(string.Empty, string.Empty),
-            selfLoop,
-            selfLoop: true,
-            cancellationToken);
+            new Knows(),
+            cancellationToken: cancellationToken);
 
-        var equalSource = new Person { Id = $"equal-{Guid.NewGuid():N}", FirstName = "Equal" };
+        var equalSource = new Person { TestKey = $"equal-{Guid.NewGuid():N}", FirstName = "Equal" };
         var equalTarget = equalSource with { };
         Assert.Equal(equalSource, equalTarget);
         Assert.NotSame(equalSource, equalTarget);
-        await CreateAllNewAsync(
+        await Graph.CreateAsync(
             equalSource,
-            new Knows(string.Empty, string.Empty),
+            new Knows(),
             equalTarget,
-            selfLoop: false,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         Assert.Equal(6, await Graph.Relationships<Knows>().CountAsync(cancellationToken));
         Assert.Equal(2, await Graph.Nodes<Person>()
-            .Where(node => node.Id == equalSource.Id)
+            .Where(node => node.TestKey == equalSource.TestKey)
             .CountAsync(cancellationToken));
         var loopCount = await RunRawForRecordAsync(
             """
-            MATCH (node {Id: $id})-[relationship:KNOWS]->(node)
+            MATCH (node:Person {TestKey: $key})-[relationship:KNOWS]->(node)
             RETURN count(relationship) AS loopCount
             """,
-            new { id = selfLoop.Id },
+            new { key = selfLoop.TestKey },
             cancellationToken);
         Assert.Equal(1, loopCount["loopCount"].As<int>());
         var syntheticDirectionCount = await RunRawForRecordAsync(
@@ -417,37 +411,30 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
         var cancellationToken = TestContext.Current.CancellationToken;
         var createdBeforeFailure = new Person { FirstName = "Must roll back" };
         var invalidTarget = new DynamicNode(
-            ["CvoyaNode"],
-            new Dictionary<string, object?> { ["name"] = "reserved" });
+            ["invalid\nlabel"],
+            new Dictionary<string, object?> { ["name"] = "invalid" });
         var survivor = new Person { FirstName = "Caller can continue" };
 
         await using (var transaction = await Graph.GetTransactionAsync(cancellationToken))
         {
-            var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(
-                Graph.Nodes<Person>(transaction).Provider);
-            await Assert.ThrowsAsync<GraphException>(() => provider.InWriteTransactionAsync(
-                async (context, token) =>
-                {
-                    await context.CreateRelationshipAsync(
-                        new NewGraphCommandEndpoint(createdBeforeFailure),
-                        new Knows(string.Empty, string.Empty),
-                        new NewGraphCommandEndpoint(invalidTarget),
-                        RelationshipDirection.Outgoing,
-                        GraphRelationshipCreationMode.Standard,
-                        token).ConfigureAwait(false);
-                    return true;
-                },
+            await Assert.ThrowsAsync<GraphException>(() => Graph.CreateAsync(
+                createdBeforeFailure,
+                new Knows(),
+                invalidTarget,
+                RelationshipDirection.Outgoing,
+                transaction,
                 cancellationToken));
 
             await Graph.CreateNodeAsync(survivor, transaction, cancellationToken);
             await transaction.CommitAsync();
         }
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            Graph.GetNodeAsync<Person>(createdBeforeFailure.Id, cancellationToken: cancellationToken));
+        Assert.Empty(await Graph.Nodes<Person>()
+            .Where(candidate => candidate.TestKey == createdBeforeFailure.TestKey)
+            .ToListAsync(cancellationToken));
         Assert.Equal(
-            survivor.Id,
-            (await Graph.GetNodeAsync<Person>(survivor.Id, cancellationToken: cancellationToken)).Id);
+            survivor.TestKey,
+            (await Graph.FindNodeAsync(survivor, cancellationToken: cancellationToken)).TestKey);
     }
 
     private async Task RunRawAsync(string cypher, object parameters, CancellationToken cancellationToken)
@@ -472,100 +459,4 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
         return record;
     }
 
-    private static async Task CreateWithSelectionsAsync(
-        IGraphQueryable<Person> source,
-        IRelationship relationship,
-        IGraphQueryable<Person> target,
-        RelationshipDirection direction,
-        CancellationToken cancellationToken)
-    {
-        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(source.Provider);
-        await provider.InWriteTransactionAsync(
-            async (context, token) =>
-            {
-                var selectedSource = await SelectAsync(
-                    context, source, GraphEndpointRole.Source, token).ConfigureAwait(false);
-                var selectedTarget = await SelectAsync(
-                    context, target, GraphEndpointRole.Target, token).ConfigureAwait(false);
-                await context.CreateRelationshipAsync(
-                    new SelectedGraphCommandEndpoint(selectedSource),
-                    relationship,
-                    new SelectedGraphCommandEndpoint(selectedTarget),
-                    direction,
-                    GraphRelationshipCreationMode.Standard,
-                    token).ConfigureAwait(false);
-                return true;
-            },
-            cancellationToken);
-    }
-
-    private static async Task CreateHybridAsync(
-        IGraphQueryable<Person> selected,
-        IRelationship relationship,
-        INode newEndpoint,
-        bool newEndpointIsTarget,
-        CancellationToken cancellationToken)
-    {
-        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(selected.Provider);
-        await provider.InWriteTransactionAsync(
-            async (context, token) =>
-            {
-                var role = newEndpointIsTarget ? GraphEndpointRole.Source : GraphEndpointRole.Target;
-                var selectedElement = await SelectAsync(context, selected, role, token).ConfigureAwait(false);
-                GraphCommandEndpoint source = newEndpointIsTarget
-                    ? new SelectedGraphCommandEndpoint(selectedElement)
-                    : new NewGraphCommandEndpoint(newEndpoint);
-                GraphCommandEndpoint target = newEndpointIsTarget
-                    ? new NewGraphCommandEndpoint(newEndpoint)
-                    : new SelectedGraphCommandEndpoint(selectedElement);
-                await context.CreateRelationshipAsync(
-                        source,
-                        relationship,
-                        target,
-                        RelationshipDirection.Outgoing,
-                        GraphRelationshipCreationMode.Standard,
-                        token)
-                    .ConfigureAwait(false);
-                return true;
-            },
-            cancellationToken);
-    }
-
-    private async Task CreateAllNewAsync(
-        INode source,
-        IRelationship relationship,
-        INode target,
-        bool selfLoop,
-        CancellationToken cancellationToken)
-    {
-        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(Graph.Nodes<Person>().Provider);
-        await provider.InWriteTransactionAsync(
-            async (context, token) =>
-            {
-                await context.CreateRelationshipAsync(
-                    new NewGraphCommandEndpoint(source),
-                    relationship,
-                    new NewGraphCommandEndpoint(target),
-                    RelationshipDirection.Outgoing,
-                    selfLoop
-                        ? GraphRelationshipCreationMode.SelfLoop
-                        : GraphRelationshipCreationMode.Standard,
-                    token).ConfigureAwait(false);
-                return true;
-            },
-            cancellationToken);
-    }
-
-    private static Task<SelectedGraphElement> SelectAsync(
-        IGraphCommandExecutionContext context,
-        IGraphQueryable<Person> query,
-        GraphEndpointRole role,
-        CancellationToken cancellationToken) => GraphCommandSelection.SelectExactOneAsync(
-            context,
-            new GraphElementSelectionModel(
-                GraphQueryModelBuilder.Build(query.Expression),
-                GraphElementSelectionMode.ExactOne),
-            query.Expression,
-            role,
-            cancellationToken);
 }

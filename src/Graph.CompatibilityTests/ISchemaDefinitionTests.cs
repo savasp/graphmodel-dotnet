@@ -29,9 +29,6 @@ public record ConfigTestPerson : Node
 [Relationship("ConfigTestKnows")]
 public record ConfigTestKnows : Relationship
 {
-    public ConfigTestKnows() : base(string.Empty, string.Empty) { }
-    public ConfigTestKnows(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     [Property(IsIndexed = true)]
     public DateTime Since { get; set; } = DateTime.UtcNow;
 
@@ -208,7 +205,9 @@ public interface ISchemaDefinitionTests : IGraphTest
         await Graph.CreateNodeAsync(validPerson, null, TestContext.Current.CancellationToken);
 
         // Assert - Verify the person was created successfully
-        var retrievedPerson = await Graph.GetNodeAsync<ConfigTestPerson>(validPerson.Id, null, TestContext.Current.CancellationToken);
+        var retrievedPerson = await Graph.Nodes<ConfigTestPerson>()
+            .Where(person => person.Email == validPerson.Email)
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(retrievedPerson);
         Assert.Equal("John", retrievedPerson.FirstName);
         Assert.Equal("john.doe@example.com", retrievedPerson.Email);

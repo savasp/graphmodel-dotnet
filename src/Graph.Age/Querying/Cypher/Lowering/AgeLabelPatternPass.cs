@@ -4,12 +4,13 @@
 namespace Cvoya.Graph.Age.Querying.Cypher.Lowering;
 
 using Cvoya.Graph.Age.Entities;
+using Cvoya.Graph.Age.Serialization;
 using Cvoya.Graph.Cypher.Ast;
 using Cvoya.Graph.Cypher.Ast.Expressions;
 using Cvoya.Graph.Cypher.Validation;
 
 /// <summary>
-/// Lowers logical node labels and relationship types to AGE native-or-legacy predicates.
+/// Lowers logical node labels and relationship types to AGE native and hierarchy predicates.
 /// </summary>
 internal sealed class AgeLabelPatternPass : ICypherPass
 {
@@ -51,13 +52,18 @@ internal sealed class AgeLabelPatternPass : ICypherPass
                         changed = true;
                         if (index + 1 < clauses.Count && clauses[index + 1] is WhereClause where)
                         {
-                            predicates.Add(where.Predicate);
+                            predicates.Add(RewriteLogicalRelationshipType(where.Predicate));
                             index++;
                         }
 
                         output.Add(new WhereClause(Conjoin(predicates)));
                         break;
                     }
+
+                case WhereClause where:
+                    output.Add(new WhereClause(RewriteLogicalRelationshipType(where.Predicate)));
+                    changed = true;
+                    break;
 
                 case CallSubqueryClause subquery:
                     {
@@ -76,6 +82,92 @@ internal sealed class AgeLabelPatternPass : ICypherPass
         }
 
         return output.ToArray();
+    }
+
+    private static CypherExpression RewriteLogicalRelationshipType(CypherExpression expression) =>
+        expression switch
+        {
+            BinaryExpression binary => new BinaryExpression(
+                binary.Op,
+                RewriteLogicalRelationshipType(binary.Left),
+                RewriteLogicalRelationshipType(binary.Right)),
+            UnaryExpression unary => new UnaryExpression(
+                unary.Op,
+                RewriteLogicalRelationshipType(unary.Operand)),
+            PropertyAccess property => new PropertyAccess(
+                RewriteLogicalRelationshipType(property.Target),
+                property.Property),
+            EscapedPropertyAccess property => new EscapedPropertyAccess(
+                RewriteLogicalRelationshipType(property.Target),
+                property.Property),
+            FunctionCall { Name: "type", Arguments: [var target] } => LogicalRelationshipType(target),
+            FunctionCall function => new FunctionCall(
+                function.Name,
+                function.Arguments.Select(RewriteLogicalRelationshipType).ToArray()),
+            LabelTest label => new LabelTest(
+                RewriteLogicalRelationshipType(label.Target),
+                label.Labels),
+            ListExpression list => new ListExpression(
+                list.Items.Select(RewriteLogicalRelationshipType).ToArray()),
+            ListComprehensionExpression comprehension => new ListComprehensionExpression(
+                RewriteLogicalRelationshipType(comprehension.Source),
+                comprehension.IteratorAlias,
+                comprehension.Predicate is null
+                    ? null
+                    : RewriteLogicalRelationshipType(comprehension.Predicate),
+                comprehension.Projection is null
+                    ? null
+                    : RewriteLogicalRelationshipType(comprehension.Projection)),
+            ReduceExpression reduce => new ReduceExpression(
+                reduce.AccumulatorAlias,
+                RewriteLogicalRelationshipType(reduce.Seed),
+                reduce.IteratorAlias,
+                RewriteLogicalRelationshipType(reduce.Source),
+                RewriteLogicalRelationshipType(reduce.Reducer)),
+            AllExpression all => new AllExpression(
+                all.IteratorAlias,
+                RewriteLogicalRelationshipType(all.Source),
+                RewriteLogicalRelationshipType(all.Predicate)),
+            MapExpression map => new MapExpression(map.Entries
+                .Select(entry => new MapEntry(entry.Key, RewriteLogicalRelationshipType(entry.Value)))
+                .ToArray()),
+            IndexExpression index => new IndexExpression(
+                RewriteLogicalRelationshipType(index.Target),
+                RewriteLogicalRelationshipType(index.Index)),
+            CaseExpression @case => new CaseExpression(
+                RewriteLogicalRelationshipType(@case.Condition),
+                RewriteLogicalRelationshipType(@case.WhenTrue),
+                @case.WhenFalse is null
+                    ? null
+                    : RewriteLogicalRelationshipType(@case.WhenFalse)),
+            ConjunctionExpression conjunction => new ConjunctionExpression(
+                conjunction.Predicates.Select(RewriteLogicalRelationshipType).ToArray()),
+            PatternSubqueryExpression subquery => new PatternSubqueryExpression(
+                subquery.Kind,
+                subquery.Pattern,
+                subquery.Predicate is null
+                    ? null
+                    : RewriteLogicalRelationshipType(subquery.Predicate)),
+            PatternComprehensionExpression comprehension => new PatternComprehensionExpression(
+                comprehension.Pattern,
+                RewriteLogicalRelationshipType(comprehension.Projection),
+                comprehension.Predicate is null
+                    ? null
+                    : RewriteLogicalRelationshipType(comprehension.Predicate)),
+            _ => expression,
+        };
+
+    private static IndexExpression LogicalRelationshipType(CypherExpression target)
+    {
+        var rewrittenTarget = RewriteLogicalRelationshipType(target);
+        return new IndexExpression(
+            new FunctionCall(
+                "coalesce",
+                [
+                    new PropertyAccess(rewrittenTarget, AgeElementMatcher.InheritanceLabelsProperty),
+                    new ListExpression([new FunctionCall("type", [rewrittenTarget])]),
+                ]),
+            ToInteger(new Literal(0)));
     }
 
     private static MatchClause RewriteMatch(
@@ -153,9 +245,7 @@ internal sealed class AgeLabelPatternPass : ICypherPass
             changed |= patternChanged;
         }
 
-        // The legacy rendered-text rewrite processed all node patterns before relationships. Keep
-        // that stable ordering so the structured renderer remains byte-identical where its AST can
-        // express the same redundant parentheses.
+        // Keep node predicates before relationship predicates so rendering remains stable.
         predicates = [.. nodePredicates, .. relationshipPredicates];
         return changed ? new MatchClause(patterns, match.Optional) : match;
     }
@@ -211,40 +301,47 @@ internal sealed class AgeLabelPatternPass : ICypherPass
             Function("size", relationships));
     }
 
-    private static UnaryExpression UserRootPredicate(string alias, AliasGenerator aliasGenerator)
+    private static BinaryExpression UserRootPredicate(string alias, AliasGenerator aliasGenerator)
     {
         var (ownerAlias, relationshipAlias) = aliasGenerator.NextOwnerAliases();
-        return new UnaryExpression(
-            CypherUnaryOperator.Not,
-            new PatternSubqueryExpression(
-                PatternSubqueryKind.Exists,
-                new PathPattern(
-                [
-                    new NodePattern(ownerAlias, []),
-                    new RelationshipPattern(
-                        relationshipAlias,
-                        CypherDirection.Outgoing,
-                        depth: null,
-                        types: []),
-                    new NodePattern(alias, []),
-                ]),
-                new BinaryExpression(
-                    CypherBinaryOperator.Equal,
-                    new FunctionCall(
-                        "coalesce",
-                        [
-                            new PropertyAccess(
-                                new VariableRef(relationshipAlias),
-                                ComplexPropertyStorage.RelationshipMarkerProperty),
-                            new Literal(false),
-                        ]),
-                    new Literal(true))));
+        var isOwnedComplexValue = new PatternSubqueryExpression(
+            PatternSubqueryKind.Exists,
+            new PathPattern(
+            [
+                new NodePattern(ownerAlias, []),
+                new RelationshipPattern(
+                    relationshipAlias,
+                    CypherDirection.Outgoing,
+                    depth: null,
+                    types: []),
+                new NodePattern(alias, []),
+            ]),
+            new BinaryExpression(
+                CypherBinaryOperator.Equal,
+                new FunctionCall(
+                    "coalesce",
+                    [
+                        new PropertyAccess(
+                            new VariableRef(relationshipAlias),
+                            ComplexPropertyStorage.RelationshipMarkerProperty),
+                        new Literal(false),
+                    ]),
+                new Literal(true)));
+        var usesComplexStorageLabel = new BinaryExpression(
+            CypherBinaryOperator.In,
+            new Literal(SerializationBridge.ComplexNodeLabel),
+            new FunctionCall("labels", [new VariableRef(alias)]));
+        return new BinaryExpression(
+            CypherBinaryOperator.And,
+            new UnaryExpression(CypherUnaryOperator.Not, isOwnedComplexValue),
+            new UnaryExpression(CypherUnaryOperator.Not, usesComplexStorageLabel));
     }
 
     private static BinaryExpression StorageRelationshipPredicate(
         CypherExpression relationship,
-        bool isComplexProperty) =>
-        new BinaryExpression(
+        bool isComplexProperty)
+    {
+        var hasExpectedMarker = new BinaryExpression(
             CypherBinaryOperator.Equal,
             new FunctionCall(
                 "coalesce",
@@ -255,6 +352,20 @@ internal sealed class AgeLabelPatternPass : ICypherPass
                     new Literal(false),
                 ]),
             new Literal(isComplexProperty));
+        if (isComplexProperty)
+        {
+            return hasExpectedMarker;
+        }
+
+        var avoidsReservedStorageType = new BinaryExpression(
+            CypherBinaryOperator.NotEqual,
+            new FunctionCall("type", [relationship]),
+            new Literal(SerializationBridge.ComplexRelationshipType));
+        return new BinaryExpression(
+            CypherBinaryOperator.And,
+            hasExpectedMarker,
+            avoidsReservedStorageType);
+    }
 
     private static CypherExpression ConjoinRelationshipPredicates(
         CypherExpression? logicalType,

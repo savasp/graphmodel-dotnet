@@ -18,7 +18,7 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        var retrieved = await Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, null, TestContext.Current.CancellationToken);
         Assert.Equal("TransactionTest", retrieved.FirstName);
         Assert.Equal("Commit", retrieved.LastName);
     }
@@ -32,8 +32,8 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
         await transaction.RollbackAsync();
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, null, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -47,8 +47,8 @@ public interface ITransactionTests : IGraphTest
             // Dispose without commit should rollback
         }
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, null, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -56,24 +56,33 @@ public interface ITransactionTests : IGraphTest
     {
         var person1 = new Person { FirstName = "Transaction", LastName = "Person1" };
         var person2 = new Person { FirstName = "Transaction", LastName = "Person2" };
-        var relationship = new Friend(person1.Id, person2.Id) { Since = DateTime.UtcNow };
+        var relationship = new Friend { Since = DateTime.UtcNow };
 
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
 
         await Graph.CreateNodeAsync(person1, transaction, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person2, transaction, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(relationship, transaction, TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(
+            person1,
+            relationship,
+            person2,
+            transaction: transaction,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         await transaction.CommitAsync();
 
-        var retrievedPerson1 = await Graph.GetNodeAsync<Person>(person1.Id, null, TestContext.Current.CancellationToken);
-        var retrievedPerson2 = await Graph.GetNodeAsync<Person>(person2.Id, null, TestContext.Current.CancellationToken);
-        var retrievedRelationship = await Graph.GetRelationshipAsync<Friend>(relationship.Id, null, TestContext.Current.CancellationToken);
+        var retrievedPerson1 = await Graph.FindNodeByTestKeyAsync<Person>(person1.TestKey, null, TestContext.Current.CancellationToken);
+        var retrievedPerson2 = await Graph.FindNodeByTestKeyAsync<Person>(person2.TestKey, null, TestContext.Current.CancellationToken);
+        var retrievedRelationship = await Graph.FindRelationshipByTestKeyAsync<Friend>(relationship.TestKey, null, TestContext.Current.CancellationToken);
 
         Assert.Equal("Person1", retrievedPerson1.LastName);
         Assert.Equal("Person2", retrievedPerson2.LastName);
-        Assert.Equal(person1.Id, retrievedRelationship.StartNodeId);
-        Assert.Equal(person2.Id, retrievedRelationship.EndNodeId);
+        Assert.Equal(relationship.TestKey, retrievedRelationship.TestKey);
+        var segment = await Graph.SelectNode(person1)
+            .PathSegments<Person, Friend, Person>()
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(person2.TestKey, segment.EndNode.TestKey);
+        Assert.Equal(RelationshipDirection.Outgoing, segment.Direction);
     }
 
     [Fact]
@@ -83,18 +92,20 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
-        person.FirstName = "Updated";
-        person.LastName = "InTransaction";
-        await Graph.UpdateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
+        await Graph.SelectNode(person, transaction).UpdateAsync(
+            setters => setters
+                .SetProperty(candidate => candidate.FirstName, "Updated")
+                .SetProperty(candidate => candidate.LastName, "InTransaction"),
+            TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        var retrieved = await Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, null, TestContext.Current.CancellationToken);
         Assert.Equal("Updated", retrieved.FirstName);
         Assert.Equal("InTransaction", retrieved.LastName);
     }
 
     [Fact]
-    public async Task RelationshipTypeChange_DoesNotCorruptStagedUpdateAndRollbackRestoresOriginal()
+    public async Task RelationshipMetadataUpdate_DoesNotCorruptStagedUpdateAndRollbackRestoresOriginal()
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
@@ -102,47 +113,34 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
         var originalSince = DateTime.UtcNow;
-        var knows = new Knows(p1.Id, p2.Id) { Since = originalSince };
-        await Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        var knows = new Knows { Since = originalSince };
+        await Graph.ConnectAsync(p1, knows, p2, cancellationToken: TestContext.Current.CancellationToken);
 
         var stagedSince = originalSince.AddDays(1);
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
-        var stagedKnows = knows with { Since = stagedSince };
-        await Graph.UpdateRelationshipAsync(stagedKnows, transaction, TestContext.Current.CancellationToken);
+        var selected = Graph.SelectRelationship(knows, transaction);
+        await selected.UpdateAsync(
+            setters => setters.SetProperty(candidate => candidate.Since, stagedSince),
+            TestContext.Current.CancellationToken);
 
-        var friend = new Friend(p1.Id, p2.Id)
-        {
-            Id = knows.Id,
-            Direction = RelationshipDirection.Outgoing,
-            Since = originalSince.AddDays(2)
-        };
-        var exception = await Assert.ThrowsAsync<GraphException>(() =>
-            Graph.UpdateRelationshipAsync(friend, transaction, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<GraphQueryTranslationException>(() => selected.UpdateAsync(
+            setters => setters.SetProperty(candidate => candidate.Type, "FRIENDOF"),
+            TestContext.Current.CancellationToken));
 
-        Assert.StartsWith(
-            "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.",
-            exception.Message);
-
-        var fetchedInTransaction = await Graph.GetRelationshipAsync<Knows>(
-            knows.Id,
+        var fetchedInTransaction = await Graph.FindRelationshipByTestKeyAsync<Knows>(
+            knows.TestKey,
             transaction,
             TestContext.Current.CancellationToken);
         Assert.Equal(Labels.GetLabelFromType(typeof(Knows)), fetchedInTransaction.Type);
-        Assert.Equal(p1.Id, fetchedInTransaction.StartNodeId);
-        Assert.Equal(p2.Id, fetchedInTransaction.EndNodeId);
-        Assert.Equal(RelationshipDirection.Outgoing, fetchedInTransaction.Direction);
         Assert.Equal(stagedSince, fetchedInTransaction.Since);
 
         await transaction.RollbackAsync();
 
-        var fetchedAfterRollback = await Graph.GetRelationshipAsync<Knows>(
-            knows.Id,
+        var fetchedAfterRollback = await Graph.FindRelationshipByTestKeyAsync<Knows>(
+            knows.TestKey,
             null,
             TestContext.Current.CancellationToken);
         Assert.Equal(Labels.GetLabelFromType(typeof(Knows)), fetchedAfterRollback.Type);
-        Assert.Equal(p1.Id, fetchedAfterRollback.StartNodeId);
-        Assert.Equal(p2.Id, fetchedAfterRollback.EndNodeId);
-        Assert.Equal(RelationshipDirection.Outgoing, fetchedAfterRollback.Direction);
         Assert.Equal(originalSince, fetchedAfterRollback.Since);
     }
 
@@ -153,11 +151,12 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
-        await Graph.DeleteNodeAsync(person.Id, false, transaction, TestContext.Current.CancellationToken);
+        await Graph.SelectNode(person, transaction)
+            .DeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, null, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -168,20 +167,21 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
 
-        var relationship = new Friend(person1.Id, person2.Id);
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        var relationship = new Friend();
+        await Graph.ConnectAsync(person1, relationship, person2, cancellationToken: TestContext.Current.CancellationToken);
 
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
-        await Graph.DeleteNodeAsync(person1.Id, true, transaction, TestContext.Current.CancellationToken);
+        await Graph.SelectNode(person1, transaction)
+            .DeleteAsync(cascadeDelete: true, cancellationToken: TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetNodeAsync<Person>(person1.Id, null, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetRelationshipAsync<Friend>(relationship.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Graph.FindNodeByTestKeyAsync<Person>(person1.TestKey, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Graph.FindRelationshipByTestKeyAsync<Friend>(relationship.TestKey, null, TestContext.Current.CancellationToken));
 
-        var remainingPerson = await Graph.GetNodeAsync<Person>(person2.Id, null, TestContext.Current.CancellationToken);
-        Assert.Equal(person2.Id, remainingPerson.Id);
+        var remainingPerson = await Graph.FindNodeByTestKeyAsync<Person>(person2.TestKey, null, TestContext.Current.CancellationToken);
+        Assert.Equal(person2.TestKey, remainingPerson.TestKey);
     }
 
     [Fact]
@@ -195,10 +195,13 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(person1, transaction, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person2, transaction, TestContext.Current.CancellationToken);
 
-        // Try to create a duplicate (this should cause the transaction to fail)
+        // Trigger model validation and roll the complete transaction back.
         try
         {
-            await Graph.CreateNodeAsync(person1, transaction, TestContext.Current.CancellationToken);
+            await Graph.CreateNodeAsync(
+                new IAttributeValidationTests.PersonWithValidationProperties(),
+                transaction,
+                TestContext.Current.CancellationToken);
             await transaction.CommitAsync();
         }
         catch
@@ -207,10 +210,10 @@ public interface ITransactionTests : IGraphTest
         }
 
         // Neither person should exist
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetNodeAsync<Person>(person1.Id, null, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetNodeAsync<Person>(person2.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Graph.FindNodeByTestKeyAsync<Person>(person1.TestKey, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Graph.FindNodeByTestKeyAsync<Person>(person2.TestKey, null, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -244,17 +247,17 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
 
         // Outside the transaction, the node should not be visible
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, null, TestContext.Current.CancellationToken));
 
         // But inside the transaction, it should be visible
-        var retrievedInTransaction = await Graph.GetNodeAsync<Person>(person.Id, transaction, TestContext.Current.CancellationToken);
+        var retrievedInTransaction = await Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, transaction, TestContext.Current.CancellationToken);
         Assert.Equal("Isolation", retrievedInTransaction.FirstName);
 
         await transaction.CommitAsync();
 
         // After commit, it should be visible outside
-        var retrievedAfterCommit = await Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrievedAfterCommit = await Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, null, TestContext.Current.CancellationToken);
         Assert.Equal("Isolation", retrievedAfterCommit.FirstName);
     }
 
@@ -309,17 +312,17 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(related, null, TestContext.Current.CancellationToken);
 
-        var relationship = new Knows(person.Id, related.Id);
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        var relationship = new Knows();
+        await Graph.ConnectAsync(person, relationship, related, cancellationToken: TestContext.Current.CancellationToken);
 
         var otherGraph = await Harness.GetGraphAsync(StoreIsolation.IndependentStore, TestContext.Current.CancellationToken);
 
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
 
         await AssertForeignTransactionRejectedAsync(
-            () => otherGraph.GetNodeAsync<Person>(person.Id, transaction, TestContext.Current.CancellationToken));
+            () => otherGraph.FindNodeByTestKeyAsync<Person>(person.TestKey, transaction, TestContext.Current.CancellationToken));
         await AssertForeignTransactionRejectedAsync(
-            () => otherGraph.GetRelationshipAsync<Knows>(relationship.Id, transaction, TestContext.Current.CancellationToken));
+            () => otherGraph.FindRelationshipByTestKeyAsync<Knows>(relationship.TestKey, transaction, TestContext.Current.CancellationToken));
 
         // Query roots reject at construction, before a provider can perform schema work or execute
         // the query. Cover every distinct public root; generic/non-generic search overloads share
@@ -338,7 +341,7 @@ public interface ITransactionTests : IGraphTest
         // on the graph that created it, all the way through commit. Activity is asserted by using
         // the transaction - the public IGraphTransaction surface has no state to inspect, and a
         // rolled-back or disposed transaction would fail these calls.
-        var readable = await Graph.GetNodeAsync<Person>(person.Id, transaction, TestContext.Current.CancellationToken);
+        var readable = await Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, transaction, TestContext.Current.CancellationToken);
         Assert.Equal("Read", readable.LastName);
         await transaction.CommitAsync();
     }
@@ -354,52 +357,50 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(relationshipTarget, null, TestContext.Current.CancellationToken);
 
         var originalSince = new DateTime(2025, 1, 2, 3, 4, 5, DateTimeKind.Utc);
-        var existingRelationship = new Knows(relationshipSource.Id, relationshipTarget.Id) { Since = originalSince };
-        await Graph.CreateRelationshipAsync(existingRelationship, null, TestContext.Current.CancellationToken);
+        var existingRelationship = new Knows { Since = originalSince };
+        await Graph.ConnectAsync(
+            relationshipSource,
+            existingRelationship,
+            relationshipTarget,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var otherGraph = await Harness.GetGraphAsync(StoreIsolation.IndependentStore, TestContext.Current.CancellationToken);
 
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
 
         var intruder = new Person { FirstName = "CrossStore", LastName = "Intruder" };
-        var foreignRelationship = new Friend(relationshipSource.Id, relationshipTarget.Id);
+        var foreignRelationship = new Friend();
         var subgraphSource = new Person { FirstName = "CrossStore", LastName = "SubgraphSource" };
         var subgraphTarget = new Person { FirstName = "CrossStore", LastName = "SubgraphTarget" };
 
         await AssertForeignTransactionRejectedAsync(
             () => otherGraph.CreateNodeAsync(intruder, transaction, TestContext.Current.CancellationToken));
-        await AssertForeignTransactionRejectedAsync(
-            () => otherGraph.CreateRelationshipAsync(foreignRelationship, transaction, TestContext.Current.CancellationToken));
+        var selectionOwnershipException = await Assert.ThrowsAsync<GraphException>(
+            () => otherGraph.CreateRelationshipAsync(
+                Graph.SelectNode(relationshipSource, transaction),
+                foreignRelationship,
+                Graph.SelectNode(relationshipTarget, transaction),
+                cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Contains("graph instance", selectionOwnershipException.Message, StringComparison.OrdinalIgnoreCase);
         await AssertForeignTransactionRejectedAsync(
             () => otherGraph.CreateAsync(
                 subgraphSource,
-                new Knows(subgraphSource.Id, subgraphTarget.Id),
+                new Knows(),
                 subgraphTarget,
-                null,
+                RelationshipDirection.Outgoing,
                 transaction,
                 TestContext.Current.CancellationToken));
-        await AssertForeignTransactionRejectedAsync(
-            () => otherGraph.UpdateNodeAsync(existing with { LastName = "Mutated" }, transaction, TestContext.Current.CancellationToken));
-        await AssertForeignTransactionRejectedAsync(
-            () => otherGraph.UpdateRelationshipAsync(
-                existingRelationship with { Since = originalSince.AddDays(1) },
-                transaction,
-                TestContext.Current.CancellationToken));
-        await AssertForeignTransactionRejectedAsync(
-            () => otherGraph.DeleteNodeAsync(existing.Id, false, transaction, TestContext.Current.CancellationToken));
-        await AssertForeignTransactionRejectedAsync(
-            () => otherGraph.DeleteRelationshipAsync(existingRelationship.Id, transaction, TestContext.Current.CancellationToken));
 
         // Nothing executed against the transaction's own store: attempted entities are absent even
         // when reading through the transaction, and pre-existing entities are intact.
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetNodeAsync<Person>(intruder.Id, transaction, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetRelationshipAsync<Friend>(foreignRelationship.Id, transaction, TestContext.Current.CancellationToken));
-        var unchanged = await Graph.GetNodeAsync<Person>(existing.Id, transaction, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Graph.FindNodeByTestKeyAsync<Person>(intruder.TestKey, transaction, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Graph.FindRelationshipByTestKeyAsync<Friend>(foreignRelationship.TestKey, transaction, TestContext.Current.CancellationToken));
+        var unchanged = await Graph.FindNodeByTestKeyAsync<Person>(existing.TestKey, transaction, TestContext.Current.CancellationToken);
         Assert.Equal("Baseline", unchanged.LastName);
-        var unchangedRelationship = await Graph.GetRelationshipAsync<Knows>(
-            existingRelationship.Id,
+        var unchangedRelationship = await Graph.FindRelationshipByTestKeyAsync<Knows>(
+            existingRelationship.TestKey,
             transaction,
             TestContext.Current.CancellationToken);
         Assert.Equal(originalSince, unchangedRelationship.Since);
@@ -407,8 +408,8 @@ public interface ITransactionTests : IGraphTest
         // Nothing landed in the other graph either. A harness may back both graphs with the same
         // database - this asserts the rejected write reached no store at all, not that the two are
         // isolated from each other.
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => otherGraph.GetNodeAsync<Person>(intruder.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => otherGraph.FindNodeByTestKeyAsync<Person>(intruder.TestKey, null, TestContext.Current.CancellationToken));
 
         // The rejected caller-owned transaction remains fully usable with its owner graph: it
         // still accepts a write and commits it.
@@ -416,9 +417,9 @@ public interface ITransactionTests : IGraphTest
         await Graph.CreateNodeAsync(lateArrival, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        var persisted = await Graph.GetNodeAsync<Person>(lateArrival.Id, null, TestContext.Current.CancellationToken);
+        var persisted = await Graph.FindNodeByTestKeyAsync<Person>(lateArrival.TestKey, null, TestContext.Current.CancellationToken);
         Assert.Equal("Committed", persisted.LastName);
-        var baseline = await Graph.GetNodeAsync<Person>(existing.Id, null, TestContext.Current.CancellationToken);
+        var baseline = await Graph.FindNodeByTestKeyAsync<Person>(existing.TestKey, null, TestContext.Current.CancellationToken);
         Assert.Equal("Baseline", baseline.LastName);
     }
 

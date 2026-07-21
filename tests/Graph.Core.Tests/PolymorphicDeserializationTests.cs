@@ -128,6 +128,8 @@ public class PolymorphicDeserializationTests
 
     public record Animal : Node
     {
+        public string Id { get; init; } = string.Empty;
+
         public string Name { get; init; } = string.Empty;
     }
 
@@ -149,6 +151,8 @@ public class PolymorphicDeserializationTests
 
     private sealed record Kennel : Node
     {
+        public string Id { get; init; } = string.Empty;
+
         public string Name { get; init; } = string.Empty;
 
         public List<Animal> Animals { get; init; } = new();
@@ -173,7 +177,7 @@ public class PolymorphicDeserializationTests
         {
             return new Dictionary<string, Property>
             {
-                [nameof(Animal.Id)] = SimpleProperty(typeof(Node), nameof(Node.Id), animal.Id, typeof(string)),
+                [nameof(Animal.Id)] = SimpleProperty(typeof(Animal), nameof(Animal.Id), animal.Id, typeof(string)),
                 [nameof(Animal.Labels)] = CollectionProperty(typeof(Node), nameof(Node.Labels), animal.Labels, typeof(string)),
                 [nameof(Animal.Name)] = SimpleProperty(typeof(Animal), nameof(Animal.Name), animal.Name, typeof(string)),
             };
@@ -198,7 +202,7 @@ public class PolymorphicDeserializationTests
                 false,
                 new Dictionary<string, PropertySchema>
                 {
-                    [nameof(Animal.Id)] = SimpleSchema(typeof(Node), nameof(Node.Id)),
+                    [nameof(Animal.Id)] = SimpleSchema(typeof(Animal), nameof(Animal.Id)),
                     [nameof(Animal.Name)] = SimpleSchema(typeof(Animal), nameof(Animal.Name)),
                 },
                 new Dictionary<string, PropertySchema>());
@@ -357,7 +361,7 @@ public class PolymorphicDeserializationTests
         {
             var simpleProperties = new Dictionary<string, PropertySchema>
             {
-                [nameof(Animal.Id)] = SimpleSchema(typeof(Node), nameof(Node.Id)),
+                [nameof(Animal.Id)] = SimpleSchema(typeof(Animal), nameof(Animal.Id)),
                 [nameof(Animal.Name)] = SimpleSchema(typeof(Animal), nameof(Animal.Name)),
                 [nameof(Dog.Breed)] = SimpleSchema(typeof(Dog), nameof(Dog.Breed)),
                 [nameof(PoliceDog.Badge)] = SimpleSchema(typeof(PoliceDog), nameof(PoliceDog.Badge)),
@@ -377,7 +381,7 @@ public class PolymorphicDeserializationTests
 
             var simpleProperties = new Dictionary<string, Property>
             {
-                [nameof(Kennel.Id)] = new Property(GetProperty(typeof(Node), nameof(Node.Id)), nameof(Node.Id), false, new SimpleValue(kennel.Id, typeof(string))),
+                [nameof(Kennel.Id)] = new Property(GetProperty(typeof(Kennel), nameof(Kennel.Id)), nameof(Kennel.Id), false, new SimpleValue(kennel.Id, typeof(string))),
                 [nameof(Kennel.Name)] = new Property(GetProperty(typeof(Kennel), nameof(Kennel.Name)), nameof(Kennel.Name), false, new SimpleValue(kennel.Name, typeof(string))),
             };
 
@@ -437,7 +441,7 @@ public class PolymorphicDeserializationTests
                 false,
                 new Dictionary<string, PropertySchema>
                 {
-                    [nameof(Kennel.Id)] = new(GetProperty(typeof(Node), nameof(Node.Id)), nameof(Node.Id), PropertyType.Simple),
+                    [nameof(Kennel.Id)] = new(GetProperty(typeof(Kennel), nameof(Kennel.Id)), nameof(Kennel.Id), PropertyType.Simple),
                     [nameof(Kennel.Name)] = new(GetProperty(typeof(Kennel), nameof(Kennel.Name)), nameof(Kennel.Name), PropertyType.Simple),
                 },
                 new Dictionary<string, PropertySchema>

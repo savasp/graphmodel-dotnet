@@ -18,54 +18,18 @@ public record User : Node
 public record Follows : Relationship
 {
     public DateTime Since { get; set; }
-
-    public Follows() : base(string.Empty, string.Empty)
-    {
-    }
-
-    public Follows(string startNodeId, string endNodeId, DateTime since) : base(startNodeId, endNodeId)
-    {
-        Since = since;
-    }
-
-    public Follows(string startNodeId, string endNodeId) : base(startNodeId, endNodeId)
-    {
-    }
 }
 
 [Relationship(Label = "LIKED_BY")]
-public record LikedBy : Relationship
-{
-    public LikedBy() : base(string.Empty, string.Empty) { }
-
-    public LikedBy(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-}
+public record LikedBy : Relationship;
 
 [Relationship(Label = "POSTED")]
-public record Posted : Relationship
-{
-    public Posted() : base(string.Empty, string.Empty) { }
-
-    public Posted(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-}
+public record Posted : Relationship;
 
 [Relationship(Label = "LIKES")]
 public record Likes : Relationship
 {
     public DateTime LikedAt { get; set; }
-
-    public Likes() : base(string.Empty, string.Empty)
-    {
-    }
-
-    public Likes(string startNodeId, string endNodeId, DateTime likedAt) : base(startNodeId, endNodeId)
-    {
-        LikedAt = likedAt;
-    }
-
-    public Likes(string startNodeId, string endNodeId) : base(startNodeId, endNodeId)
-    {
-    }
 }
 
 [Node(Label = "Comment")]
@@ -76,38 +40,15 @@ public record Comment : Node
 }
 
 [Relationship(Label = "REPLY_TO")]
-public record ReplyTo : Relationship
-{
-    public ReplyTo() : base(string.Empty, string.Empty) { }
-
-    public ReplyTo(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-}
+public record ReplyTo : Relationship;
 
 [Relationship(Label = "COMMENTED_ON")]
-public record CommentedOn : Relationship
-{
-    public CommentedOn() : base(string.Empty, string.Empty) { }
-
-    public CommentedOn(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-}
+public record CommentedOn : Relationship;
 
 [Relationship(Label = "WROTE")]
 public record Wrote : Relationship
 {
     public DateTime WrittenAt { get; set; }
-
-    public Wrote() : base(string.Empty, string.Empty)
-    {
-    }
-
-    public Wrote(string startNodeId, string endNodeId, DateTime writtenAt) : base(startNodeId, endNodeId)
-    {
-        WrittenAt = writtenAt;
-    }
-
-    public Wrote(string startNodeId, string endNodeId) : base(startNodeId, endNodeId)
-    {
-    }
 }
 
 [Node(Label = "Post")]

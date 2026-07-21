@@ -209,14 +209,7 @@ internal static class GraphMutationModelBuilder
 
     private static bool ValidateMappedProperty(PropertyInfo property)
     {
-        if (property.Name is nameof(INode.Labels) or nameof(IRelationship.Type))
-        {
-            throw new GraphQueryTranslationException(
-                $"Structural graph member '{property.Name}' cannot be updated by SetProperty.");
-        }
-
-        var domainId = property.Name == nameof(IEntity.Id);
-        if (!domainId && property.DeclaringType is { } declaring &&
+        if (property.DeclaringType is { } declaring &&
             (declaring == typeof(IEntity) || declaring == typeof(INode) || declaring == typeof(IRelationship) ||
              declaring == typeof(Node) || declaring == typeof(Relationship) ||
              declaring == typeof(DynamicNode) || declaring == typeof(DynamicRelationship)))

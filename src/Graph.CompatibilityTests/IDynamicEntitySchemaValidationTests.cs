@@ -126,14 +126,9 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         var startNode = new DynamicNode { Labels = [nameof(Person)] };
         var endNode = new DynamicNode { Labels = [nameof(Person)] };
 
-        await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
-        await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
-
         var relationshipType = Labels.GetLabelFromType(typeof(AssignedTo));
         var relationship = new DynamicRelationship
         {
-            StartNodeId = startNode.Id,
-            EndNodeId = endNode.Id,
             Type = relationshipType,
             Properties = new Dictionary<string, object?>
             {
@@ -144,7 +139,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
 
         // Act & Assert
         await Assert.ThrowsAsync<GraphException>(() =>
-            Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken));
+            Graph.CreateAsync(startNode, relationship, endNode, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -156,14 +151,9 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         var startNode = new DynamicNode { Labels = [nameof(Person)] };
         var endNode = new DynamicNode { Labels = [nameof(Person)] };
 
-        await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
-        await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
-
         var relationshipType = Labels.GetLabelFromType(typeof(AssignedTo));
         var relationship = new DynamicRelationship
         {
-            StartNodeId = startNode.Id,
-            EndNodeId = endNode.Id,
             Type = relationshipType,
             Properties = new Dictionary<string, object?>
             {
@@ -175,7 +165,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
 
         // Act & Assert - Should throw for wrong property name
         await Assert.ThrowsAsync<GraphException>(() =>
-            Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken));
+            Graph.CreateAsync(startNode, relationship, endNode, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -187,14 +177,9 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         var startNode = new DynamicNode { Labels = [nameof(Person)] };
         var endNode = new DynamicNode { Labels = [nameof(Person)] };
 
-        await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
-        await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
-
         var relationshipType = Labels.GetLabelFromType(typeof(AssignedTo));
         var relationship = new DynamicRelationship
         {
-            StartNodeId = startNode.Id,
-            EndNodeId = endNode.Id,
             Type = relationshipType,
             Properties = new Dictionary<string, object?>
             {
@@ -205,7 +190,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
 
         // Act & Assert
         await Assert.ThrowsAsync<GraphException>(() =>
-            Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken));
+            Graph.CreateAsync(startNode, relationship, endNode, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -217,13 +202,8 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         var startNode = new DynamicNode { Labels = [nameof(Person)] };
         var endNode = new DynamicNode { Labels = [nameof(Person)] };
 
-        await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
-        await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
-
         var relationship = new DynamicRelationship
         {
-            StartNodeId = startNode.Id,
-            EndNodeId = endNode.Id,
             Type = "NON_EXISTENT_TYPE",
             Properties = new Dictionary<string, object?>
             {
@@ -232,7 +212,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert - Should not throw since there's no schema for "NON_EXISTENT_TYPE"
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        await Graph.CreateAsync(startNode, relationship, endNode, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(relationship);
     }
 
@@ -283,7 +263,8 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
 
         // Act & Assert - Should succeed because all required properties are present
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        Assert.NotNull(node.Id);
+        Assert.NotNull(await Graph.DynamicNodes().OfLabel(label)
+            .SingleAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -407,14 +388,15 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
         // Assert
-        var retrievedNode = await Graph.GetNodeAsync<DynamicNode>(node.Id, null, TestContext.Current.CancellationToken);
+        var retrievedNode = await Graph.DynamicNodes().OfLabel(label)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         // Just checking that the deserialization worked
         Assert.NotNull(retrievedNode);
     }
 
     [Fact]
-    public async Task CanCreateAndGetDynamicRelationship_PreservesId()
+    public async Task CanCreateAndGetDynamicRelationship()
     {
         // Arrange
         await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
@@ -422,24 +404,18 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         var startNode = new DynamicNode { Labels = [nameof(Person)] };
         var endNode = new DynamicNode { Labels = [nameof(Person)] };
 
-        await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
-        await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
-
-        // Empty property bag on purpose: this test is about Id preservation, and
-        // KNOWS is schema-registered by the typed Knows record — arbitrary
+        // Empty property bag on purpose: KNOWS is schema-registered by the typed Knows record, so arbitrary
         // properties would (correctly) fail schema validation.
-        var relationship = new DynamicRelationship(
-            startNode.Id,
-            endNode.Id,
-            "KNOWS",
-            new Dictionary<string, object?>());
+        var relationship = new DynamicRelationship("KNOWS", new Dictionary<string, object?>());
 
         // Act
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
-        var retrieved = await Graph.GetRelationshipAsync<DynamicRelationship>(relationship.Id, null, TestContext.Current.CancellationToken);
+        await Graph.CreateAsync(startNode, relationship, endNode, cancellationToken: TestContext.Current.CancellationToken);
+        var retrieved = await Graph.DynamicRelationships()
+            .Where(candidate => candidate.Type == relationship.Type)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Equal(relationship.Id, retrieved.Id);
+        Assert.Equal(relationship.Type, retrieved.Type);
     }
 
     [Fact]
@@ -496,7 +472,8 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         await Graph.CreateNodeAsync(dynamicNode, null, TestContext.Current.CancellationToken);
 
         // Verify the node was created successfully
-        Assert.NotNull(dynamicNode.Id);
+        Assert.NotNull(await Graph.DynamicNodes().OfLabel(label)
+            .SingleAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -547,7 +524,8 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         await Graph.CreateNodeAsync(dynamicNode, null, TestContext.Current.CancellationToken);
 
         // Verify the node was created successfully
-        Assert.NotNull(dynamicNode.Id);
+        Assert.NotNull(await Graph.DynamicNodes().OfLabel(label)
+            .SingleAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -576,7 +554,8 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
 
         // Act & Assert - Should succeed with all valid properties
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        Assert.NotNull(node.Id);
+        Assert.NotNull(await Graph.DynamicNodes().OfLabel(label)
+            .SingleAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -655,7 +634,8 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
 
         // Act & Assert - Should succeed with edge case values
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        Assert.NotNull(node.Id);
+        Assert.NotNull(await Graph.DynamicNodes().OfLabel(label)
+            .SingleAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -667,14 +647,9 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         var startNode = new DynamicNode { Labels = ["Person"] };
         var endNode = new DynamicNode { Labels = ["Person"] };
 
-        await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
-        await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
-
         var relationshipType = Labels.GetLabelFromType(typeof(DependsOn));
         var relationship = new DynamicRelationship
         {
-            StartNodeId = startNode.Id,
-            EndNodeId = endNode.Id,
             Type = relationshipType,
             Properties = new Dictionary<string, object?>
             {
@@ -685,7 +660,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
 
         // Act & Assert
         await Assert.ThrowsAsync<GraphException>(
-            () => Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken));
+            () => Graph.CreateAsync(startNode, relationship, endNode, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]

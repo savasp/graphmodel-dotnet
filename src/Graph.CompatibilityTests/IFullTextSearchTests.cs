@@ -89,12 +89,10 @@ public interface IFullTextSearchTests : IGraphTest
 
         var friendship = new KnowsWell
         {
-            StartNodeId = person1.Id,
-            EndNodeId = person2.Id,
             HowWell = "Close friendship since college"
         };
 
-        await this.Graph.CreateRelationshipAsync(friendship, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(person1, friendship, person2, cancellationToken: TestContext.Current.CancellationToken);
 
         // Search for "college"
         var results = await this.Graph.SearchRelationships<KnowsWell>("college").ToListAsync(TestContext.Current.CancellationToken);
@@ -115,12 +113,10 @@ public interface IFullTextSearchTests : IGraphTest
 
         var relationship = new KnowsWell
         {
-            StartNodeId = person.Id,
-            EndNodeId = friend.Id,
             HowWell = "SearchUser knows Friend"
         };
 
-        await this.Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(person, relationship, friend, cancellationToken: TestContext.Current.CancellationToken);
 
         // Search for "SearchUser" across all entities
         var results = await this.Graph.Search("SearchUser").ToListAsync(TestContext.Current.CancellationToken);
@@ -161,12 +157,10 @@ public interface IFullTextSearchTests : IGraphTest
 
         var relationship = new KnowsWell
         {
-            StartNodeId = person1.Id,
-            EndNodeId = person2.Id,
             HowWell = "uniquesearchterm12345"
         };
 
-        await this.Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(person1, relationship, person2, cancellationToken: TestContext.Current.CancellationToken);
 
         // Search using generic IRelationship interface
         var results = await this.Graph.SearchRelationships("uniquesearchterm12345").ToListAsync(TestContext.Current.CancellationToken);
@@ -206,8 +200,8 @@ public interface IFullTextSearchTests : IGraphTest
         Assert.Single(upperResults);
         Assert.Single(mixedResults);
 
-        Assert.Equal(lowerResults[0].Id, upperResults[0].Id);
-        Assert.Equal(upperResults[0].Id, mixedResults[0].Id);
+        Assert.Equal(lowerResults[0].TestKey, upperResults[0].TestKey);
+        Assert.Equal(upperResults[0].TestKey, mixedResults[0].TestKey);
     }
 
     [Fact]
@@ -223,7 +217,7 @@ public interface IFullTextSearchTests : IGraphTest
         var results = await this.Graph.SearchNodes<Person>("John").Where(p => p.Age > 25).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
-        Assert.Equal(person.Id, results[0].Id);
+        Assert.Equal(person.TestKey, results[0].TestKey);
     }
 
     [Fact]
@@ -239,7 +233,7 @@ public interface IFullTextSearchTests : IGraphTest
         var results = await this.Graph.SearchNodes<Person>("John").Where(p => p.Age > 25 && p.LastName == "Doe").ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
-        Assert.Equal(person.Id, results[0].Id);
+        Assert.Equal(person.TestKey, results[0].TestKey);
     }
 
     [Fact]
@@ -293,24 +287,20 @@ public interface IFullTextSearchTests : IGraphTest
 
         var userMemory1 = new KnowsWell
         {
-            StartNodeId = user.Id,
-            EndNodeId = memory1.Id,
             HowWell = "Strong connection"
         };
 
         var userMemory2 = new KnowsWell
         {
-            StartNodeId = user.Id,
-            EndNodeId = memory2.Id,
             HowWell = "Weak connection"
         };
 
-        await this.Graph.CreateRelationshipAsync(userMemory1, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(userMemory2, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(user, userMemory1, memory1, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(user, userMemory2, memory2, cancellationToken: TestContext.Current.CancellationToken);
 
         // Search in path segments chain
         var results = await this.Graph.Nodes<Person>()
-            .Where(u => u.Id == user.Id)
+            .Where(u => u.TestKey == user.TestKey)
             .PathSegments<Person, KnowsWell, Person>()
             .Select(p => p.EndNode)
             .Search("vacation")
@@ -405,8 +395,8 @@ public interface IFullTextSearchTests : IGraphTest
         Assert.Single(upperResults);
         Assert.Single(mixedResults);
 
-        Assert.Equal(lowerResults[0].Id, upperResults[0].Id);
-        Assert.Equal(upperResults[0].Id, mixedResults[0].Id);
+        Assert.Equal(lowerResults[0].TestKey, upperResults[0].TestKey);
+        Assert.Equal(upperResults[0].TestKey, mixedResults[0].TestKey);
     }
 
     [Fact]
@@ -450,11 +440,9 @@ public interface IFullTextSearchTests : IGraphTest
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
         var knows = new KnowsWell
         {
-            StartNodeId = person1.Id,
-            EndNodeId = person2.Id,
             HowWell = "Good friends"
         };
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(person1, knows, person2, cancellationToken: TestContext.Current.CancellationToken);
 
         // Should find relationship when searching for property value
         var found = await this.Graph.SearchRelationships<DynamicRelationship>("Good friends").ToListAsync(TestContext.Current.CancellationToken);
@@ -496,7 +484,7 @@ public interface IFullTextSearchTests : IGraphTest
 
         Assert.Single(viaConvenience);
         Assert.Single(viaOperator);
-        Assert.Equal(viaConvenience[0].Id, viaOperator[0].Id);
+        Assert.Equal(viaConvenience[0].TestKey, viaOperator[0].TestKey);
     }
 
     [Fact]
@@ -508,18 +496,16 @@ public interface IFullTextSearchTests : IGraphTest
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
         var knows = new KnowsWell
         {
-            StartNodeId = person1.Id,
-            EndNodeId = person2.Id,
             HowWell = "SearchEquivalenceMarker"
         };
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(person1, knows, person2, cancellationToken: TestContext.Current.CancellationToken);
 
         var viaConvenience = await this.Graph.SearchRelationships<KnowsWell>("SearchEquivalenceMarker").ToListAsync(TestContext.Current.CancellationToken);
         var viaOperator = await this.Graph.Relationships<KnowsWell>().Search("SearchEquivalenceMarker").ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(viaConvenience);
         Assert.Single(viaOperator);
-        Assert.Equal(viaConvenience[0].Id, viaOperator[0].Id);
+        Assert.Equal(viaConvenience[0].TestKey, viaOperator[0].TestKey);
     }
 
     // ---- #288: FullTextSearch semantic-contract floor ----
@@ -541,7 +527,7 @@ public interface IFullTextSearchTests : IGraphTest
 
         // ALL terms must match: only the node whose text contains both "cloud" and "computing".
         Assert.Single(results);
-        Assert.Equal(both.Id, results[0].Id);
+        Assert.Equal(both.TestKey, results[0].TestKey);
     }
 
     [Fact]
@@ -552,7 +538,7 @@ public interface IFullTextSearchTests : IGraphTest
 
         var wholeToken = await this.Graph.SearchNodes<Person>("vacation").ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(wholeToken);
-        Assert.Equal(person.Id, wholeToken[0].Id);
+        Assert.Equal(person.TestKey, wholeToken[0].TestKey);
 
         // A sub-token must not match: "vaca" is not the whole word "vacation".
         var subToken = await this.Graph.SearchNodes<Person>("vaca").ToListAsync(TestContext.Current.CancellationToken);
@@ -569,11 +555,11 @@ public interface IFullTextSearchTests : IGraphTest
         // nor change semantics away from the plain "vacation" token.
         var tilde = await this.Graph.SearchNodes<Person>("vacation~").ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(tilde);
-        Assert.Equal(person.Id, tilde[0].Id);
+        Assert.Equal(person.TestKey, tilde[0].TestKey);
 
         var star = await this.Graph.SearchNodes<Person>("vacation*").ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(star);
-        Assert.Equal(person.Id, star[0].Id);
+        Assert.Equal(person.TestKey, star[0].TestKey);
     }
 
     [Fact]
@@ -593,12 +579,9 @@ public interface IFullTextSearchTests : IGraphTest
         await this.Graph.CreateNodeAsync(firstHop, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(secondHop, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(directTarget, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new KnowsWell(firstHop, source), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new KnowsWell(secondHop, firstHop), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new KnowsWell(directTarget, source), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(firstHop, new KnowsWell(), source, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(secondHop, new KnowsWell(), firstHop, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(directTarget, new KnowsWell(), source, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await this.Graph.Nodes<Person>()
             .Search("orbitseed cloud")
@@ -630,14 +613,16 @@ public interface IFullTextSearchTests : IGraphTest
         await this.Graph.CreateNodeAsync(source, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(included, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(excluded, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new KnowsWell(source, included) { HowWell = "include" },
-            null,
-            TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new KnowsWell(source, excluded) { HowWell = "exclude" },
-            null,
-            TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(
+            source,
+            new KnowsWell { HowWell = "include" },
+            included,
+            cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(
+            source,
+            new KnowsWell { HowWell = "exclude" },
+            excluded,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var results = await this.Graph.Nodes<Person>()
             .Search("segmentseed marker")
@@ -645,14 +630,14 @@ public interface IFullTextSearchTests : IGraphTest
             .Where(segment => segment.Relationship.HowWell == "include")
             .Select(segment => new
             {
-                StartId = segment.StartNode.Id,
-                EndId = segment.EndNode.Id,
+                StartId = segment.StartNode.TestKey,
+                EndId = segment.EndNode.TestKey,
             })
             .ToListAsync(TestContext.Current.CancellationToken);
 
         var result = Assert.Single(results);
-        Assert.Equal(source.Id, result.StartId);
-        Assert.Equal(included.Id, result.EndId);
+        Assert.Equal(source.TestKey, result.StartId);
+        Assert.Equal(included.TestKey, result.EndId);
     }
 
     [Fact]
@@ -670,10 +655,8 @@ public interface IFullTextSearchTests : IGraphTest
         await this.Graph.CreateNodeAsync(source, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(middle, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(end, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new KnowsWell(source, middle), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new KnowsWell(middle, end), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(source, new KnowsWell(), middle, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(middle, new KnowsWell(), end, cancellationToken: TestContext.Current.CancellationToken);
 
         var paths = await this.Graph.Nodes<Person>()
             .Search("pathseed marker")
@@ -682,8 +665,8 @@ public interface IFullTextSearchTests : IGraphTest
             .ToListAsync(TestContext.Current.CancellationToken);
 
         var path = Assert.Single(paths);
-        Assert.Equal(source.Id, path.Start.Id);
-        Assert.Equal(end.Id, path.End.Id);
+        Assert.Equal(source.TestKey, Assert.IsType<Person>(path.Start).TestKey);
+        Assert.Equal(end.TestKey, Assert.IsType<Person>(path.End).TestKey);
         Assert.Equal(2, path.Segments.Count);
     }
 
@@ -721,10 +704,8 @@ public interface IFullTextSearchTests : IGraphTest
         await this.Graph.CreateNodeAsync(source, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(matching, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(other, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new KnowsWell(source, matching), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(
-            new KnowsWell(source, other), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(source, new KnowsWell(), matching, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(source, new KnowsWell(), other, cancellationToken: TestContext.Current.CancellationToken);
 
         // Both search queries must apply: the first scopes the traversal source, the second
         // filters the traversal results. A provider that drops or reuses either query returns
@@ -736,7 +717,7 @@ public interface IFullTextSearchTests : IGraphTest
             .ToListAsync(TestContext.Current.CancellationToken);
 
         var result = Assert.Single(results);
-        Assert.Equal(matching.Id, result.Id);
+        Assert.Equal(matching.TestKey, result.TestKey);
     }
 
     // ---- #374: the full-text contract must hold inside set-operation branches ----
@@ -766,11 +747,11 @@ public interface IFullTextSearchTests : IGraphTest
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(3, results.Count);
-        Assert.Contains(results, person => person.Id == cloudBoth.Id);
-        Assert.Contains(results, person => person.Id == dataBoth.Id);
+        Assert.Contains(results, person => person.TestKey == cloudBoth.TestKey);
+        Assert.Contains(results, person => person.TestKey == dataBoth.TestKey);
 
         // Matched by both branches, returned once: the union stays distinct.
-        Assert.Single(results, person => person.Id == overlap.Id);
+        Assert.Single(results, person => person.TestKey == overlap.TestKey);
     }
 
     [Fact]
@@ -793,7 +774,7 @@ public interface IFullTextSearchTests : IGraphTest
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.All(results, person => Assert.Equal(overlap.Id, person.Id));
+        Assert.All(results, person => Assert.Equal(overlap.TestKey, person.TestKey));
     }
 
     [Fact]
@@ -808,20 +789,20 @@ public interface IFullTextSearchTests : IGraphTest
         var emptyTokenBranch = await this.Graph.SearchNodes<Person>("   ~*  ")
             .Union(this.Graph.SearchNodes<Person>("vacation"))
             .ToListAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(person.Id, Assert.Single(emptyTokenBranch).Id);
+        Assert.Equal(person.TestKey, Assert.Single(emptyTokenBranch).TestKey);
 
         // Live metacharacter syntax must be neutralized in both branches: the metacharacter-only
         // query matches nothing and the suffixed query still matches the plain token.
         var metacharacterBranch = await this.Graph.SearchNodes<Person>("~*")
             .Union(this.Graph.SearchNodes<Person>("vacation~"))
             .ToListAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(person.Id, Assert.Single(metacharacterBranch).Id);
+        Assert.Equal(person.TestKey, Assert.Single(metacharacterBranch).TestKey);
 
         // Whole-token matching also holds inside a branch: a sub-token must not match.
         var subTokenBranch = await this.Graph.SearchNodes<Person>("vaca")
             .Union(this.Graph.SearchNodes<Person>("vacation"))
             .ToListAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(person.Id, Assert.Single(subTokenBranch).Id);
+        Assert.Equal(person.TestKey, Assert.Single(subTokenBranch).TestKey);
     }
 
     [Fact]
@@ -849,8 +830,8 @@ public interface IFullTextSearchTests : IGraphTest
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(3, results.Count);
-        Assert.Contains(results, person => person.Id == alpha.Id);
-        Assert.Contains(results, person => person.Id == beta.Id);
-        Assert.Contains(results, person => person.Id == gamma.Id);
+        Assert.Contains(results, person => person.TestKey == alpha.TestKey);
+        Assert.Contains(results, person => person.TestKey == beta.TestKey);
+        Assert.Contains(results, person => person.TestKey == gamma.TestKey);
     }
 }

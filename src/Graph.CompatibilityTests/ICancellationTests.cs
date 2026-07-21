@@ -12,35 +12,39 @@ public interface ICancellationTests : IGraphTest
         await cts.CancelAsync();
 
         var node = new Person { FirstName = "Cancelled", LastName = "Crud" };
-        var relationship = new Knows
-        {
-            StartNodeId = Guid.NewGuid().ToString("N"),
-            EndNodeId = Guid.NewGuid().ToString("N")
-        };
+        var relationship = new Knows();
 
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => Graph.GetTransactionAsync(cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => Graph.CreateNodeAsync(node, null, cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => Graph.GetNodeAsync<Person>(node.Id, null, cts.Token));
+            () => Graph.FindNodeByTestKeyAsync<Person>(node.TestKey, null, cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => Graph.UpdateNodeAsync(node, null, cts.Token));
+            () => Graph.SelectNode(node).UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.LastName, "Updated"),
+                cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => Graph.DeleteNodeAsync(node.Id, false, null, cts.Token));
+            () => Graph.SelectNode(node).DeleteAsync(cancellationToken: cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => Graph.GetDynamicNodeAsync(node.Id, null, cts.Token));
+            () => Graph.FindDynamicNodeByTestKeyAsync(node.TestKey, null, cts.Token));
 
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => Graph.CreateRelationshipAsync(relationship, null, cts.Token));
+            () => Graph.CreateRelationshipAsync(
+                Graph.SelectNode(node),
+                relationship,
+                Graph.Nodes<Person>().Where(candidate => candidate.FirstName == "Target"),
+                cancellationToken: cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => Graph.GetRelationshipAsync<Knows>(relationship.Id, null, cts.Token));
+            () => Graph.FindRelationshipByTestKeyAsync<Knows>(relationship.TestKey, null, cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => Graph.UpdateRelationshipAsync(relationship, null, cts.Token));
+            () => Graph.SelectRelationship(relationship).UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Since, DateTime.UtcNow),
+                cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => Graph.DeleteRelationshipAsync(relationship.Id, null, cts.Token));
+            () => Graph.SelectRelationship(relationship).DeleteAsync(cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => Graph.GetDynamicRelationshipAsync(relationship.Id, null, cts.Token));
+            () => Graph.FindDynamicRelationshipByTestKeyAsync(relationship.TestKey, null, cts.Token));
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => Graph.RecreateManagedIndexesAsync(cts.Token));
     }

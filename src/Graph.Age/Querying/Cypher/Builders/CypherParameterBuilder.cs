@@ -30,14 +30,14 @@ internal sealed class CypherParameterBuilder
     {
         ArgumentNullException.ThrowIfNull(entity);
 
-        var type = entity.GetType();
         var parameters = new Dictionary<string, object?>();
 
-        // Add metadata
-        var metadata = SerializationBridge.CreateMetadata(type);
-        foreach (var (key, value) in metadata)
+        if (entity.GetType().IsConstructedGenericType)
         {
-            parameters[key] = value;
+            foreach (var (key, value) in SerializationBridge.CreateMetadata(entity.GetType()))
+            {
+                parameters[key] = value;
+            }
         }
 
         // Use EntityFactory to serialize the entity

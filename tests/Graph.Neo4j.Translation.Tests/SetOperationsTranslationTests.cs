@@ -41,30 +41,30 @@ public class SetOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
-    public Task Join_NodesWithRelationships()
+    public Task Join_NodesWithRelationshipPayload()
     {
         IQueryable<Knows> relationships = Root.Relationships<Knows>();
         IQueryable<Person> people = Root.Nodes<Person>();
 
         var query = relationships.Join(
             people,
-            r => r.EndNodeId,
-            p => p.Id,
+            r => r.GroupKey,
+            p => p.TestKey,
             (r, p) => p);
 
         return VerifyTranslation(query);
     }
 
     [Fact]
-    public Task Join_AsymmetricStartNodeKey_SelectsInnerNode()
+    public Task Join_AsymmetricPayloadKey_SelectsInnerNode()
     {
         IQueryable<Knows> relationships = Root.Relationships<Knows>();
         IQueryable<Person> people = Root.Nodes<Person>();
 
         var query = relationships.Join(
             people,
-            r => r.StartNodeId,
-            p => p.Id,
+            r => r.AlternateGroupKey,
+            p => p.TestKey,
             (r, p) => p);
 
         return VerifyTranslation(query);
