@@ -153,6 +153,16 @@ internal sealed class CypherEngine
                     transaction,
                     cancellationToken).ConfigureAwait(false);
             }
+            else if (complexPlan!.HasWork)
+            {
+                // Complex replacement spans multiple AGE statements. Lock every frozen parent in
+                // the same global order as constrained and entity-manager updates before any scalar
+                // cleanup, subtree deletion, or value-node creation can interleave.
+                await transaction.Runner.AcquireElementLocksAsync(
+                    nativeIdentities.Cast<long>().ToArray(),
+                    relationship: false,
+                    cancellationToken).ConfigureAwait(false);
+            }
 
             var scalarMutation = BuildScalarMutation(mutation);
             if (scalarMutation.Assignments.Count > 0)
