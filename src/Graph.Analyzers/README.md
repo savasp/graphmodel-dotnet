@@ -122,6 +122,10 @@ public INode RelatedNode { get; set; }
 public IGraph Graph => /* get from context */;
 ```
 
+CG002, CG003, and CG006 inspect the same effective property set as runtime and generated
+serialization: inherited public instance properties with a getter. Static properties, indexers,
+non-public or write-only properties, and properties marked `[Property(Ignore = true)]` are excluded.
+
 ### CG016: Open Generic Graph Entities Are Not Supported
 
 ```csharp

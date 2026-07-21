@@ -357,6 +357,111 @@ public class CG006_ComplexTypeContainsGraphInterfaceTypesTests
     }
 
     [Fact]
+    public async Task NonSerializedInvalidComplexProperties_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public sealed class InvalidHolder
+            {
+                public INode Parent { get; set; } = null!;
+            }
+
+            public sealed class TestNode : Node
+            {
+                [Property(Ignore = true)]
+                public InvalidHolder Ignored { get; set; } = new();
+
+                public static InvalidHolder Shared { get; set; } = new();
+
+                public InvalidHolder this[int index]
+                {
+                    get => new();
+                    set { }
+                }
+
+                private InvalidHolder Hidden { get; set; } = new();
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task EffectiveSerializedMemberParityFixture_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public sealed class EffectiveSerializedMemberParityDetails
+            {
+                public string Name { get; set; } = string.Empty;
+
+                [Property(Ignore = true)]
+                public INode IgnoredNode { get; set; } = null!;
+
+                public static IRelationship SharedRelationship { get; set; } = null!;
+
+                public INode this[int index]
+                {
+                    get => null!;
+                    set { }
+                }
+
+                private IRelationship HiddenRelationship { get; set; } = null!;
+            }
+
+            [Node("EffectiveSerializedMemberParity")]
+            public sealed record EffectiveSerializedMemberParityNode : Node
+            {
+                public EffectiveSerializedMemberParityDetails Details { get; init; } = new();
+
+                [Property(Ignore = true)]
+                public IRelationship IgnoredRelationship { get; init; } = null!;
+
+                public static INode SharedNode { get; set; } = null!;
+
+                public IRelationship this[int index]
+                {
+                    get => null!;
+                    set { }
+                }
+
+                private INode HiddenNode { get; set; } = null!;
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task InheritedSerializedInvalidComplexProperty_ProducesDiagnosticForEachEntity()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public sealed class InvalidHolder
+            {
+                public INode Parent { get; set; } = null!;
+            }
+
+            public abstract class BaseNode : Node
+            {
+                public InvalidHolder {|#0:Holder|} { get; set; } = new();
+            }
+
+            public sealed class DerivedNode : BaseNode
+            {
+            }
+            """;
+
+        await VerifyAnalyzerAsync(
+            test,
+            VerifyCS.Diagnostic("CG006").WithLocation(0).WithArguments("InvalidHolder", "Holder", "BaseNode"),
+            VerifyCS.Diagnostic("CG006").WithLocation(0).WithArguments("InvalidHolder", "Holder", "DerivedNode"));
+    }
+
+    [Fact]
     public async Task InheritedNodeWithInvalidComplexType_ProducesDiagnostic()
     {
         var test = """
