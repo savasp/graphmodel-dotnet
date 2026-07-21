@@ -437,6 +437,33 @@ public class CollectionShapeRoundTripTests
         Assert.Contains("RecursiveSupportedHolderSerializer.g.cs", generated, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void NonSerializedUnsupportedEntityProperties_EmitSerializers()
+    {
+        // Ignored properties, static properties, and indexers are outside the serialized property
+        // set, so an unsupported type on one of them must not suppress the entity's serializer.
+        const string source = """
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            [Node("Valid")]
+            public sealed record ValidNode : Node
+            {
+                public string Name { get; set; } = string.Empty;
+
+                [Property(Ignore = true)]
+                public Task Ignored { get; set; } = null!;
+
+                public static Task Shared { get; set; } = Task.CompletedTask;
+
+                public Task this[int index] => Task.CompletedTask;
+            }
+            """;
+
+        var generated = GeneratorTestHelpers.RunGenerator(source);
+        Assert.Contains("ValidNodeSerializer.g.cs", generated, StringComparison.Ordinal);
+    }
+
     private static IEntitySerializer CreateSerializer(System.Reflection.Assembly assembly, string serializerTypeName)
     {
         var serializerType = assembly.GetType(serializerTypeName, throwOnError: true)!;

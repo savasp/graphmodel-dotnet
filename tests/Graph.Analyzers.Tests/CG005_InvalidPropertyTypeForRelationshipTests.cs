@@ -197,6 +197,60 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
         await VerifyAnalyzerAsync(test, expected);
     }
 
+    [Theory]
+    [InlineData("System.Collections.Generic.Dictionary<string, string>", "Dictionary<String, String>")]
+    [InlineData("System.Collections.IDictionary", "IDictionary")]
+    [InlineData("System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, string>>", "List<Dictionary<String, String>>")]
+    [InlineData("System.Collections.Generic.List<System.Collections.Generic.List<System.Threading.Tasks.Task>>", "List<List<Task>>")]
+    [InlineData("System.IO.Stream", "Stream")]
+    [InlineData("System.Net.IPAddress", "IPAddress")]
+    [InlineData("System.Reflection.MemberInfo", "MemberInfo")]
+    [InlineData("System.Runtime.InteropServices.GCHandle", "GCHandle")]
+    public async Task RelationshipWithUnsupportedShape_ProducesDiagnostic(string propertyType, string reportedType)
+    {
+        var test = $$"""
+            using Cvoya.Graph;
+
+            public class TestRelationship : Relationship
+            {
+                public {{propertyType}} {|#0:Unsupported|} { get; set; }
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG005")
+            .WithLocation(0)
+            .WithArguments("Unsupported", "TestRelationship", reportedType);
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task RelationshipWithNonSerializedUnsupportedProperties_ProducesNoDiagnostics()
+    {
+        // Ignored properties, static properties, and indexers are never serialized, so an
+        // unsupported type on one of them is not a model error.
+        var test = """
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            public sealed class TestRelationship : Relationship
+            {
+                [Property(Ignore = true)]
+                public Task Ignored { get; set; } = null!;
+
+                public static Task Shared { get; set; } = Task.CompletedTask;
+
+                public Task this[int index]
+                {
+                    get => Task.CompletedTask;
+                    set { }
+                }
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
     [Fact]
     public async Task RelationshipWithNonConstructibleCollection_ProducesDiagnostic()
     {

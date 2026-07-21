@@ -507,12 +507,10 @@ public class SchemaRegistry : IDisposable
             var memberPath = string.IsNullOrEmpty(unsupported.MemberPath)
                 ? property.Name
                 : $"{property.Name}.{unsupported.MemberPath}";
-            var nativeIntegerExplanation = unsupported.Reason == "native-sized integer type"
-                ? " IntPtr and UIntPtr cannot be stored as graph property values."
-                : string.Empty;
             throw new GraphException(
                 $"Property '{property.DeclaringType?.FullName}.{property.Name}' contains unsupported serialized member " +
-                $"'{memberPath}' using {unsupported.Reason} '{unsupported.Type}'.{nativeIntegerExplanation}");
+                $"'{memberPath}' using {DescribeUnsupportedShape(unsupported.Kind)} '{unsupported.Type}'." +
+                ExplainUnsupportedShape(unsupported.Kind));
         }
 
         if (attribute is null || !attribute.IsKey)
@@ -549,14 +547,14 @@ public class SchemaRegistry : IDisposable
         HashSet<Type> visited)
     {
         var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
-        if (GetUnsupportedTypeReason(underlyingType) is { } reason)
+        if (GetUnsupportedTypeKind(underlyingType) is { } kind)
         {
-            return new UnsupportedPropertyShape(underlyingType, memberPath, reason);
+            return new UnsupportedPropertyShape(underlyingType, memberPath, kind);
         }
 
         if (GraphDataModel.IsDictionary(underlyingType))
         {
-            return new UnsupportedPropertyShape(underlyingType, memberPath, "dictionary type");
+            return new UnsupportedPropertyShape(underlyingType, memberPath, UnsupportedShapeKind.Dictionary);
         }
 
         if (GraphDataModel.IsSimple(underlyingType) || !visited.Add(underlyingType))
@@ -617,16 +615,16 @@ public class SchemaRegistry : IDisposable
         }
     }
 
-    private static string? GetUnsupportedTypeReason(Type type)
+    private static UnsupportedShapeKind? GetUnsupportedTypeKind(Type type)
     {
         if (type == typeof(IntPtr) || type == typeof(UIntPtr))
         {
-            return "native-sized integer type";
+            return UnsupportedShapeKind.NativeSizedInteger;
         }
 
         if (typeof(Delegate).IsAssignableFrom(type))
         {
-            return "delegate type";
+            return UnsupportedShapeKind.Delegate;
         }
 
         var fullName = type.FullName ?? type.ToString();
@@ -636,13 +634,39 @@ public class SchemaRegistry : IDisposable
             fullName.StartsWith("System.Reflection.", StringComparison.Ordinal) ||
             fullName.StartsWith("System.Runtime.", StringComparison.Ordinal))
         {
-            return "framework type";
+            return UnsupportedShapeKind.Framework;
         }
 
         return null;
     }
 
-    private sealed record UnsupportedPropertyShape(Type Type, string MemberPath, string Reason);
+    private static string DescribeUnsupportedShape(UnsupportedShapeKind kind) => kind switch
+    {
+        UnsupportedShapeKind.NativeSizedInteger => "native-sized integer type",
+        UnsupportedShapeKind.Delegate => "delegate type",
+        UnsupportedShapeKind.Dictionary => "dictionary type",
+        _ => "framework type",
+    };
+
+    /// <summary>
+    /// Trailing sentence appended to the schema-validation failure, for the shapes whose rejection
+    /// is not self-explanatory from the type name alone.
+    /// </summary>
+    private static string ExplainUnsupportedShape(UnsupportedShapeKind kind) => kind switch
+    {
+        UnsupportedShapeKind.NativeSizedInteger => " IntPtr and UIntPtr cannot be stored as graph property values.",
+        _ => string.Empty,
+    };
+
+    private enum UnsupportedShapeKind
+    {
+        NativeSizedInteger,
+        Delegate,
+        Dictionary,
+        Framework,
+    }
+
+    private sealed record UnsupportedPropertyShape(Type Type, string MemberPath, UnsupportedShapeKind Kind);
 
     private static string GetLabelFromType(Type type)
     {

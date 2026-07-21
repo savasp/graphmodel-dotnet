@@ -206,7 +206,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             if (current.IsAbstract)
                 continue;
 
-            foreach (var property in GetSerializedProperties(current))
+            foreach (var property in AnalyzerHelper.GetSerializedProperties(current))
             {
                 if (IsCompilerGeneratedProperty(property))
                     continue;
@@ -369,34 +369,6 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 {
                     continue;
                 }
-
-                yield return property;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Mirrors the generated serializer's most-derived-wins property walk. An ignored property still
-    /// hides a base property of the same name, because generated code does not fall back to the base
-    /// declaration after applying <c>[Property(Ignore = true)]</c> to the derived one.
-    /// </summary>
-    private static IEnumerable<IPropertySymbol> GetSerializedProperties(INamedTypeSymbol type)
-    {
-        var seenProperties = new HashSet<string>(StringComparer.Ordinal);
-        for (var current = type; current is not null; current = current.BaseType)
-        {
-            foreach (var property in current.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (property.IsStatic ||
-                    property.DeclaredAccessibility != Accessibility.Public ||
-                    property.GetMethod is null ||
-                    !seenProperties.Add(property.Name))
-                {
-                    continue;
-                }
-
-                if (!AnalyzerHelper.IsSerializedProperty(property))
-                    continue;
 
                 yield return property;
             }
@@ -841,7 +813,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeNodePropertyTypes(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
-        var properties = GetSerializedProperties(namedType);
+        var properties = AnalyzerHelper.GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {
@@ -934,7 +906,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeRelationshipPropertyTypes(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
-        var properties = GetSerializedProperties(namedType);
+        var properties = AnalyzerHelper.GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {

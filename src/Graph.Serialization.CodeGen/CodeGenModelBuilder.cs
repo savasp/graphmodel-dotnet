@@ -163,11 +163,9 @@ internal sealed class CodeGenModelBuilder
             ? underlyingType
             : namedType;
 
-        if (GraphDataModel.IsUnsupportedFrameworkType(type) ||
-            GraphDataModel.IsDictionaryType(type) ||
-            (elementType is not null &&
-             (GraphDataModel.IsUnsupportedFrameworkType(elementType) ||
-              GraphDataModel.IsDictionaryType(elementType))))
+        // Element shapes are covered by the recursive BuildTypeReference(elementType) call below,
+        // which re-applies this same check at every nesting level.
+        if (GraphDataModel.IsUnsupportedFrameworkType(type) || GraphDataModel.IsDictionaryType(type))
         {
             hasUnsupportedTypeShape = true;
         }
@@ -423,13 +421,8 @@ internal sealed class CodeGenModelBuilder
                 property.Type.Identity == GetTypeIdentity(parameter.Type)) == true);
     }
 
-    private static ITypeSymbol UnwrapNullableValueType(ITypeSymbol type)
-    {
-        return type is INamedTypeSymbol { IsGenericType: true } namedType &&
-               namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T
-            ? namedType.TypeArguments[0]
-            : type;
-    }
+    private static ITypeSymbol UnwrapNullableValueType(ITypeSymbol type) =>
+        GraphDataModel.UnwrapNullableValueType(type);
 
     private static IEnumerable<string> GetBaseTypeIdentities(INamedTypeSymbol type)
     {

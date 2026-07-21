@@ -675,6 +675,60 @@ public class CG004_InvalidPropertyTypeForNodeTests
     }
 
     [Fact]
+    public async Task NodeWithNonSerializedUnsupportedProperties_ProducesNoDiagnostics()
+    {
+        // The same exclusions the nested walk applies also apply to the entity's own declarations:
+        // ignored properties, static properties, and indexers are never serialized, so an
+        // unsupported type on one of them is not a model error.
+        var test = """
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            public sealed class TestNode : Node
+            {
+                [Property(Ignore = true)]
+                public Task Ignored { get; set; } = null!;
+
+                public static Task Shared { get; set; } = Task.CompletedTask;
+
+                public Task this[int index]
+                {
+                    get => Task.CompletedTask;
+                    set { }
+                }
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NodeWithInheritedUnsupportedProperty_ProducesDiagnosticOnDeclaration()
+    {
+        // The effective member set is the full inheritance chain, so the base declaration is
+        // reported once for the base entity and once for the derived one that inherits it.
+        var test = """
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            public abstract class UnsupportedBaseNode : Node
+            {
+                public Task {|#0:Pending|} { get; set; } = null!;
+            }
+
+            public sealed class TestNode : UnsupportedBaseNode
+            {
+                public string Name { get; set; } = string.Empty;
+            }
+            """;
+
+        await VerifyAnalyzerAsync(
+            test,
+            VerifyCS.Diagnostic("CG004").WithLocation(0).WithArguments("Pending", "UnsupportedBaseNode", "Task"),
+            VerifyCS.Diagnostic("CG004").WithLocation(0).WithArguments("Pending", "TestNode", "Task"));
+    }
+
+    [Fact]
     public async Task NodeWithMultipleInvalidProperties_ProducesMultipleDiagnostics()
     {
         var test = """

@@ -321,6 +321,44 @@ public sealed class RuntimeKeySchemaValidationTests
         AssertValidSchema(source, "RuntimeRecursiveFilteredNode");
     }
 
+    [Fact]
+    public void CreateEntitySchemaInfo_NonSerializedUnsupportedEntityProperties_AreExcluded()
+    {
+        // The exclusions applied to nested complex members apply to the entity's own declarations
+        // too: an unsupported type on an ignored property, a static property, or an indexer is not
+        // a schema error, and only the ignored declaration stays in the schema (flagged as ignored).
+        const string source = """
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            [Node("RuntimeNonSerializedUnsupportedNode")]
+            public sealed record RuntimeNonSerializedUnsupportedNode : Node
+            {
+                public string DomainKey { get; init; } = string.Empty;
+
+                [Property(Ignore = true)]
+                public Task Ignored { get; init; } = null!;
+
+                public static Task Shared { get; set; } = Task.CompletedTask;
+
+                public Task this[int index] => Task.CompletedTask;
+            }
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["RuntimeNonSerializedUnsupportedNode"],
+            types =>
+            {
+                var schema = CreateEntitySchemaInfo(types[0]);
+
+                Assert.Contains("DomainKey", schema.Properties.Keys);
+                Assert.True(schema.Properties["Ignored"].Ignore);
+                Assert.DoesNotContain("Shared", schema.Properties.Keys);
+                Assert.DoesNotContain("Item", schema.Properties.Keys);
+            });
+    }
+
     [Theory]
     [InlineData("IsKey = true", "IsKey")]
     [InlineData("IsUnique = true", "IsUnique")]

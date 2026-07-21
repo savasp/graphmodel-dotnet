@@ -63,13 +63,11 @@ internal class AnalyzerHelper
         // Check any generic/array element shape directly. Invalid collections such as List<INode>
         // do not classify as supported collections, but CG003/CG006 must still identify their graph
         // interface element without relying on an indexer as a serialized member.
-        var elementType = ImplementsIEnumerable(type)
-            ? GetCollectionElementType(type)
-            : null;
-        if (elementType is not null)
+        if (ImplementsIEnumerable(type) &&
+            GetCollectionElementType(type) is { } elementType &&
+            IsGraphInterfaceType(elementType))
         {
-            if (IsGraphInterfaceType(elementType))
-                return true;
+            return true;
         }
 
         return false;
@@ -679,9 +677,11 @@ internal class AnalyzerHelper
 
     /// <summary>
     /// Mirrors reflection and generated serialization: public instance getters from the effective
-    /// inheritance chain, with the most-derived declaration winning even when it is ignored.
+    /// inheritance chain, with the most-derived declaration winning even when it is ignored, because
+    /// generated code does not fall back to the base declaration after applying
+    /// <c>[Property(Ignore = true)]</c> to the derived one.
     /// </summary>
-    private static IEnumerable<IPropertySymbol> GetSerializedProperties(INamedTypeSymbol type)
+    public static IEnumerable<IPropertySymbol> GetSerializedProperties(INamedTypeSymbol type)
     {
         var seenProperties = new HashSet<string>(StringComparer.Ordinal);
         for (var current = type; current is not null; current = current.BaseType)

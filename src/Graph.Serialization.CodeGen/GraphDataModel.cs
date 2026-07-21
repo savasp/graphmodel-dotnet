@@ -181,7 +181,7 @@ internal static class GraphDataModel
                definition.Name is "IDictionary" or "IReadOnlyDictionary";
     }
 
-    private static ITypeSymbol UnwrapNullableValueType(ITypeSymbol type)
+    internal static ITypeSymbol UnwrapNullableValueType(ITypeSymbol type)
     {
         return type is INamedTypeSymbol { IsGenericType: true } namedType &&
                namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T
