@@ -138,6 +138,11 @@ public sealed class CypherMutationPlanner
         var clauses = BuildTargetClauses(mutation, alias, target, identityParameter);
         if (acquireWriteLock)
         {
+            clauses.Add(new WithClause(
+                [new ReturnItem(target, null)],
+                distinct: false));
+            clauses.Add(new OrderByClause(
+                [new OrderByItem(new NativeElementIdentity(target), descending: false)]));
             var lockProperty = new PropertyAccess(target, storageNames[0]);
             clauses.Add(new SetClause([new SetItem(lockProperty, lockProperty)]));
         }
