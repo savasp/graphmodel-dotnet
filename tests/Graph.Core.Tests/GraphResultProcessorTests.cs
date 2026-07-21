@@ -87,14 +87,22 @@ public class GraphResultProcessorTests
     }
 
     [Fact]
-    public async Task RelationshipWireFixture_ReconstructsPublicEndpointIds()
+    public async Task BareRelationshipWireFixture_MaterializesWithoutEndpointNodesOrId()
     {
         var start = Node("start-wire", "start-public", "Start", 1, 1m);
         var end = Node("end-wire", "end-public", "End", 2, 2m);
-        var relationship = Relationship("edge-wire", "KNOWS", start, end, sequence: 0);
+        var relationship = GraphValue.Relationship(
+            "edge-wire",
+            "KNOWS",
+            start.ElementId!,
+            end.ElementId!,
+            new Dictionary<string, GraphValue>
+            {
+                ["Since"] = GraphValue.Scalar(2020),
+            });
         var record = new GraphRecord(new Dictionary<string, GraphValue>
         {
-            ["PathSegment"] = PathSegment(start, relationship, end),
+            ["Relationship"] = relationship,
         });
 
         var info = Assert.Single(await new GraphResultProcessor(factory).ProcessAsync(
@@ -103,9 +111,11 @@ public class GraphResultProcessorTests
             TestContext.Current.CancellationToken));
         var result = Assert.IsType<DynamicRelationship>(factory.Deserialize(info));
 
-        Assert.Equal("start-public", result.StartNodeId);
-        Assert.Equal("end-public", result.EndNodeId);
+        Assert.Empty(result.Id);
+        Assert.Empty(result.StartNodeId);
+        Assert.Empty(result.EndNodeId);
         Assert.Equal("KNOWS", result.Type);
+        Assert.Equal(2020, Assert.IsType<int>(result.Properties["Since"]));
     }
 
     [Fact]
@@ -123,12 +133,12 @@ public class GraphResultProcessorTests
             new Dictionary<string, GraphValue>
             {
                 [nameof(IEntity.Id)] = GraphValue.Scalar("relationship-public"),
-                [nameof(IRelationship.Direction)] = GraphValue.Scalar(RelationshipDirection.Outgoing.ToString()),
+                [nameof(Cvoya.Graph.Relationship.Direction)] = GraphValue.Scalar(RelationshipDirection.Outgoing.ToString()),
                 ["__metadata__"] = GraphValue.Scalar(versionIndependentTypeName),
             });
         var record = new GraphRecord(new Dictionary<string, GraphValue>
         {
-            ["PathSegment"] = PathSegment(start, relationship, end),
+            ["Relationship"] = relationship,
         });
 
         var info = Assert.Single(await new GraphResultProcessor(factory).ProcessAsync(
@@ -153,7 +163,7 @@ public class GraphResultProcessorTests
             new Dictionary<string, GraphValue>
             {
                 [nameof(IEntity.Id)] = GraphValue.Scalar("relationship-public"),
-                [nameof(IRelationship.Direction)] = GraphValue.Scalar(RelationshipDirection.Outgoing.ToString()),
+                [nameof(Cvoya.Graph.Relationship.Direction)] = GraphValue.Scalar(RelationshipDirection.Outgoing.ToString()),
                 ["__metadata__"] = GraphValue.Map(new Dictionary<string, GraphValue>
                 {
                     ["type"] = GraphValue.Scalar(typeof(MetadataDerivedRelationship).AssemblyQualifiedName),
@@ -161,7 +171,7 @@ public class GraphResultProcessorTests
             });
         var record = new GraphRecord(new Dictionary<string, GraphValue>
         {
-            ["PathSegment"] = PathSegment(start, relationship, end),
+            ["Relationship"] = relationship,
         });
 
         var info = Assert.Single(await new GraphResultProcessor(factory).ProcessAsync(
@@ -171,6 +181,68 @@ public class GraphResultProcessorTests
 
         Assert.Equal(typeof(MetadataDerivedRelationship), info.ActualType);
         Assert.DoesNotContain("__metadata__", info.SimpleProperties.Keys);
+    }
+
+    [Fact]
+    public async Task PathSegmentWireFixture_DerivesIncomingDirectionWithoutPublicEndpointIds()
+    {
+        var start = RawNode("start-wire", "Start");
+        var end = RawNode("end-wire", "End");
+        var relationship = GraphValue.Relationship(
+            "edge-wire",
+            "KNOWS",
+            end.ElementId!,
+            start.ElementId!,
+            new Dictionary<string, GraphValue>());
+        var record = new GraphRecord(new Dictionary<string, GraphValue>
+        {
+            ["PathSegment"] = PathSegment(start, relationship, end),
+        });
+        var materializer = new GraphResultMaterializer(factory, loggerFactory: null);
+
+        var segment = await materializer.MaterializeAsync<
+            IGraphPathSegment<DynamicNode, DynamicRelationship, DynamicNode>>(
+            [record],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(segment);
+        Assert.Equal(RelationshipDirection.Incoming, segment.Direction);
+        Assert.Equal("Start", segment.StartNode.Properties["name"]);
+        Assert.Equal("End", segment.EndNode.Properties["name"]);
+        Assert.NotSame(segment.StartNode, segment.EndNode);
+        Assert.Empty(segment.Relationship.StartNodeId);
+        Assert.Empty(segment.Relationship.EndNodeId);
+    }
+
+    [Fact]
+    public async Task SelfLoopPathSegmentWireFixture_UsesDeterministicOutgoingDirection()
+    {
+        var node = RawNode("loop-wire", "Loop");
+        var relationship = GraphValue.Relationship(
+            "edge-wire",
+            "KNOWS",
+            node.ElementId!,
+            node.ElementId!,
+            new Dictionary<string, GraphValue>());
+        var record = new GraphRecord(new Dictionary<string, GraphValue>
+        {
+            ["PathSegment"] = PathSegment(node, relationship, node),
+        });
+        var materializer = new GraphResultMaterializer(factory, loggerFactory: null);
+
+        var segment = await materializer.MaterializeAsync<
+            IGraphPathSegment<DynamicNode, DynamicRelationship, DynamicNode>>(
+            [record],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(segment);
+        Assert.Equal(RelationshipDirection.Outgoing, segment.Direction);
+    }
+
+    [Fact]
+    public void RelationshipInterface_DoesNotExposePhysicalDirection()
+    {
+        Assert.Null(typeof(IRelationship).GetProperty(nameof(Cvoya.Graph.Relationship.Direction)));
     }
 
     [Fact]
@@ -416,6 +488,14 @@ public class GraphResultProcessorTests
                 [propertyName] = GraphValue.Scalar(propertyValue),
             });
 
+    private static GraphValue RawNode(string wireId, string name) => GraphValue.Node(
+        wireId,
+        ["Person"],
+        new Dictionary<string, GraphValue>
+        {
+            ["name"] = GraphValue.Scalar(name),
+        });
+
     private static GraphValue Relationship(
         string wireId,
         string type,
@@ -429,7 +509,7 @@ public class GraphResultProcessorTests
             new Dictionary<string, GraphValue>
             {
                 [nameof(IEntity.Id)] = GraphValue.Scalar(wireId),
-                [nameof(IRelationship.Direction)] = GraphValue.Scalar(RelationshipDirection.Outgoing.ToString()),
+                [nameof(Cvoya.Graph.Relationship.Direction)] = GraphValue.Scalar(RelationshipDirection.Outgoing.ToString()),
                 ["SequenceNumber"] = GraphValue.Scalar(sequence),
             });
 

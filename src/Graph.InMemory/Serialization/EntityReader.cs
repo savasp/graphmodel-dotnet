@@ -36,10 +36,13 @@ internal sealed class EntityReader(EntityFactory entityFactory)
         _entityFactory.Deserialize(BuildEntityInfo(record, state, targetType));
 
     /// <summary>Materializes a relationship record as the given target type.</summary>
-    public object MaterializeRelationship(RelationshipRecord record, Type targetType)
+    public object MaterializeRelationship(
+        RelationshipRecord record,
+        Type targetType,
+        bool includeLegacyEndpointState = false)
     {
         var actualType = ResolveRelationshipType(record, targetType);
-        var info = BuildRelationshipInfo(record, actualType);
+        var info = BuildRelationshipInfo(record, actualType, includeLegacyEndpointState);
         return _entityFactory.Deserialize(info);
     }
 
@@ -158,16 +161,29 @@ internal sealed class EntityReader(EntityFactory entityFactory)
     }
 
     /// <summary>Rebuilds the serialized form of a relationship record.</summary>
-    public static EntityInfo BuildRelationshipInfo(RelationshipRecord record, Type actualType)
+    public static EntityInfo BuildRelationshipInfo(
+        RelationshipRecord record,
+        Type actualType,
+        bool includeLegacyEndpointState = false)
     {
         var simpleProperties = SnapshotToProperties(record.Properties);
 
-        // The stored identity fields are authoritative over whatever the caller serialized.
+        // Bare relationship query results carry only modeled relationship data. Legacy direct-ID
+        // APIs can still request the transitional endpoint state until the coordinated removal.
         SetSimple(simpleProperties, "Id", record.Id, typeof(string));
         SetSimple(simpleProperties, "Type", record.Type, typeof(string));
-        SetSimple(simpleProperties, "StartNodeId", record.StartNodeId, typeof(string));
-        SetSimple(simpleProperties, "EndNodeId", record.EndNodeId, typeof(string));
-        SetSimple(simpleProperties, "Direction", record.Direction, typeof(RelationshipDirection));
+        if (includeLegacyEndpointState)
+        {
+            SetSimple(simpleProperties, "StartNodeId", record.StartNodeId, typeof(string));
+            SetSimple(simpleProperties, "EndNodeId", record.EndNodeId, typeof(string));
+            SetSimple(simpleProperties, "Direction", record.Direction, typeof(RelationshipDirection));
+        }
+        else if (typeof(Relationship).IsAssignableFrom(actualType))
+        {
+            simpleProperties.Remove(nameof(IRelationship.StartNodeId));
+            simpleProperties.Remove(nameof(IRelationship.EndNodeId));
+            simpleProperties.Remove(nameof(Relationship.Direction));
+        }
 
         return new EntityInfo(actualType, record.Type, [], simpleProperties, new Dictionary<string, Property>());
     }

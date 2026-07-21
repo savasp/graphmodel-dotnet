@@ -74,7 +74,7 @@ public sealed class GraphResultProcessor
         return Task.FromResult(ProcessProjections(records, targetType));
     }
 
-    private static PathSegmentResult? DeserializePathSegment(IReadOnlyDictionary<string, object> pathSegmentRecord)
+    private static PathSegmentResult? DeserializePathSegment(Dictionary<string, object> pathSegmentRecord)
     {
         // Extract the relevant properties from the dictionary
         if (!pathSegmentRecord.TryGetValue("StartNode", out var startNodeObj) ||
@@ -139,10 +139,7 @@ public sealed class GraphResultProcessor
                 pathSegment.StartNode,
                 sourceType,
                 preserveInterfaceShape: true);
-            var relEntityInfo = ProcessSingleRelationshipFromPathSegment(
-                pathSegment.Relationship, relType,
-                pathSegment.StartNode.Node,
-                pathSegment.EndNode.Node);
+            var relEntityInfo = ProcessSingleRelationship(pathSegment.Relationship, relType);
             var endNodeEntityInfo = ProcessSingleNodeResult(
                 pathSegment.EndNode,
                 targetType,
@@ -150,7 +147,14 @@ public sealed class GraphResultProcessor
 
             // Create the composite path segment EntityInfo
             var pathSegmentEntityInfo = CreatePathSegmentEntityInfo(
-                startNodeEntityInfo, relEntityInfo, endNodeEntityInfo, pathSegmentType);
+                startNodeEntityInfo,
+                relEntityInfo,
+                endNodeEntityInfo,
+                GetPathSegmentDirection(
+                    pathSegment.Relationship,
+                    pathSegment.StartNode.Node,
+                    pathSegment.EndNode.Node),
+                pathSegmentType);
 
             results.Add(pathSegmentEntityInfo);
         }
@@ -164,25 +168,14 @@ public sealed class GraphResultProcessor
 
         foreach (var record in records)
         {
-            // Both old and new formats now go through the same path segment deserialization
-            if (record.Keys.Contains("PathSegment"))
+            if (record.Values.TryGetValue("Relationship", out var relationshipValue) &&
+                relationshipValue.ToObject() is GraphValue { Kind: GraphValueKind.Relationship } relationship)
             {
-                var pathSegment = DeserializePathSegment(record["PathSegment"].As<Dictionary<string, object>>())
-                    ?? throw new GraphException("Failed to deserialize relationship from record.");
-
-                // For relationships, we only care about the relationship part
-                var relationshipEntityInfo = ProcessSingleRelationshipFromPathSegment(
-                    pathSegment.Relationship,
-                    targetType,
-                    pathSegment.StartNode.Node,
-                    pathSegment.EndNode.Node);
-
-                results.Add(relationshipEntityInfo);
+                results.Add(ProcessSingleRelationship(relationship, targetType));
             }
             else
             {
-                // Fallback for any old format queries that might still be around
-                throw new GraphException("Legacy relationship format no longer supported. Please use the unified path segment format.");
+                throw new GraphException("Relationship projection did not contain a bare relationship value.");
             }
         }
 
@@ -397,14 +390,8 @@ public sealed class GraphResultProcessor
         return entityInfo;
     }
 
-    private EntityInfo ProcessSingleRelationshipFromPathSegment(
-        GraphValue relationship,
-        Type targetType,
-        GraphValue startNode,
-        GraphValue endNode)
-    {
-        return CreateEnhancedRelationshipEntityInfo(relationship, targetType, startNode, endNode);
-    }
+    private EntityInfo ProcessSingleRelationship(GraphValue relationship, Type targetType) =>
+        CreateEntityInfoFromRelationship(relationship, targetType);
 
     /// <summary>
     /// A single decomposed hop of a <c>TraversePaths</c> result: which path and hop position it
@@ -416,7 +403,8 @@ public sealed class GraphResultProcessor
         int HopIndex,
         EntityInfo StartNode,
         EntityInfo Relationship,
-        EntityInfo EndNode);
+        EntityInfo EndNode,
+        RelationshipDirection Direction);
 
     /// <summary>
     /// Processes the rows produced by <c>CypherQueryVisitor.HandleTraversePaths</c> - one row per
@@ -449,16 +437,22 @@ public sealed class GraphResultProcessor
             pathSegment.StartNode,
             sourceType,
             preserveInterfaceShape: true);
-        var relEntityInfo = ProcessSingleRelationshipFromPathSegment(
-            pathSegment.Relationship, relationshipType,
-            pathSegment.StartNode.Node,
-            pathSegment.EndNode.Node);
+        var relEntityInfo = ProcessSingleRelationship(pathSegment.Relationship, relationshipType);
         var endNodeEntityInfo = ProcessSingleNodeResult(
             pathSegment.EndNode,
             targetType,
             preserveInterfaceShape: true);
 
-        return new GraphPathHop(pathIndex, hopIndex, startNodeEntityInfo, relEntityInfo, endNodeEntityInfo);
+        return new GraphPathHop(
+            pathIndex,
+            hopIndex,
+            startNodeEntityInfo,
+            relEntityInfo,
+            endNodeEntityInfo,
+            GetPathSegmentDirection(
+                pathSegment.Relationship,
+                pathSegment.StartNode.Node,
+                pathSegment.EndNode.Node));
     }
 
     private List<EntityInfo> ProcessProjections(IReadOnlyList<GraphRecord> records, Type targetType)
@@ -519,19 +513,11 @@ public sealed class GraphResultProcessor
                 continue;
             }
 
-            // A bare relationship omits the endpoints needed for public endpoint IDs.
-            if (value is GraphValue { Kind: GraphValueKind.Relationship })
+            // Relationship-valued projections intentionally carry only the relationship value.
+            if (value is GraphValue { Kind: GraphValueKind.Relationship } relationshipValue)
             {
-                throw new GraphException(
-                    $"Relationship projection '{key}' did not include endpoint node data. " +
-                    "StartNodeId and EndNodeId cannot be reconstructed from a bare relationship value.");
-            }
-
-            // Handle relationship-shaped projection structures with endpoint nodes.
-            if (TryDeserializeRelationshipProjection(value, targetType, key, out var relationshipProjection))
-            {
-                var (relationship, startNode, endNode, projectionType) = relationshipProjection;
-                var relEntityInfo = CreateEnhancedRelationshipEntityInfo(relationship, projectionType, startNode, endNode);
+                var projectionType = GetProjectionMemberType(targetType, key) ?? typeof(Graph.IRelationship);
+                var relEntityInfo = CreateEntityInfoFromRelationship(relationshipValue, projectionType);
                 complexProperties[key] = new Property(
                     PropertyInfo: null!, // We'll handle this differently for projections
                     Label: key,
@@ -631,8 +617,8 @@ public sealed class GraphResultProcessor
                 }
 
                 // Extract relationship
-                relationship = relationshipObj is GraphValue { Kind: GraphValueKind.Relationship } relationshipValue
-                    ? relationshipValue
+                relationship = relationshipObj is GraphValue { Kind: GraphValueKind.Relationship } projectedRelationship
+                    ? projectedRelationship
                     : null;
 
                 // Extract end node (could be a complex structure or direct node)
@@ -649,13 +635,14 @@ public sealed class GraphResultProcessor
                 if (startNode != null && relationship != null && endNode != null)
                 {
                     var startNodeEntityInfo = CreateEntityInfoFromNode(startNode, typeof(Graph.INode));
-                    var relEntityInfo = CreateEnhancedRelationshipEntityInfo(relationship, typeof(Graph.IRelationship), startNode, endNode);
+                    var relEntityInfo = CreateEntityInfoFromRelationship(relationship, typeof(Graph.IRelationship));
                     var endNodeEntityInfo = CreateEntityInfoFromNode(endNode, typeof(Graph.INode));
 
                     var pathSegmentEntityInfo = CreatePathSegmentEntityInfo(
                         startNodeEntityInfo,
                         relEntityInfo,
                         endNodeEntityInfo,
+                        GetPathSegmentDirection(relationship, startNode, endNode),
                         typeof(IGraphPathSegment<Graph.INode, Graph.IRelationship, Graph.INode>)
                     );
 
@@ -743,43 +730,6 @@ public sealed class GraphResultProcessor
         return true;
     }
 
-    private static bool TryDeserializeRelationshipProjection(
-        object? value,
-        Type targetType,
-        string projectionName,
-        out (GraphValue Relationship, GraphValue StartNode, GraphValue EndNode, Type ProjectionType) result)
-    {
-        result = default;
-
-        if (value is not IReadOnlyDictionary<string, object> structuredObject ||
-            !structuredObject.TryGetValue("StartNode", out var startNodeValue) ||
-            !structuredObject.TryGetValue("Relationship", out var relationshipValue) ||
-            !structuredObject.TryGetValue("EndNode", out var endNodeValue))
-        {
-            return false;
-        }
-
-        var projectionType = GetProjectionMemberType(targetType, projectionName);
-        if (projectionType == null || !typeof(Graph.IRelationship).IsAssignableFrom(projectionType))
-        {
-            return false;
-        }
-
-        var startNode = ExtractProjectedNode(startNodeValue);
-        var relationship = relationshipValue as GraphValue;
-        var endNode = ExtractProjectedNode(endNodeValue);
-
-        if (startNode == null || relationship == null || endNode == null)
-        {
-            throw new GraphException(
-                $"Relationship projection '{projectionName}' did not include endpoint node data. " +
-                "StartNodeId and EndNodeId cannot be reconstructed from a bare relationship value.");
-        }
-
-        result = (relationship, startNode, endNode, projectionType);
-        return true;
-    }
-
     private static Type? GetProjectionMemberType(Type targetType, string projectionName)
     {
         return targetType.GetProperty(projectionName)?.PropertyType
@@ -789,161 +739,35 @@ public sealed class GraphResultProcessor
                 ?.ParameterType;
     }
 
-    private static GraphValue? ExtractProjectedNode(object value)
-    {
-        if (value is GraphValue { Kind: GraphValueKind.Node } node)
-        {
-            return node;
-        }
-
-        if (value is IReadOnlyDictionary<string, object> nodeStructure &&
-            nodeStructure.TryGetValue("Node", out var nodeObject) &&
-            nodeObject is GraphValue { Kind: GraphValueKind.Node } structuredNode)
-        {
-            return structuredNode;
-        }
-
-        return null;
-    }
-
-    private EntityInfo CreateEnhancedRelationshipEntityInfo(
-        GraphValue relationship,
-        Type targetType,
-        GraphValue startNode,
-        GraphValue endNode)
-    {
-        var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
-        EnhanceRelationshipEntityInfo(entityInfo, relationship, targetType, startNode, endNode);
-        return entityInfo;
-    }
-
-    private static void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, GraphValue relationship, Type targetType, GraphValue pathStartNode, GraphValue pathEndNode)
-    {
-        var direction = GetRelationshipDirection(relationship);
-        var (startNodeId, endNodeId) = GetLogicalRelationshipNodeIds(relationship, pathStartNode, pathEndNode, direction);
-
-        // Add StartNodeId as a simple property
-        var startNodeIdProperty = targetType.IsInterface
-            ? targetType.GetInterface(typeof(Graph.IRelationship).Name)?.GetProperty(nameof(Graph.IRelationship.StartNodeId))
-            : targetType.GetProperty(nameof(Graph.IRelationship.StartNodeId));
-        if (startNodeIdProperty != null)
-        {
-            entityInfo.SimpleProperties[nameof(Graph.IRelationship.StartNodeId)] = new Property(
-                PropertyInfo: startNodeIdProperty,
-                Label: nameof(Graph.IRelationship.StartNodeId),
-                IsNullable: false,
-                Value: new SimpleValue(startNodeId, typeof(string))
-            );
-        }
-
-        // Add EndNodeId as a simple property
-        var endNodeIdProperty = targetType.IsInterface
-            ? targetType.GetInterface(typeof(Graph.IRelationship).Name)?.GetProperty(nameof(Graph.IRelationship.EndNodeId))
-            : targetType.GetProperty(nameof(Graph.IRelationship.EndNodeId));
-        if (endNodeIdProperty != null)
-        {
-            entityInfo.SimpleProperties[nameof(Graph.IRelationship.EndNodeId)] = new Property(
-                PropertyInfo: endNodeIdProperty,
-                Label: nameof(Graph.IRelationship.EndNodeId),
-                IsNullable: false,
-                Value: new SimpleValue(endNodeId, typeof(string))
-            );
-        }
-
-        // Add Direction
-        var directionProperty = targetType.IsInterface
-            ? targetType.GetInterface(typeof(Graph.IRelationship).Name)?.GetProperty(nameof(Graph.IRelationship.Direction))
-            : targetType.GetProperty(nameof(Graph.IRelationship.Direction));
-        if (directionProperty != null)
-        {
-            entityInfo.SimpleProperties[nameof(Graph.IRelationship.Direction)] = new Property(
-                PropertyInfo: directionProperty,
-                Label: nameof(Graph.IRelationship.Direction),
-                IsNullable: false,
-                Value: new SimpleValue(direction, typeof(RelationshipDirection))
-            );
-        }
-    }
-
-    private static string GetNodeId(GraphValue node)
-    {
-        // TODO: Throughout this code, we use nameof(<interface>.Id) where <interface> is IEntity, INode, IRelationship.
-        // This is wrong. We should be using the label instead.
-
-        // Try to get the Id property from the node
-        if (node.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
-        {
-            return idValue.As<string>();
-        }
-
-        // Fallback to ElementId if no Id property
-        return node.ElementId!;
-    }
-
-    private static (string StartNodeId, string EndNodeId) GetLogicalRelationshipNodeIds(
+    private static RelationshipDirection GetPathSegmentDirection(
         GraphValue relationship,
         GraphValue pathStartNode,
-        GraphValue pathEndNode,
-        RelationshipDirection direction)
+        GraphValue pathEndNode)
     {
-        var pathStartNodeId = GetNodeId(pathStartNode);
-        var pathEndNodeId = GetNodeId(pathEndNode);
-
         var endpointsMatchPath =
             relationship.StartNodeElementId == pathStartNode.ElementId &&
             relationship.EndNodeElementId == pathEndNode.ElementId;
-        var endpointsMatchReversePath =
-            relationship.StartNodeElementId == pathEndNode.ElementId &&
-            relationship.EndNodeElementId == pathStartNode.ElementId;
-
-        if (!endpointsMatchPath && !endpointsMatchReversePath)
+        if (endpointsMatchPath)
         {
-            // This should be unreachable for well-formed single-hop projections; fail fast
-            // rather than fabricating logical endpoint IDs from an unrelated row shape.
-            throw new GraphException(
-                "Relationship endpoint element IDs do not match the projected endpoint nodes. " +
-                "StartNodeId and EndNodeId cannot be reconstructed.");
+            // For a self-loop both orientations match; choose Outgoing deterministically.
+            return RelationshipDirection.Outgoing;
         }
 
-        var (physicalStartNodeId, physicalEndNodeId) =
-            endpointsMatchPath
-                ? (pathStartNodeId, pathEndNodeId)
-                : (pathEndNodeId, pathStartNodeId);
-
-        return direction switch
+        if (relationship.StartNodeElementId == pathEndNode.ElementId &&
+            relationship.EndNodeElementId == pathStartNode.ElementId)
         {
-            RelationshipDirection.Outgoing => (physicalStartNodeId, physicalEndNodeId),
-            RelationshipDirection.Incoming => (physicalEndNodeId, physicalStartNodeId),
-            _ => (physicalStartNodeId, physicalEndNodeId)
-        };
-    }
-
-    private static RelationshipDirection GetRelationshipDirection(GraphValue relationship)
-    {
-        // Try to get the direction from the relationship properties
-        if (relationship.Properties.TryGetValue(nameof(Graph.IRelationship.Direction), out var directionValue))
-        {
-            if (directionValue is RelationshipDirection direction && Enum.IsDefined(direction))
-            {
-                return direction;
-            }
-
-            // Try to parse if it's stored as a string or number
-            if (Enum.TryParse<RelationshipDirection>(directionValue.ToString(), out var parsedDirection) &&
-                Enum.IsDefined(parsedDirection))
-            {
-                return parsedDirection;
-            }
+            return RelationshipDirection.Incoming;
         }
 
-        // Default to Outgoing if no direction is found
-        return RelationshipDirection.Outgoing;
+        throw new GraphException(
+            "Relationship endpoint element IDs do not match the projected path-segment endpoints.");
     }
 
     private static EntityInfo CreatePathSegmentEntityInfo(
         EntityInfo sourceEntity,
         EntityInfo relEntity,
         EntityInfo targetEntity,
+        RelationshipDirection direction,
         Type pathSegmentType)
     {
         // Store the three components as properties in the path segment EntityInfo
@@ -973,7 +797,14 @@ public sealed class GraphResultProcessor
             ActualType: pathSegmentType,
             Label: typeof(IGraphPathSegment<,,>).Name,
             ActualLabels: [],
-            SimpleProperties: new Dictionary<string, Property>(),
+            SimpleProperties: new Dictionary<string, Property>
+            {
+                [nameof(IGraphPathSegment.Direction)] = new Property(
+                    typeof(IGraphPathSegment).GetProperty(nameof(IGraphPathSegment.Direction))!,
+                    nameof(IGraphPathSegment.Direction),
+                    IsNullable: false,
+                    new SimpleValue(direction, typeof(RelationshipDirection)))
+            },
             ComplexProperties: complexProperties
         );
     }
@@ -1152,14 +983,15 @@ public sealed class GraphResultProcessor
         else
         {
             simpleProperties = ExtractSimpleProperties(relationship.Properties, actualType);
-            // Add ElementId as the Id property
-            if (actualType.GetProperty(nameof(Graph.IEntity.Id)) != null)
+            // A raw relationship may not carry a modeled Id property; never substitute native identity.
+            if (actualType.GetProperty(nameof(Graph.IEntity.Id)) is { } idProperty &&
+                relationship.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
             {
                 simpleProperties[nameof(Graph.IEntity.Id)] = new Property(
-                    PropertyInfo: actualType.GetProperty(nameof(Graph.IEntity.Id))!,
+                    PropertyInfo: idProperty,
                     Label: nameof(Graph.IEntity.Id),
                     IsNullable: false,
-                    Value: new SimpleValue(relationship.Properties[nameof(Graph.IEntity.Id)], typeof(string))
+                    Value: new SimpleValue(idValue, typeof(string))
                 );
             }
         }
@@ -1473,7 +1305,7 @@ public sealed class GraphResultProcessor
 
         foreach (var record in records)
         {
-            // Entity search returns records with 'entity' column that can be either nodes or PathSegment maps
+            // Entity search returns a bare node or relationship in the shared entity column.
             if (record.Values.TryGetValue("entity", out var wireEntityValue))
             {
                 var entityValue = wireEntityValue.ToObject();
@@ -1483,19 +1315,9 @@ public sealed class GraphResultProcessor
                     var nodeEntityInfo = CreateEntityInfoFromNode(node, typeof(Graph.INode));
                     results.Add(nodeEntityInfo);
                 }
-                else if (entityValue is IReadOnlyDictionary<string, object> pathSegmentMap)
+                else if (entityValue is GraphValue { Kind: GraphValueKind.Relationship } relationship)
                 {
-                    // This is a PathSegment map, process as a relationship
-                    var pathSegment = DeserializePathSegment(pathSegmentMap);
-                    if (pathSegment != null)
-                    {
-                        var relationshipEntityInfo = CreateEnhancedRelationshipEntityInfo(
-                            pathSegment.Relationship,
-                            typeof(Graph.IRelationship),
-                            pathSegment.StartNode.Node,
-                            pathSegment.EndNode.Node);
-                        results.Add(relationshipEntityInfo);
-                    }
+                    results.Add(CreateEntityInfoFromRelationship(relationship, typeof(Graph.IRelationship)));
                 }
             }
         }

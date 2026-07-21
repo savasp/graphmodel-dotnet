@@ -103,6 +103,16 @@ internal sealed class AgeEntityProjectionPass : ICypherPass
                 return clauses;
             }
 
+            if (projection.Shape == EntityProjectionShape.Relationship)
+            {
+                AppendProjectionResult(
+                    clauses,
+                    projection.Ordering,
+                    [new ReturnItem(new VariableRef(projection.SourceAlias), "Relationship")],
+                    ["Relationship"]);
+                return clauses;
+            }
+
             if (projection.IncludePathCoordinates)
             {
                 AppendProjectionResult(

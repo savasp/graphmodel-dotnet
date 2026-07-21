@@ -60,7 +60,7 @@ internal static class EntityWriter
             entity.Label,
             relationship.StartNodeId,
             relationship.EndNodeId,
-            relationship.Direction,
+            LegacyRelationshipEndpoints.LegacyDirection(relationship),
             entity.ActualType,
             SnapshotSimpleProperties(entity, labels: null),
             IsComplexProperty: false,

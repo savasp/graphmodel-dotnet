@@ -345,11 +345,12 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         bool createMissingEndpoints)
         where TRelationship : class, Graph.IRelationship
     {
-        var (sourceNodeId, targetNodeId) = relationship.Direction switch
+        var direction = LegacyRelationshipEndpoints.LegacyDirection(relationship);
+        var (sourceNodeId, targetNodeId) = direction switch
         {
             RelationshipDirection.Outgoing => (relationship.StartNodeId, relationship.EndNodeId),
             RelationshipDirection.Incoming => (relationship.EndNodeId, relationship.StartNodeId),
-            _ => throw new GraphException($"Unsupported relationship direction '{relationship.Direction}'."),
+            _ => throw new GraphException($"Unsupported relationship direction '{direction}'."),
         };
         var parameters = new Dictionary<string, object?>
         {

@@ -861,17 +861,31 @@ public sealed class CypherQueryPlanner
             _ => throw new GraphQueryTranslationException($"Traversal direction '{step.Direction}' is not supported."),
         };
 
-        IReadOnlyList<string> types = step.RelationshipClrType is null
-            ? step.RelationshipType is { } relationshipType ? [relationshipType] : []
-            : Labels.GetCompatibleLabels(step.RelationshipClrType);
-
         return new PathPattern(
         [
             new NodePattern("src", []),
-            new RelationshipPattern("r", direction, depth: null, types),
-            new NodePattern("tgt", step.TargetType is null ? [] : Labels.GetCompatibleLabels(step.TargetType)),
+            new RelationshipPattern("r", direction, depth: null, TraversalRelationshipTypes(step)),
+            new NodePattern("tgt", TraversalNodeLabels(step.TargetType)),
         ]);
     }
+
+    // The base INode interface and DynamicNode match nodes whose labels need not correspond to any
+    // loaded CLR type (dynamic entities carry arbitrary labels), so a compatible-labels list cannot
+    // bound them and the pattern must stay unconstrained.
+    private static List<string> TraversalNodeLabels(Type? type) =>
+        type is null || type == typeof(INode) || type == typeof(DynamicNode)
+            ? []
+            : Labels.GetCompatibleLabels(type);
+
+    // Same reasoning as TraversalNodeLabels: the base IRelationship interface and
+    // DynamicRelationship match edges whose stored type strings need not correspond to any loaded
+    // CLR type, mirroring the untyped pattern DynamicRoot queries already use.
+    private static List<string> TraversalRelationshipTypes(TraversalStep step) =>
+        step.RelationshipClrType is { } clrType
+            ? clrType == typeof(IRelationship) || clrType == typeof(DynamicRelationship)
+                ? []
+                : Labels.GetCompatibleLabels(clrType)
+            : step.RelationshipType is { } relationshipType ? [relationshipType] : [];
 
     private static bool IsStartNodeKey(LambdaExpression keySelector)
     {
@@ -1663,7 +1677,7 @@ public sealed class CypherQueryPlanner
                         join.ResultSelector.ReturnType,
                         loadProperties: false,
                         rowIdentityAliases: NodeProjectionRowIdentityAliases(model, state, "joined"))
-                    : ProjectionPlan.PathSegment("src", "r", "tgt", null, null, loadProperties: false);
+                    : ProjectionPlan.Relationship("r");
             }
 
             var aliases = new Dictionary<ParameterExpression, string>
@@ -1681,9 +1695,9 @@ public sealed class CypherQueryPlanner
                 SearchRoot { Target: SearchRootTarget.Entities } =>
                     ProjectionPlan.Scalar([new ReturnItem(new VariableRef("entity"), "entity")]),
                 RelationshipRoot or SearchRoot { Target: SearchRootTarget.Relationships } =>
-                    ProjectionPlan.PathSegment("src", "r", "tgt", null, null, loadProperties: true),
+                    ProjectionPlan.Relationship("r"),
                 DynamicRoot { ElementType: { } type } when typeof(IRelationship).IsAssignableFrom(type) =>
-                    ProjectionPlan.PathSegment("src", "r", "tgt", null, null, loadProperties: true),
+                    ProjectionPlan.Relationship("r"),
                 _ => ProjectionPlan.Node(
                     state.CurrentAlias,
                     state.CurrentType,
@@ -1704,7 +1718,7 @@ public sealed class CypherQueryPlanner
         if (model.Projection.Kind == ProjectionKind.Identity &&
             typeof(IRelationship).IsAssignableFrom(selector.ReturnType))
         {
-            return ProjectionPlan.PathSegment("src", "r", "tgt", null, null, loadProperties: true);
+            return ProjectionPlan.Relationship(state.CurrentRelationshipAlias);
         }
 
         if (model.Projection.Kind == ProjectionKind.PathSegment)
@@ -1731,13 +1745,7 @@ public sealed class CypherQueryPlanner
                             HasComplexProperties(member.Type),
                             NodeProjectionRowIdentityAliases(model, state, state.TargetAlias)),
                     nameof(IGraphPathSegment.Relationship) =>
-                        ProjectionPlan.PathSegment(
-                            state.CurrentTraversalSourceAlias,
-                            state.CurrentRelationshipAlias,
-                            state.TargetAlias,
-                            state.RootType,
-                            state.CurrentType,
-                            loadProperties: true),
+                        ProjectionPlan.Relationship(state.CurrentRelationshipAlias),
                     nameof(IGraphPathSegment.StartNode) =>
                         ProjectionPlan.Node(
                             state.CurrentTraversalSourceAlias,
@@ -1797,7 +1805,7 @@ public sealed class CypherQueryPlanner
         {
             return component switch
             {
-                nameof(IGraphPathSegment.Relationship) => RelationshipMap(state),
+                nameof(IGraphPathSegment.Relationship) => RelationshipExpression(state),
                 nameof(IGraphPathSegment.StartNode) => new EntityProjectionExpression(
                     state.CurrentTraversalSourceAlias,
                     HasComplexProperties(member.Type)),
@@ -1811,7 +1819,7 @@ public sealed class CypherQueryPlanner
         if (item is ParameterExpression relationship &&
             typeof(IRelationship).IsAssignableFrom(relationship.Type))
         {
-            return RelationshipMap(state);
+            return RelationshipExpression(state);
         }
 
         if (item is ParameterExpression node && typeof(INode).IsAssignableFrom(node.Type))
@@ -1836,14 +1844,15 @@ public sealed class CypherQueryPlanner
         return lowerer.Lower(argument, aliases);
     }
 
-    private static MapExpression RelationshipMap(PlanningState state) => new(
+    private static VariableRef RelationshipExpression(PlanningState state) =>
+        new VariableRef(state.CurrentRelationshipAlias);
+
+    private static MapExpression PathSegmentMap(PlanningState state) => new(
     [
         new MapEntry("StartNode", new VariableRef(state.CurrentTraversalSourceAlias)),
         new MapEntry("Relationship", new VariableRef(state.CurrentRelationshipAlias)),
         new MapEntry("EndNode", new VariableRef(state.CurrentEndNodeAlias)),
     ]);
-
-    private static MapExpression PathSegmentMap(PlanningState state) => RelationshipMap(state);
 
     private static void AddRootAndTraversalClauses(
         List<ICypherClause> clauses,
@@ -1992,8 +2001,8 @@ public sealed class CypherQueryPlanner
             [
                 new NodePattern(
                     sourceAlias,
-                    sourceAlias == rootAlias && root is not SearchRoot && rootType is not null
-                        ? Labels.GetCompatibleLabels(rootType)
+                    sourceAlias == rootAlias && root is not SearchRoot
+                        ? TraversalNodeLabels(rootType)
                         : []),
                 new RelationshipPattern(
                     relationshipAlias,
@@ -2005,12 +2014,10 @@ public sealed class CypherQueryPlanner
                         _ => throw new GraphQueryTranslationException($"Traversal direction '{step.Direction}' is not supported."),
                     },
                     depth,
-                    step.RelationshipClrType is null
-                        ? step.RelationshipType is { } relationshipType ? [relationshipType] : []
-                        : Labels.GetCompatibleLabels(step.RelationshipClrType)),
+                    TraversalRelationshipTypes(step)),
                 new NodePattern(
                     targetAlias,
-                    step.TargetType is null ? [] : Labels.GetCompatibleLabels(step.TargetType))
+                    TraversalNodeLabels(step.TargetType))
             ],
             index == traversal.Count - 1 ? pathAlias : null,
             step.PathSelection switch
@@ -2332,6 +2339,8 @@ public sealed class CypherQueryPlanner
         IReadOnlyList<ReturnItem> entityItems = projection.Shape switch
         {
             EntityProjectionShape.Node =>
+                [new ReturnItem(new VariableRef(projection.SourceAlias!), null)],
+            EntityProjectionShape.Relationship =>
                 [new ReturnItem(new VariableRef(projection.SourceAlias!), null)],
             EntityProjectionShape.PathSegment =>
             [
@@ -2737,6 +2746,17 @@ public sealed class CypherQueryPlanner
                 loadProperties,
                 false,
                 rowIdentityAliases ?? [],
+                null);
+
+        public static ProjectionPlan Relationship(string alias) =>
+            new(
+                EntityProjectionShape.Relationship,
+                alias,
+                null,
+                null,
+                false,
+                false,
+                [],
                 null);
 
         public static ProjectionPlan PathSegment(

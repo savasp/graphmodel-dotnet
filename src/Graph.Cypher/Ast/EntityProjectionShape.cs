@@ -9,6 +9,9 @@ public enum EntityProjectionShape
     /// <summary>A single node projection.</summary>
     Node,
 
+    /// <summary>A single relationship projection without endpoint nodes.</summary>
+    Relationship,
+
     /// <summary>A start-node, relationship, and end-node path segment.</summary>
     PathSegment,
 }

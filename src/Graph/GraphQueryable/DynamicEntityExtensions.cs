@@ -74,7 +74,7 @@ public static class DynamicEntityExtensions
             endNodeId: relationship.EndNodeId,
             type: GetRelationshipType(relationship),
             properties: properties,
-            direction: relationship.Direction
+            direction: LegacyRelationshipEndpoints.LegacyDirection(relationship)
         )
         {
             Id = relationship.Id
@@ -143,7 +143,7 @@ public static class DynamicEntityExtensions
             endNodeId: relationship.EndNodeId,
             type: GetRelationshipType(relationship),
             properties: properties,
-            direction: relationship.Direction
+            direction: LegacyRelationshipEndpoints.LegacyDirection(relationship)
         )
         {
             Id = relationship.Id
@@ -258,7 +258,7 @@ public static class DynamicEntityExtensions
             EntityKind.Node => propertyName == nameof(INode.Labels),
             EntityKind.Relationship =>
                 propertyName == nameof(IRelationship.Type) ||
-                propertyName == nameof(IRelationship.Direction) ||
+                propertyName == nameof(Relationship.Direction) ||
                 propertyName == nameof(IRelationship.StartNodeId) ||
                 propertyName == nameof(IRelationship.EndNodeId),
             _ => false,

@@ -85,7 +85,10 @@ internal sealed class InMemoryGraph : IGraph
             {
                 var record = FindRelationshipRecord(tx.View, id, typeof(DynamicRelationship))
                     ?? throw new EntityNotFoundException($"Relationship with ID {id} not found");
-                return (DynamicRelationship)_reader.MaterializeRelationship(record, typeof(DynamicRelationship));
+                return (DynamicRelationship)_reader.MaterializeRelationship(
+                    record,
+                    typeof(DynamicRelationship),
+                    includeLegacyEndpointState: true);
             },
             $"Failed to get dynamic relationship {id}",
             cancellationToken).ConfigureAwait(false);
@@ -125,7 +128,10 @@ internal sealed class InMemoryGraph : IGraph
             {
                 var record = FindRelationshipRecord(tx.View, id, typeof(R))
                     ?? throw new EntityNotFoundException($"Relationship with ID {id} not found");
-                return (R)_reader.MaterializeRelationship(record, typeof(R));
+                return (R)_reader.MaterializeRelationship(
+                    record,
+                    typeof(R),
+                    includeLegacyEndpointState: true);
             },
             $"Failed to get relationship {id} of type {typeof(R).Name}",
             cancellationToken).ConfigureAwait(false);

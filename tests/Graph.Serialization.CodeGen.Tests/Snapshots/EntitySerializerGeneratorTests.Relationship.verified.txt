@@ -313,18 +313,6 @@ internal sealed class KnowsSerializer : IEntitySerializer
             );
         }
 
-        // Schema for property: Direction
-        {
-            var propInfo = typeof(TestNamespace.Knows).GetProperty("Direction")
-                ?? typeof(Cvoya.Graph.IRelationship).GetProperty("Direction")!;
-            simpleProperties["Direction"] = new PropertySchema(
-                PropertyInfo: propInfo,
-                PropertyName: "Direction",
-                PropertyType: PropertyType.Simple,
-                IsNullable: false
-            );
-        }
-
         // Schema for property: StartNodeId
         {
             var propInfo = typeof(TestNamespace.Knows).GetProperty("StartNodeId")
@@ -367,6 +355,17 @@ internal sealed class KnowsSerializer : IEntitySerializer
             simpleProperties["Since"] = new PropertySchema(
                 PropertyInfo: propInfo,
                 PropertyName: "Since",
+                PropertyType: PropertyType.Simple,
+                IsNullable: false
+            );
+        }
+
+        // Schema for property: Direction
+        {
+            var propInfo = typeof(TestNamespace.Knows).GetProperty("Direction")!;
+            simpleProperties["Direction"] = new PropertySchema(
+                PropertyInfo: propInfo,
+                PropertyName: "Direction",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );

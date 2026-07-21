@@ -182,9 +182,7 @@ public sealed class Neo4jDialect : ICypherDialect
             .Append("    CALL ").Append(FullTextRelationshipProcedure).Append('(')
             .Append(context.RenderLiteral(FullTextRelationshipIndex)).Append(", ")
             .Append(context.RenderExpression(search.Query)).Append(") YIELD relationship\n")
-            .Append("    MATCH (src)-[relationship]->(tgt)\n")
-            .Append("    RETURN { StartNode: { Node: src, ComplexProperties: [] }, ")
-            .Append("Relationship: relationship, EndNode: { Node: tgt, ComplexProperties: [] } } AS entity\n")
+            .Append("    RETURN relationship AS entity\n")
             .Append('}')
             .ToString();
     }

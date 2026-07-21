@@ -74,7 +74,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 entity,
                 relationship.StartNodeId,
                 relationship.EndNodeId,
-                relationship.Direction,
+                LegacyRelationshipEndpoints.LegacyDirection(relationship),
                 transaction.Runner,
                 cancellationToken).ConfigureAwait(false);
 
@@ -108,6 +108,8 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
 
         try
         {
+            var direction = LegacyRelationshipEndpoints.LegacyDirection(relationship);
+
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
             GraphDataModel.EnsureComplexPropertyDepth(relationship);
@@ -129,7 +131,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             var updated = await UpdateRelationshipPropertiesAsync(
                 relationship.Id,
                 entity,
-                relationship.Direction,
+                direction,
                 transaction.Runner,
                 cancellationToken).ConfigureAwait(false);
 
@@ -143,7 +145,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             {
                 throw new GraphException(
                     "Direction cannot be changed on update; delete and recreate the relationship. " +
-                    $"Stored direction is {updated.StoredDirection}; incoming direction is {relationship.Direction}.");
+                    $"Stored direction is {updated.StoredDirection}; incoming direction is {direction}.");
             }
 
             // Validate property constraints after confirming the target row exists. If validation

@@ -102,6 +102,184 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_DynamicRelationshipTraversalFromUntypedNodes_EmitsUnconstrainedPattern()
+    {
+        var traversal = new TraversalStep(
+            "DynamicRelationship",
+            GraphTraversalDirection.Both,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(INode),
+            typeof(DynamicRelationship));
+
+        var statement = planner.Plan(Model(
+            root: new NodeRoot(typeof(INode)),
+            traversal: [traversal]));
+
+        var match = statement.Clauses.OfType<MatchClause>().First();
+        var pattern = Assert.Single(match.Patterns);
+        var relationship = Assert.Single(pattern.Elements.OfType<RelationshipPattern>());
+        Assert.Empty(relationship.Types);
+        Assert.All(pattern.Elements.OfType<NodePattern>(), node => Assert.Empty(node.Labels));
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_InterfaceRelationshipTraversal_EmitsUnconstrainedRelationshipTypes()
+    {
+        var traversal = new TraversalStep(
+            "IRelationship",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(DynamicNode),
+            typeof(IRelationship));
+
+        var statement = planner.Plan(Model(
+            root: new NodeRoot(typeof(Person)),
+            traversal: [traversal]));
+
+        var match = statement.Clauses.OfType<MatchClause>().First();
+        var pattern = Assert.Single(match.Patterns);
+        var relationship = Assert.Single(pattern.Elements.OfType<RelationshipPattern>());
+        Assert.Empty(relationship.Types);
+        var target = pattern.Elements.OfType<NodePattern>().Last();
+        Assert.Empty(target.Labels);
+        var source = pattern.Elements.OfType<NodePattern>().First();
+        Assert.NotEmpty(source.Labels);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_RelationshipRoot_UsesBareRelationshipProjection()
+    {
+        var statement = planner.Plan(Model(root: new RelationshipRoot(typeof(Knows))));
+
+        var projection = Assert.IsType<EntityProjectionClause>(statement.Clauses[^1]);
+        Assert.Equal(EntityProjectionShape.Relationship, projection.Shape);
+        Assert.Equal("r", projection.SourceAlias);
+        Assert.Null(projection.RelationshipAlias);
+        Assert.Null(projection.TargetAlias);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_PathSegmentRelationship_UsesBareRelationshipProjection()
+    {
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Both,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows));
+        Expression<Func<IGraphPathSegment<Person, Knows, Person>, Knows>> selector =
+            segment => segment.Relationship;
+
+        var statement = planner.Plan(Model(
+            traversal: [traversal],
+            projection: new ProjectionShape(ProjectionKind.PathSegment, selector)));
+
+        var projection = Assert.IsType<EntityProjectionClause>(statement.Clauses[^1]);
+        Assert.Equal(EntityProjectionShape.Relationship, projection.Shape);
+        Assert.Equal("r", projection.SourceAlias);
+        Assert.Null(projection.RelationshipAlias);
+        Assert.Null(projection.TargetAlias);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_AnonymousRelationshipMember_ReturnsOnlyRelationshipVariable()
+    {
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Both,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows));
+        Expression<Func<IGraphPathSegment<Person, Knows, Person>, object>> selector =
+            segment => new { segment.Relationship, segment.Direction };
+
+        var statement = planner.Plan(Model(
+            traversal: [traversal],
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector)));
+
+        var items = Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items;
+        Assert.Equal("r", Assert.IsType<VariableRef>(items[0].Expression).Alias);
+        Assert.IsType<CaseExpression>(items[1].Expression);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_PathSegmentDirection_UsesNativePhysicalOrientation()
+    {
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Both,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows));
+        Expression<Func<IGraphPathSegment<Person, Knows, Person>, RelationshipDirection>> selector =
+            segment => segment.Direction;
+
+        var statement = planner.Plan(Model(
+            traversal: [traversal],
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector)));
+
+        var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
+        var direction = Assert.IsType<CaseExpression>(item.Expression);
+        var condition = Assert.IsType<AstBinaryExpression>(direction.Condition);
+        Assert.IsType<NativeElementIdentity>(condition.Left);
+        Assert.IsType<NativeElementIdentity>(condition.Right);
+        Assert.Equal((int)RelationshipDirection.Outgoing, Assert.IsType<Literal>(direction.WhenTrue).Value);
+        Assert.Equal((int)RelationshipDirection.Incoming, Assert.IsType<Literal>(direction.WhenFalse).Value);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_PathSegmentDirectionPredicate_UsesNativePhysicalOrientation()
+    {
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Both,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows));
+        Expression<Func<IGraphPathSegment<Person, Knows, Person>, bool>> predicate =
+            segment => segment.Direction == RelationshipDirection.Incoming;
+
+        var statement = planner.Plan(Model(
+            predicates: [new PredicateFragment(predicate, null)],
+            traversal: [traversal]));
+
+        var equality = Assert.IsType<AstBinaryExpression>(Assert.Single(statement.Clauses.OfType<WhereClause>()).Predicate);
+        var convertedDirection = Assert.IsType<FunctionCall>(equality.Left);
+        Assert.Equal("toInteger", convertedDirection.Name);
+        Assert.IsType<CaseExpression>(Assert.Single(convertedDirection.Arguments));
+        Assert.Contains(statement.Parameters.Values, value => Equals(value, (int)RelationshipDirection.Incoming));
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_RelationshipEndpointLikeProperty_LowersAsOrdinaryRelationshipProperty()
+    {
+        Expression<Func<Knows, string>> selector = relationship => relationship.StartNodeId;
+
+        var statement = planner.Plan(Model(
+            root: new RelationshipRoot(typeof(Knows)),
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector)));
+
+        var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
+        var property = Assert.IsType<PropertyAccess>(item.Expression);
+        Assert.Equal("r", Assert.IsType<VariableRef>(property.Target).Alias);
+        Assert.Equal(nameof(Knows.StartNodeId), property.Property);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
     public void Plan_MissingShortestPathCapabilityFailsAtTranslation()
     {
         var step = new TraversalStep(
@@ -794,6 +972,30 @@ public class CypherQueryPlannerTests
         Assert.Equal(2, statement.Clauses.OfType<MatchClause>().Count());
         Assert.IsType<AstBinaryExpression>(Assert.IsType<WhereClause>(statement.Clauses[2]).Predicate);
         Assert.IsType<ReturnClause>(statement.Clauses[^1]);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_JoinReturningOuterRelationship_UsesBareRelationshipProjection()
+    {
+        Expression<Func<Knows, string>> outerKey = relationship => relationship.Id;
+        Expression<Func<Person, string>> innerKey = person => person.Id;
+        Expression<Func<Knows, Person, Knows>> result = (relationship, _) => relationship;
+        var join = new JoinFragment(
+            new NodeRoot(typeof(Person)),
+            outerKey,
+            innerKey,
+            result);
+
+        var statement = planner.Plan(Model(
+            root: new RelationshipRoot(typeof(Knows)),
+            join: join));
+
+        var projection = Assert.IsType<EntityProjectionClause>(statement.Clauses[^1]);
+        Assert.Equal(EntityProjectionShape.Relationship, projection.Shape);
+        Assert.Equal("r", projection.SourceAlias);
+        Assert.Null(projection.RelationshipAlias);
+        Assert.Null(projection.TargetAlias);
         new CypherAstValidator().Run(statement);
     }
 

@@ -326,6 +326,7 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Single(pathSegments);
         Assert.Equal("Alice", pathSegments[0].StartNode.FirstName);
         Assert.Equal("Charlie", pathSegments[0].EndNode.FirstName);
+        Assert.Equal(RelationshipDirection.Incoming, pathSegments[0].Direction);
     }
 
     [Fact]
@@ -858,8 +859,9 @@ public interface IQueryTraversalTests : IGraphTest
         var path = paths[0];
         Assert.Equal("Alice", path.StartNode.FirstName);
         Assert.Equal("Bob", path.EndNode.FirstName);
-        Assert.Equal(alice.Id, path.Relationship.StartNodeId);
-        Assert.Equal(bob.Id, path.Relationship.EndNodeId);
+        Assert.Empty(path.Relationship.StartNodeId);
+        Assert.Empty(path.Relationship.EndNodeId);
+        Assert.Equal(RelationshipDirection.Outgoing, path.Direction);
     }
 
     [Fact]
@@ -1881,9 +1883,10 @@ public interface IQueryTraversalTests : IGraphTest
             var segment = Assert.Single(segments);
             Assert.Equal(alice.Id, segment.StartNode.Id);
             Assert.Equal(alice.Id, segment.EndNode.Id);
+            Assert.Equal(RelationshipDirection.Outgoing, segment.Direction);
 
             var path = Assert.Single(paths);
-            Assert.Single(path.Segments);
+            Assert.Equal(RelationshipDirection.Outgoing, Assert.Single(path.Segments).Direction);
         }
     }
 
@@ -1901,10 +1904,9 @@ public interface IQueryTraversalTests : IGraphTest
             .Where(person => person.Id == alice.Id)
             .Traverse<Knows, Person>(options => options.Direction(GraphTraversalDirection.Both))
             .ToListAsync(TestContext.Current.CancellationToken);
-        var segmentEnds = await Graph.Nodes<Person>()
+        var segments = await Graph.Nodes<Person>()
             .Where(person => person.Id == alice.Id)
             .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Both)
-            .Select(segment => segment.EndNode)
             .ToListAsync(TestContext.Current.CancellationToken);
         var pathEnds = await Graph.Nodes<Person>()
             .Where(person => person.Id == alice.Id)
@@ -1918,11 +1920,15 @@ public interface IQueryTraversalTests : IGraphTest
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, traversed.Count);
-        Assert.Equal(2, segmentEnds.Count);
+        Assert.Equal(2, segments.Count);
         Assert.Equal(2, pathEnds.Count);
         Assert.Single(distinct);
         Assert.All(traversed, reached => Assert.Equal(alice.Id, reached.Id));
-        Assert.All(segmentEnds, reached => Assert.Equal(alice.Id, reached.Id));
+        Assert.All(segments, segment =>
+        {
+            Assert.Equal(alice.Id, segment.EndNode.Id);
+            Assert.Equal(RelationshipDirection.Outgoing, segment.Direction);
+        });
         Assert.All(pathEnds, reached => Assert.Equal(alice.Id, reached.Id));
     }
 
@@ -1942,10 +1948,9 @@ public interface IQueryTraversalTests : IGraphTest
             .Where(person => person.Id == alice.Id)
             .Traverse<Knows, Person>(options => options.Direction(GraphTraversalDirection.Both))
             .ToListAsync(TestContext.Current.CancellationToken);
-        var segmentEnds = await Graph.Nodes<Person>()
+        var segments = await Graph.Nodes<Person>()
             .Where(person => person.Id == alice.Id)
             .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Both)
-            .Select(segment => segment.EndNode)
             .ToListAsync(TestContext.Current.CancellationToken);
         var pathEnds = await Graph.Nodes<Person>()
             .Where(person => person.Id == alice.Id)
@@ -1954,10 +1959,12 @@ public interface IQueryTraversalTests : IGraphTest
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, traversed.Count);
-        Assert.Equal(2, segmentEnds.Count);
+        Assert.Equal(2, segments.Count);
         Assert.Equal(2, pathEnds.Count);
         Assert.All(traversed, reached => Assert.Equal(bob.Id, reached.Id));
-        Assert.All(segmentEnds, reached => Assert.Equal(bob.Id, reached.Id));
+        Assert.All(segments, segment => Assert.Equal(bob.Id, segment.EndNode.Id));
+        Assert.Contains(segments, segment => segment.Direction == RelationshipDirection.Outgoing);
+        Assert.Contains(segments, segment => segment.Direction == RelationshipDirection.Incoming);
         Assert.All(pathEnds, reached => Assert.Equal(bob.Id, reached.Id));
     }
 

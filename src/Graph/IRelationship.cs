@@ -33,31 +33,11 @@ public interface IRelationship : IEntity
     string Type { get; }
 
     /// <summary>
-    /// Gets the physical storage direction of this relationship.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <see cref="RelationshipDirection.Outgoing"/> means the stored edge points from
-    /// <see cref="StartNodeId"/> to <see cref="EndNodeId"/>. <see cref="RelationshipDirection.Incoming"/>
-    /// means the stored edge points from <see cref="EndNodeId"/> to <see cref="StartNodeId"/>.
-    /// </para>
-    /// <para>
-    /// This is storage metadata, not traversal configuration. Use <see cref="GraphTraversalDirection"/>
-    /// when choosing how a query traverses relationships.
-    /// </para>
-    /// <para>
-    /// The direction of a persisted relationship cannot be changed by an update. To reverse the
-    /// stored edge direction, delete and recreate the relationship.
-    /// </para>
-    /// </remarks>
-    RelationshipDirection Direction { get; init; }
-
-    /// <summary>
     /// Gets the ID of the start node in this relationship.
     /// </summary>
     /// <remarks>
-    /// This is the first endpoint in the relationship's logical node tuple. The stored edge
-    /// originates here only when <see cref="Direction"/> is <see cref="RelationshipDirection.Outgoing"/>.
+    /// This transitional endpoint member is not populated by bare relationship projections.
+    /// Select an <see cref="IGraphPathSegment"/> when endpoint and orientation information is required.
     /// </remarks>
     string StartNodeId { get; init; }
 
@@ -65,8 +45,8 @@ public interface IRelationship : IEntity
     /// Gets the ID of the end node in this relationship.
     /// </summary>
     /// <remarks>
-    /// This is the second endpoint in the relationship's logical node tuple. The stored edge
-    /// points here only when <see cref="Direction"/> is <see cref="RelationshipDirection.Outgoing"/>.
+    /// This transitional endpoint member is not populated by bare relationship projections.
+    /// Select an <see cref="IGraphPathSegment"/> when endpoint and orientation information is required.
     /// </remarks>
     string EndNodeId { get; init; }
 }

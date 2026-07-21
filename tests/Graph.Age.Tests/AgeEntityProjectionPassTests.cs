@@ -77,6 +77,35 @@ public sealed class AgeEntityProjectionPassTests
     }
 
     [Fact]
+    public void ExpandsRelationshipProjectionWithoutEndpointVariables()
+    {
+        var statement = Statement(
+            new MatchClause(
+            [
+                new PathPattern(
+                [
+                    new NodePattern("src", []),
+                    new RelationshipPattern("r", null, CypherDirection.Outgoing, depth: null),
+                    new NodePattern("tgt", []),
+                ]),
+            ], optional: false),
+            new EntityProjectionClause(
+                EntityProjectionShape.Relationship,
+                "r",
+                relationshipAlias: null,
+                targetAlias: null,
+                loadSourceProperties: false,
+                loadTargetProperties: false));
+
+        var lowered = pass.Run(statement);
+        var rendered = renderer.Render(lowered);
+
+        Assert.EndsWith("RETURN r AS Relationship", rendered.Text, StringComparison.Ordinal);
+        Assert.Equal(["Relationship"], rendered.ProjectionColumns);
+        Assert.DoesNotContain(lowered.Clauses, clause => clause is EntityProjectionClause);
+    }
+
+    [Fact]
     public void LowersNamedOptionalPathAllAndReduceNodesDirectly()
     {
         var pathIndex = new VariableRef("i");

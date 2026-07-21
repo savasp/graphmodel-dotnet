@@ -418,16 +418,18 @@ internal sealed partial class AgeQueryRunner
         var quoteTag = ChooseDollarQuoteTag(cypher);
         var columnDefinitions = string.Join(", ", projectionColumns.Select(column =>
             $"{AgeSqlIdentifier.Quote(column, "projection column")} agtype"));
-        var textColumns = string.Join(", ", projectionColumns.Select(column =>
+        // The columns stay agtype end-to-end: a text cast would go through agtype_value_to_text,
+        // which rejects top-level vertex/edge/path scalars (bare relationship projections).
+        var resultColumns = string.Join(", ", projectionColumns.Select(column =>
         {
             var quoted = AgeSqlIdentifier.Quote(column, "projection column");
-            return $"age_result.{quoted}::text AS {quoted}";
+            return $"age_result.{quoted}";
         }));
         var serializedParameters = JsonSerializer.Serialize(
             parameters.ToDictionary(pair => pair.Key, pair => NormalizeParameter(pair.Value), StringComparer.Ordinal));
 
         var commandText =
-            $"SELECT {textColumns} FROM ag_catalog.cypher('{graphName}', {quoteTag}{cypher}{quoteTag}, @agtypeParams) " +
+            $"SELECT {resultColumns} FROM ag_catalog.cypher('{graphName}', {quoteTag}{cypher}{quoteTag}, @agtypeParams) " +
             $"AS age_result ({columnDefinitions})";
         var parameter = new NpgsqlParameter
         {
@@ -438,18 +440,23 @@ internal sealed partial class AgeQueryRunner
         return (commandText, parameter);
     }
 
-    private static async Task<AgeRecord> ReadRecordAsync(
+    internal static async Task<AgeRecord> ReadRecordAsync(
         DbDataReader reader,
         CancellationToken cancellationToken)
     {
         var values = new Dictionary<string, object?>(reader.FieldCount, StringComparer.Ordinal);
         for (var index = 0; index < reader.FieldCount; index++)
         {
+            // Agtype.ToString() is the raw annotated agtype text (the same wire format the previous
+            // ::text cast produced for containers), so ParseTextAgtype sees every value kind,
+            // including bare vertices/edges the text cast could not serialize.
             values.Add(
                 reader.GetName(index),
                 await reader.IsDBNullAsync(index, cancellationToken).ConfigureAwait(false)
                     ? null
-                    : ParseTextAgtype(reader.GetString(index)));
+                    : ParseTextAgtype(
+                        (await reader.GetFieldValueAsync<Agtype>(index, cancellationToken).ConfigureAwait(false))
+                            .ToString()));
         }
 
         return new AgeRecord(values);
@@ -769,17 +776,7 @@ internal sealed class AgeReaderRecordSource(
                 return false;
             }
 
-            var values = new Dictionary<string, object?>(reader.FieldCount, StringComparer.Ordinal);
-            for (var index = 0; index < reader.FieldCount; index++)
-            {
-                values.Add(
-                    reader.GetName(index),
-                    await reader.IsDBNullAsync(index, cancellationToken).ConfigureAwait(false)
-                        ? null
-                        : AgeQueryRunner.ParseTextAgtype(reader.GetString(index)));
-            }
-
-            Current = new AgeRecord(values);
+            Current = await AgeQueryRunner.ReadRecordAsync(reader, cancellationToken).ConfigureAwait(false);
             return true;
         }
         catch (OperationCanceledException)

@@ -66,7 +66,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 entity,
                 relationship.StartNodeId,
                 relationship.EndNodeId,
-                relationship.Direction,
+                LegacyRelationshipEndpoints.LegacyDirection(relationship),
                 transaction.Transaction,
                 cancellationToken).ConfigureAwait(false);
 
@@ -100,6 +100,8 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
         try
         {
+            var direction = LegacyRelationshipEndpoints.LegacyDirection(relationship);
+
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
             GraphDataModel.EnsureComplexPropertyDepth(relationship);
@@ -118,7 +120,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             var updated = await UpdateRelationshipPropertiesAsync(
                 relationship.Id,
                 entity,
-                relationship.Direction,
+                direction,
                 transaction.Transaction,
                 cancellationToken).ConfigureAwait(false);
 
@@ -132,7 +134,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             {
                 throw new GraphException(
                     "Direction cannot be changed on update; delete and recreate the relationship. " +
-                    $"Stored direction is {updated.StoredDirection}; incoming direction is {relationship.Direction}.");
+                    $"Stored direction is {updated.StoredDirection}; incoming direction is {direction}.");
             }
 
             if (!updated.PhysicalTypeMatches || !updated.LogicalTypeMatches || !updated.ClrTypeMatches)
