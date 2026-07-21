@@ -41,6 +41,9 @@ Options:
   --project <name-or-path>      Run one test project (repeatable)
   --filter <xunit-query>        Apply an xUnit query filter (repeatable, OR)
   --coverage                    Collect Cobertura coverage per test project
+  --report-trx                  Write an xUnit TRX report per test project
+  --results-directory <path>   Root directory for coverage and test reports
+  --keep-going                  Run every selected project after a test failure
   --neo4j                       Start the local Neo4j container before tests
   --age                         Start the local Apache AGE container before tests
   --seq                         Start the local Seq container before tests
@@ -59,6 +62,7 @@ Examples:
   ./scripts/run-tests.sh --neo4j --age
   ./scripts/run-tests.sh --fast --project Graph.Core.Tests
   ./scripts/run-tests.sh --fast --project Graph.Core.Tests --filter '/*/*/GraphTests/*'
+  ./scripts/run-tests.sh --lane all --no-build --coverage --report-trx --results-directory TestResults --keep-going
   ./scripts/run-tests.sh --fast --disable-diff-engine
 EOF
 }
@@ -67,6 +71,9 @@ CONFIGURATION="Debug"
 VERBOSITY="normal"
 LANE="all"
 COLLECT_COVERAGE=false
+REPORT_TRX=false
+RESULTS_DIRECTORY_ROOT=""
+KEEP_GOING=false
 START_NEO4J=false
 START_AGE=false
 START_SEQ=false
@@ -107,6 +114,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --coverage)
             COLLECT_COVERAGE=true
+            shift
+            ;;
+        --report-trx)
+            REPORT_TRX=true
+            shift
+            ;;
+        --results-directory)
+            RESULTS_DIRECTORY_ROOT="${2:?--results-directory requires a value}"
+            shift 2
+            ;;
+        --keep-going)
+            KEEP_GOING=true
             shift
             ;;
         --neo4j)
@@ -344,6 +363,7 @@ run_test_project() {
     local project_name
     local slug
     local log_file
+    local results_root
     local test_count
     local -a command
 
@@ -358,12 +378,29 @@ run_test_project() {
         --verbosity "$VERBOSITY"
     )
 
+    results_root="$RESULTS_DIRECTORY_ROOT"
+    if [ -z "$results_root" ] && [ "$COLLECT_COVERAGE" = true ]; then
+        results_root="coverage"
+    elif [ -z "$results_root" ] && [ "$REPORT_TRX" = true ]; then
+        results_root="TestResults"
+    fi
+
+    if [ -n "$results_root" ]; then
+        command+=(--results-directory "$results_root/$slug")
+    fi
+
     if [ "$COLLECT_COVERAGE" = true ]; then
         command+=(
-            --results-directory "coverage/$slug"
             --coverage
             --coverage-output "$slug.cobertura.xml"
             --coverage-output-format cobertura
+        )
+    fi
+
+    if [ "$REPORT_TRX" = true ]; then
+        command+=(
+            --report-xunit-trx
+            --report-xunit-trx-filename "$slug.trx"
         )
     fi
 
@@ -391,10 +428,21 @@ run_test_project() {
 
 SELECTED_PROJECT_COUNT=0
 SELECTED_TEST_COUNT=0
+TEST_FAILURE=false
 
 for project in "${SELECTED_PROJECTS[@]}"; do
-    run_test_project "$project"
+    if ! run_test_project "$project"; then
+        TEST_FAILURE=true
+        if [ "$KEEP_GOING" = false ]; then
+            exit 1
+        fi
+    fi
 done
+
+if [ "$TEST_FAILURE" = true ]; then
+    print_error "One or more selected test projects failed."
+    exit 1
+fi
 
 if [ "$RUN_PERFORMANCE" = true ]; then
     print_header "Running performance benchmarks"
@@ -405,5 +453,9 @@ print_header "Test lane completed"
 print_status "$SELECTED_PROJECT_COUNT project(s), $SELECTED_TEST_COUNT test(s)"
 
 if [ "$COLLECT_COVERAGE" = true ]; then
-    print_status "Coverage reports: coverage/"
+    print_status "Coverage reports: ${RESULTS_DIRECTORY_ROOT:-coverage}/"
+fi
+
+if [ "$REPORT_TRX" = true ]; then
+    print_status "TRX reports: ${RESULTS_DIRECTORY_ROOT:-TestResults}/"
 fi

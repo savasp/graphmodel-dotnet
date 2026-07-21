@@ -52,28 +52,27 @@ jobs:
               - '**/*.resx'
               - '**/appsettings*.json'
               - 'src/Graph.Analyzers/AnalyzerReleases.*.md'
-              - 'scripts/containers/start-neo4j.sh'
-              - 'scripts/containers/start-age.sh'
-              - 'scripts/verify-package-set.sh'
-              - 'eng/**'
+              - 'eng/**/*'
+              - 'scripts/**/*'
               - 'global.json'
               - '.config/dotnet-tools.json'
               - 'VERSION'
-              - '.github/workflows/ci.yml'
+              - '.github/workflows/**/*'
             packages:
-              - 'src/**'
-              - 'Directory.Build.props'
-              - 'Directory.Packages.props'
-              - 'cvoya-graph.sln'
-              - 'eng/PackageValidation.proj'
-              - 'nuget.config'
-              - 'scripts/setup-local-feed-msbuild.sh'
-              - 'scripts/verify-package-set.sh'
+              - 'src/**/*'
+              - '*.props'
+              - '*.targets'
+              - '*.proj'
+              - '*.sln'
+              - '*.config'
+              - 'eng/**/*'
+              - 'scripts/**/*'
+              - 'global.json'
               - 'VERSION'
               - 'assets/icon.png'
-              - '.github/workflows/ci.yml'
+              - '.github/workflows/**/*'
             workflow_files:
-              - '.github/workflows/**'
+              - '.github/workflows/**/*'
 
       - name: Parse workflow YAML files
         if: steps.filter.outputs.workflow_files == 'true' || github.event_name == 'workflow_dispatch'
@@ -118,6 +117,7 @@ jobs:
         shell: bash
         run: |
           bash eng/agent-hooks/hooks.test.sh
+          ruby eng/ci/validation-inventory.test.rb
           ruby scripts/docs-deployment.test.rb
           bash scripts/release.test.sh
           bash scripts/run-tests.test.sh
@@ -195,40 +195,15 @@ jobs:
           NEO4J_USER: neo4j
           USE_NEO4J_CONTAINERS: "false"
         run: |
-          set +e
-          status=0
-
-          run_covered() {
-            local slug="$1"
-            local project="$2"
-            echo "=== test: $slug ==="
-            dotnet test \
-              --project "$project" \
-              --no-build \
-              --configuration Release \
-              --verbosity normal \
-              --results-directory "TestResults/$slug" \
-              --coverage \
-              --coverage-output "$slug.cobertura.xml" \
-              --coverage-output-format cobertura \
-              --report-xunit-trx \
-              --report-xunit-trx-filename "$slug.trx" || status=1
-          }
-
-          run_covered test-core tests/Graph.CompatibilityTests.Tests/Graph.CompatibilityTests.Tests.csproj
-          dotnet test --project tests/Graph.Core.Tests/Graph.Core.Tests.csproj \
-            --no-build --configuration Release --verbosity normal || status=1
-          run_covered test-cypher tests/Graph.Cypher.Tests/Graph.Cypher.Tests.csproj
-          run_covered test-analyzers tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj
-          run_covered test-translation tests/Graph.Neo4j.Translation.Tests/Graph.Neo4j.Translation.Tests.csproj
-          run_covered test-query-surface tests/Graph.QuerySurface.CompilationTests/Graph.QuerySurface.CompilationTests.csproj
-          run_covered test-codegen tests/Graph.Serialization.CodeGen.Tests/Graph.Serialization.CodeGen.Tests.csproj
           export GRAPHMODEL_COMPLIANCE_STRICT=1
-          run_covered test-neo4j tests/Graph.Neo4j.Tests/Graph.Neo4j.Tests.csproj
-          run_covered test-inmemory tests/Graph.InMemory.Tests/Graph.InMemory.Tests.csproj
-          run_covered test-age tests/Graph.Age.Tests/Graph.Age.Tests.csproj
-
-          exit "$status"
+          ./scripts/run-tests.sh \
+            --configuration Release \
+            --lane all \
+            --no-build \
+            --coverage \
+            --report-trx \
+            --results-directory TestResults \
+            --keep-going
 
       - name: Upload test results and coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

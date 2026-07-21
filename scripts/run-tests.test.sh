@@ -42,6 +42,14 @@ if [ "${1:-}" = "--version" ]; then
     echo "10.0.100"
 elif [ "${1:-}" = "test" ]; then
     echo "total: 3"
+
+    if [ -n "${FAKE_FAIL_PROJECT:-}" ]; then
+        for argument in "$@"; do
+            if [[ "$argument" == *"$FAKE_FAIL_PROJECT"* ]]; then
+                exit 1
+            fi
+        done
+    fi
 fi
 EOF
 chmod +x "$FAKE_BIN/dotnet"
@@ -49,7 +57,10 @@ chmod +x "$FAKE_BIN/dotnet"
 run_runner() {
     (
         cd "$TEST_ROOT"
-        PATH="$FAKE_BIN:$PATH" CALLS_FILE="$CALLS_FILE" ./scripts-run-tests.sh "$@"
+        PATH="$FAKE_BIN:$PATH" \
+            CALLS_FILE="$CALLS_FILE" \
+            FAKE_FAIL_PROJECT="${FAKE_FAIL_PROJECT:-}" \
+            ./scripts-run-tests.sh "$@"
     )
 }
 
@@ -104,6 +115,28 @@ assert_contains "test --project tests/Graph.Core.Tests/Graph.Core.Tests.csproj"
 assert_contains "--filter-query /\*/\*/GraphTests/\* /\*/\*/SerializationTests/\*"
 assert_not_contains "Graph.Analyzers.Tests.csproj"
 assert_not_contains "cvoya-graph.sln"
+
+: > "$CALLS_FILE"
+run_runner \
+    --lane fast \
+    --project Graph.Core.Tests \
+    --no-build \
+    --coverage \
+    --report-trx \
+    --results-directory TestResults
+
+assert_contains "--results-directory TestResults/graph-core-tests"
+assert_contains "--coverage --coverage-output graph-core-tests.cobertura.xml --coverage-output-format cobertura"
+assert_contains "--report-xunit-trx --report-xunit-trx-filename graph-core-tests.trx"
+
+: > "$CALLS_FILE"
+if FAKE_FAIL_PROJECT=Graph.Analyzers.Tests run_runner --lane fast --no-build --keep-going; then
+    echo "Expected --keep-going to preserve the failing exit status." >&2
+    exit 1
+fi
+
+assert_contains "test --project tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj"
+assert_contains "test --project tests/Graph.Core.Tests/Graph.Core.Tests.csproj"
 
 : > "$CALLS_FILE"
 run_runner --lane all --project tests/Graph.Age.Tests/Graph.Age.Tests.csproj --no-build
