@@ -102,6 +102,115 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         return s;
     }
 
+    /// <summary>Serializes one typed complex-property value using the registered runtime serializer.</summary>
+    internal Property SerializeComplexProperty(
+        PropertyInfo propertyInfo,
+        string storageName,
+        object? value)
+    {
+        ArgumentNullException.ThrowIfNull(propertyInfo);
+        ArgumentException.ThrowIfNullOrWhiteSpace(storageName);
+
+        Serialized? serializedValue;
+        if (value is null)
+        {
+            serializedValue = null;
+        }
+        else if (GraphDataModel.IsCollectionOfComplex(propertyInfo.PropertyType))
+        {
+            var elementType = GetElementType(propertyInfo.PropertyType);
+            var entities = new List<EntityInfo>();
+            var index = 0;
+            foreach (var item in (IEnumerable)value)
+            {
+                if (item is null)
+                {
+                    throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                        storageName,
+                        elementType,
+                        index,
+                        actualType: null);
+                }
+
+                var actualType = item.GetType();
+                if (!elementType.IsAssignableFrom(actualType))
+                {
+                    throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                        storageName,
+                        elementType,
+                        index,
+                        actualType);
+                }
+
+                entities.Add(SerializeRegisteredComplexValue(
+                    item,
+                    actualType,
+                    elementType,
+                    allowDeclaredTypeFallback: true));
+                index++;
+            }
+
+            serializedValue = new EntityCollection(elementType, entities);
+        }
+        else
+        {
+            var actualType = value.GetType();
+            if (!propertyInfo.PropertyType.IsAssignableFrom(actualType))
+            {
+                throw new GraphException(
+                    $"Complex property '{storageName}' expects '{propertyInfo.PropertyType}', " +
+                    $"but the assigned value has runtime type '{actualType}'.");
+            }
+
+            serializedValue = SerializeRegisteredComplexValue(
+                value,
+                actualType,
+                propertyInfo.PropertyType,
+                allowDeclaredTypeFallback: false);
+        }
+
+        return new Property(
+            propertyInfo,
+            storageName,
+            value is null || !propertyInfo.PropertyType.IsValueType ||
+                Nullable.GetUnderlyingType(propertyInfo.PropertyType) is not null,
+            serializedValue,
+            GraphDataModel.GetComplexPropertyRelationshipType(propertyInfo));
+    }
+
+    /// <summary>Serializes one dynamic value that has already been classified as complex.</summary>
+    internal Property SerializeDynamicComplexProperty(string storageName, object value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(storageName);
+        ArgumentNullException.ThrowIfNull(value);
+
+        var simpleProperties = new Dictionary<string, Property>(StringComparer.Ordinal);
+        var complexProperties = new Dictionary<string, Property>(StringComparer.Ordinal);
+        var visited = new HashSet<object>(GraphDataModel.ReferenceEqualityComparer.Instance);
+        ClassifyDynamicValue(storageName, value, simpleProperties, complexProperties, visited);
+        if (!complexProperties.TryGetValue(storageName, out var property))
+        {
+            throw new GraphQueryTranslationException(
+                $"The dynamic value for '{storageName}' is not a serializable complex property value.");
+        }
+
+        return property;
+    }
+
+    private EntityInfo SerializeRegisteredComplexValue(
+        object value,
+        Type actualType,
+        Type declaredType,
+        bool allowDeclaredTypeFallback)
+    {
+        var serializer = _serializerRegistry.GetSerializer(actualType)
+            ?? (allowDeclaredTypeFallback ? _serializerRegistry.GetSerializer(declaredType) : null)
+            ?? throw new GraphException(
+                $"No serializer found for complex property type '{actualType}'. " +
+                "Ensure the type is included in graph serialization code generation.");
+        return serializer.Serialize(value);
+    }
+
     private EntityInfo SerializeEntityUsingGeneratedSerializer(IEntity entity)
     {
         var serializer = _serializerRegistry.GetSerializer(entity.GetType())

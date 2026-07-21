@@ -101,6 +101,42 @@ internal sealed record StoreState(
     }
 
     /// <summary>
+    /// Replaces selected owned complex-property subtrees below one root while leaving every other
+    /// complex property and all user graph elements untouched.
+    /// </summary>
+    public StoreState ReplaceComplexProperties(
+        Guid parentKey,
+        IReadOnlyCollection<string> relationshipTypes,
+        IReadOnlyList<NodeRecord> complexValueNodes,
+        IReadOnlyList<RelationshipRecord> complexEdges)
+    {
+        ArgumentNullException.ThrowIfNull(relationshipTypes);
+        ArgumentNullException.ThrowIfNull(complexValueNodes);
+        ArgumentNullException.ThrowIfNull(complexEdges);
+        if (!Nodes.TryGetValue(parentKey, out var parent) || parent.IsComplexValue)
+        {
+            throw new GraphException(
+                "A frozen in-memory node target no longer exists in the transaction view.");
+        }
+
+        var selectedTypes = relationshipTypes.ToHashSet(StringComparer.Ordinal);
+        var state = RemoveComplexSubtrees(parentKey, selectedTypes);
+        var nodes = state.Nodes;
+        foreach (var child in complexValueNodes)
+        {
+            nodes = nodes.Add(child.Key, child);
+        }
+
+        var relationships = state.Relationships;
+        foreach (var edge in complexEdges)
+        {
+            relationships = relationships.Add(edge.Key, edge);
+        }
+
+        return new StoreState(nodes, relationships);
+    }
+
+    /// <summary>
     /// Deletes the node resolved by the transitional public-ID API, applying the public cascade
     /// contract: a missing or ambiguous ID throws and leaves everything untouched, user
     /// relationships block the delete unless <paramref name="cascadeDelete"/> is set, and the
@@ -290,6 +326,27 @@ internal sealed record StoreState(
                     pending.Push(edge.EndKey);
                 }
             }
+        }
+
+        return new StoreState(nodes, relationships);
+    }
+
+    private StoreState RemoveComplexSubtrees(Guid parentKey, HashSet<string> relationshipTypes)
+    {
+        var nodes = Nodes;
+        var relationships = Relationships;
+        var roots = relationships.Values
+            .Where(relationship => relationship.IsComplexProperty &&
+                relationship.StartKey == parentKey &&
+                relationshipTypes.Contains(relationship.Type))
+            .ToArray();
+
+        foreach (var root in roots)
+        {
+            relationships = relationships.Remove(root.Key);
+            var subtree = new StoreState(nodes, relationships).RemoveComplexSubtree(root.EndKey);
+            nodes = subtree.Nodes.Remove(root.EndKey);
+            relationships = subtree.Relationships;
         }
 
         return new StoreState(nodes, relationships);

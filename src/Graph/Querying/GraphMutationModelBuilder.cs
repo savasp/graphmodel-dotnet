@@ -92,9 +92,23 @@ internal static class GraphMutationModelBuilder
         var constantValue = valueExpression is null
             ? Evaluate<object?>(call.Arguments[1], $"value for '{target.StorageName}'")
             : null;
+        var isComplex = target.Complex ||
+            target.Dynamic && constantValue is not null && IsDynamicComplexValue(constantValue.GetType());
         if (valueExpression is null)
         {
-            ValidateConstantValue(constantValue, target.Dynamic, target.StorageName);
+            ValidateConstantValue(
+                constantValue,
+                target.Property,
+                target.Dynamic,
+                isComplex,
+                entityType,
+                target.StorageName);
+        }
+        else if (target.Complex)
+        {
+            throw new GraphQueryTranslationException(
+                $"Complex property '{target.StorageName}' requires a constant or captured value; " +
+                "provider-computed complex values are not supported.");
         }
 
         GraphPropertyAssignment assignment = valueExpression is null
@@ -103,7 +117,8 @@ internal static class GraphMutationModelBuilder
                 target.Property,
                 target.StorageName,
                 target.Dynamic,
-                constantValue)
+                constantValue,
+                isComplex)
             : new GraphComputedPropertyAssignment(
                 propertySelector,
                 target.Property,
@@ -113,7 +128,7 @@ internal static class GraphMutationModelBuilder
         assignments.Add(assignment);
     }
 
-    private static (PropertyInfo? Property, string StorageName, bool Dynamic) ParseTarget(
+    private static (PropertyInfo? Property, string StorageName, bool Dynamic, bool Complex) ParseTarget(
         LambdaExpression selector,
         Type entityType)
     {
@@ -130,13 +145,16 @@ internal static class GraphMutationModelBuilder
                 Member: PropertyInfo property,
             } && StripConvert(instance) == selector.Parameters[0])
         {
-            ValidateMappedProperty(property);
-            return (property, Labels.GetLabelFromProperty(property), false);
+            return (
+                property,
+                Labels.GetLabelFromProperty(property),
+                Dynamic: false,
+                Complex: ValidateMappedProperty(property));
         }
 
         if (TryGetDynamicPropertyKey(body, selector.Parameters[0], out var dynamicKey))
         {
-            return (null, dynamicKey, true);
+            return (null, dynamicKey, Dynamic: true, Complex: false);
         }
 
         throw new GraphQueryTranslationException(
@@ -189,7 +207,7 @@ internal static class GraphMutationModelBuilder
         return true;
     }
 
-    private static void ValidateMappedProperty(PropertyInfo property)
+    private static bool ValidateMappedProperty(PropertyInfo property)
     {
         if (property.Name is nameof(INode.Labels) or nameof(IRelationship.Type))
         {
@@ -214,12 +232,20 @@ internal static class GraphMutationModelBuilder
                 $"Property '{property.Name}' is ignored and has no mapped storage property.");
         }
 
-        if (!GraphDataModel.IsSimple(property.PropertyType) &&
-            !GraphDataModel.IsCollectionOfSimple(property.PropertyType))
+        if (GraphDataModel.IsSimple(property.PropertyType) ||
+            GraphDataModel.IsCollectionOfSimple(property.PropertyType))
         {
-            throw new GraphQueryTranslationException(
-                $"Complex property '{property.Name}' cannot be updated by the first-wave setter contract.");
+            return false;
         }
+
+        if (GraphDataModel.IsComplex(property.PropertyType) ||
+            GraphDataModel.IsCollectionOfComplex(property.PropertyType))
+        {
+            return true;
+        }
+
+        throw new GraphQueryTranslationException(
+            $"Property '{property.Name}' has unsupported graph value type '{property.PropertyType}'.");
     }
 
     private static LambdaExpression ValidateComputedValue(
@@ -242,20 +268,120 @@ internal static class GraphMutationModelBuilder
         return expression;
     }
 
-    private static void ValidateConstantValue(object? value, bool dynamic, string storageName)
+    private static void ValidateConstantValue(
+        object? value,
+        PropertyInfo? property,
+        bool dynamic,
+        bool complex,
+        Type entityType,
+        string storageName)
     {
-        if (!dynamic || value is null)
+        if (!complex)
+        {
+            return;
+        }
+
+        if (typeof(IRelationship).IsAssignableFrom(entityType))
+        {
+            throw new GraphQueryTranslationException(
+                $"Complex property '{storageName}' cannot be updated on a graph relationship; " +
+                "relationships cannot own complex-property value nodes.");
+        }
+
+        if (value is null)
         {
             return;
         }
 
         var valueType = value.GetType();
-        if (!GraphDataModel.IsSimple(valueType) && !GraphDataModel.IsCollectionOfSimple(valueType))
+        if (!dynamic && property is not null)
+        {
+            ValidateTypedComplexValue(value, valueType, property, storageName);
+        }
+        else if (!IsSupportedDynamicComplexType(valueType))
         {
             throw new GraphQueryTranslationException(
-                $"The dynamic value for '{storageName}' must be a scalar graph value or a simple collection.");
+                $"The dynamic value for '{storageName}' has unsupported complex runtime type '{valueType}'.");
+        }
+
+        GraphDataModel.EnsureComplexPropertyValueDepth(value);
+    }
+
+    private static void ValidateTypedComplexValue(
+        object value,
+        Type valueType,
+        PropertyInfo property,
+        string storageName)
+    {
+        if (!GraphDataModel.IsCollectionOfComplex(property.PropertyType))
+        {
+            if (!property.PropertyType.IsAssignableFrom(valueType))
+            {
+                throw new GraphQueryTranslationException(
+                    $"Complex property '{storageName}' expects '{property.PropertyType}', " +
+                    $"but the assigned value has runtime type '{valueType}'.");
+            }
+
+            return;
+        }
+
+        if (value is not System.Collections.IEnumerable values)
+        {
+            throw new GraphQueryTranslationException(
+                $"Complex collection property '{storageName}' requires an enumerable value.");
+        }
+
+        var elementType = GetCollectionElementType(property.PropertyType);
+        var index = 0;
+        foreach (var item in values)
+        {
+            if (item is null || !elementType.IsAssignableFrom(item.GetType()))
+            {
+                throw new GraphQueryTranslationException(
+                    $"Complex collection property '{storageName}' contains " +
+                    $"{(item is null ? "a null" : $"an incompatible '{item.GetType()}'")} element at index {index}; " +
+                    $"the element type is '{elementType}'.");
+            }
+
+            index++;
         }
     }
+
+    private static bool IsDynamicComplexValue(Type valueType) =>
+        !GraphDataModel.IsSimple(valueType) && !GraphDataModel.IsCollectionOfSimple(valueType);
+
+    private static bool IsSupportedDynamicComplexType(Type valueType)
+    {
+        if (IsDynamicDictionary(valueType) || GraphDataModel.IsComplex(valueType))
+        {
+            return true;
+        }
+
+        if (GraphDataModel.IsCollectionOfComplex(valueType))
+        {
+            return true;
+        }
+
+        if (valueType == typeof(string) ||
+            !typeof(System.Collections.IEnumerable).IsAssignableFrom(valueType) ||
+            GraphDataModel.IsDictionary(valueType))
+        {
+            return false;
+        }
+
+        return IsDynamicDictionary(GetCollectionElementType(valueType));
+    }
+
+    private static bool IsDynamicDictionary(Type type) =>
+        GraphDataModel.IsDictionary(type) &&
+        typeof(IEnumerable<KeyValuePair<string, object?>>).IsAssignableFrom(type);
+
+    private static Type GetCollectionElementType(Type type) => type switch
+    {
+        { IsArray: true } => type.GetElementType()!,
+        { IsGenericType: true } => type.GetGenericArguments()[0],
+        _ => typeof(object),
+    };
 
     private static MethodInfo? ResolveDefinition(MethodInfo method) =>
         method.IsGenericMethod ? method.GetGenericMethodDefinition() : method;

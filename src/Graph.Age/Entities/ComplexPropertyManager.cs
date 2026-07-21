@@ -51,13 +51,60 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         EntityInfo entity,
         CancellationToken cancellationToken = default)
     {
+        await CreateComplexPropertiesCoreAsync(
+            transaction,
+            [(parentId, entity)],
+            assignSyntheticIds: true,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Replaces selected owned subtrees below frozen AGE graphids without persisting public or
+    /// transient identity properties on the new value nodes or marker relationships.
+    /// </summary>
+    internal async Task ReplaceGraphIdBoundComplexPropertiesAsync(
+        AgeQueryRunner transaction,
+        IReadOnlyList<long> parentGraphIds,
+        IReadOnlyList<string> relationshipTypesToClear,
+        EntityInfo replacementEntity,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(parentGraphIds);
+        ArgumentNullException.ThrowIfNull(relationshipTypesToClear);
+        ArgumentNullException.ThrowIfNull(replacementEntity);
+        if (parentGraphIds.Count == 0 || relationshipTypesToClear.Count == 0)
+        {
+            return;
+        }
+
+        var orderedGraphIds = parentGraphIds.Distinct().Order().ToArray();
+        await DeleteSelectedComplexPropertiesAsync(
+            transaction,
+            orderedGraphIds,
+            relationshipTypesToClear,
+            cancellationToken).ConfigureAwait(false);
+
+        await CreateComplexPropertiesCoreAsync(
+            transaction,
+            [.. orderedGraphIds.Select(graphId => (graphId.ToString(System.Globalization.CultureInfo.InvariantCulture), replacementEntity))],
+            assignSyntheticIds: false,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task CreateComplexPropertiesCoreAsync(
+        AgeQueryRunner transaction,
+        List<(string ParentElementId, EntityInfo Entity)> roots,
+        bool assignSyntheticIds,
+        CancellationToken cancellationToken)
+    {
         // Breadth-first: create all value nodes of one nesting level with a single UNWIND
         // statement, instead of one statement per node.
-        var currentLevel = new List<(string ParentElementId, EntityInfo Entity)> { (parentId, entity) };
+        var currentLevel = roots;
 
         for (var depth = 0; currentLevel.Count > 0; depth++)
         {
-            var pending = CollectPendingValueNodes(currentLevel, depth);
+            var pending = CollectPendingValueNodes(currentLevel, depth, assignSyntheticIds);
             currentLevel = await CreateLevelAsync(transaction, pending, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -351,6 +398,49 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         }
 
         logger.LogDebugComplexPropertyManager270(propertyNodes.Count, parentId);
+    }
+
+    private async Task DeleteSelectedComplexPropertiesAsync(
+        AgeQueryRunner transaction,
+        IReadOnlyList<long> parentGraphIds,
+        IReadOnlyList<string> relationshipTypes,
+        CancellationToken cancellationToken)
+    {
+        var findCypher = $@"
+            MATCH (parent)-[propertyRels*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
+            WHERE id(parent) IN $parentGraphIds
+              AND size([age_hop IN range(0, size(propertyRels) - 1)
+                        WHERE propertyRels[toInteger(age_hop)].{ComplexPropertyStorage.RelationshipMarkerProperty} = true]) = size(propertyRels)
+              AND propertyRels[toInteger(0)].inheritance_labels[toInteger(0)] IN $relationshipTypes
+            RETURN DISTINCT id(propertyNode) AS propertyNodeId";
+
+        var result = await transaction.RunAsync(
+            findCypher,
+            new Dictionary<string, object?>
+            {
+                ["parentGraphIds"] = parentGraphIds,
+                ["relationshipTypes"] = relationshipTypes,
+            },
+            cancellationToken).ConfigureAwait(false);
+        var propertyNodes = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+        var propertyNodeIds = propertyNodes
+            .Select(propertyNode => propertyNode["propertyNodeId"].As<string>())
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        foreach (var propertyNodeId in propertyNodeIds)
+        {
+            var deletion = await transaction.RunAsync(
+                "MATCH (propertyNode) WHERE id(propertyNode) = toInteger($propertyNodeId) " +
+                "DETACH DELETE propertyNode RETURN true AS deleted",
+                new { propertyNodeId },
+                cancellationToken).ConfigureAwait(false);
+            _ = await deletion.ToListAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (logger.IsEnabled(LogLevel.Debug))
+        {
+            logger.LogDebugComplexPropertyManager270(propertyNodeIds.Length, string.Join(",", parentGraphIds));
+        }
     }
 
 }

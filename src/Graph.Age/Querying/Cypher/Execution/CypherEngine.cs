@@ -47,11 +47,13 @@ internal sealed class CypherEngine
     private readonly AgeFullTextSearchRewriter _fullTextSearchRewriter;
     private readonly SchemaRegistry _schemaRegistry;
     private readonly string _graphName;
+    private readonly ComplexPropertyManager _complexPropertyManager;
 
     public CypherEngine(
         EntityFactory entityFactory,
         SchemaRegistry schemaRegistry,
         string graphName,
+        ComplexPropertyManager complexPropertyManager,
         ILoggerFactory? loggerFactory)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
@@ -63,6 +65,7 @@ internal sealed class CypherEngine
         _loggerFactory = loggerFactory;
         _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
         _graphName = graphName ?? throw new ArgumentNullException(nameof(graphName));
+        _complexPropertyManager = complexPropertyManager ?? throw new ArgumentNullException(nameof(complexPropertyManager));
         _fullTextSearchRewriter = new AgeFullTextSearchRewriter(schemaRegistry);
     }
 
@@ -102,6 +105,9 @@ internal sealed class CypherEngine
         AgeGraphTransaction transaction,
         CancellationToken cancellationToken)
     {
+        var complexPlan = mutation.Kind == GraphMutationKind.Update
+            ? ComplexPropertyMutationPlan.Create(_entityFactory, mutation)
+            : null;
         var rewritten = await _fullTextSearchRewriter
             .RewriteAsync(mutationExpression, transaction.Runner, cancellationToken)
             .ConfigureAwait(false);
@@ -129,7 +135,7 @@ internal sealed class CypherEngine
                 transaction,
                 cancellationToken).ConfigureAwait(false);
         }
-        else
+        else if (mutation.Kind == GraphMutationKind.Update)
         {
             if (!constraintPlan.IsEmpty)
             {
@@ -148,12 +154,54 @@ internal sealed class CypherEngine
                     cancellationToken).ConfigureAwait(false);
             }
 
+            var scalarMutation = BuildScalarMutation(mutation);
+            if (scalarMutation.Assignments.Count > 0)
+            {
+                var statement = new CypherMutationPlanner(AgeDialect.PlanningInstance)
+                    .Plan(scalarMutation, nativeIdentities);
+                _ = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (complexPlan!.HasWork)
+            {
+                await _complexPropertyManager.ReplaceGraphIdBoundComplexPropertiesAsync(
+                    transaction.Runner,
+                    nativeIdentities.Cast<long>().ToArray(),
+                    complexPlan.RelationshipTypesToClear,
+                    complexPlan.ReplacementEntity,
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+        else
+        {
             var statement = new CypherMutationPlanner(AgeDialect.PlanningInstance)
                 .Plan(mutation, nativeIdentities);
             _ = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
         }
 
         return selected.Count;
+    }
+
+    private static GraphMutationModel BuildScalarMutation(GraphMutationModel mutation)
+    {
+        var assignments = mutation.Assignments.SelectMany<GraphPropertyAssignment, GraphPropertyAssignment>(assignment =>
+            assignment switch
+            {
+                GraphConstantPropertyAssignment { IsComplex: true, Dynamic: true } complex =>
+                [new GraphConstantPropertyAssignment(
+                    complex.PropertySelector,
+                    complex.Property,
+                    complex.StorageName,
+                    dynamic: true,
+                    value: null)],
+                GraphConstantPropertyAssignment { IsComplex: true } => [],
+                _ => [assignment],
+            }).ToArray();
+        return new GraphMutationModel(
+            mutation.Kind,
+            mutation.Selection,
+            assignments,
+            mutation.CascadeDelete);
     }
 
     private async Task<IReadOnlyList<GraphMutationConstraintRow>> ReadConstraintRowsAsync(

@@ -203,6 +203,25 @@ public record PersonWithComplexProperties : Node
     //public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
 }
 
+public class CommandContactValue
+{
+    public string Name { get; set; } = string.Empty;
+
+    public AddressValue? Address { get; set; }
+}
+
+public record ComplexCommandNode : Node
+{
+    public string Group { get; set; } = string.Empty;
+
+    public string Status { get; set; } = string.Empty;
+
+    [ComplexProperty(RelationshipType = "COMMAND_CONTACT")]
+    public CommandContactValue? Contact { get; set; }
+
+    public List<AnimalDescription> Animals { get; set; } = [];
+}
+
 public record Class1 : Node
 {
     public string Property1 { get; set; } = string.Empty;

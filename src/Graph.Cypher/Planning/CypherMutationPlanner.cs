@@ -60,14 +60,23 @@ public sealed class CypherMutationPlanner
                 new VariableRef("__nativeId"))),
         };
 
+        var scalarAssignments = mutation.Assignments
+            .Where(assignment => assignment is not GraphConstantPropertyAssignment { IsComplex: true })
+            .ToArray();
         if (mutation.Kind == GraphMutationKind.Update && stagedStorageNames.Count > 0)
         {
-            AddStagedUpdate(clauses, mutation, alias, target, stagedStorageNames, parameters);
+            AddStagedUpdate(
+                clauses,
+                scalarAssignments,
+                alias,
+                target,
+                stagedStorageNames,
+                parameters);
         }
-        else if (mutation.Kind == GraphMutationKind.Update)
+        else if (mutation.Kind == GraphMutationKind.Update && scalarAssignments.Length > 0)
         {
             var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
-            var items = mutation.Assignments.Select(assignment => new SetItem(
+            var items = scalarAssignments.Select(assignment => new SetItem(
                 assignment.Dynamic
                     ? new EscapedPropertyAccess(target, assignment.StorageName)
                     : new PropertyAccess(target, assignment.StorageName),
@@ -80,7 +89,7 @@ public sealed class CypherMutationPlanner
 
             clauses.Add(new SetClause(items));
         }
-        else
+        else if (mutation.Kind == GraphMutationKind.Delete)
         {
             clauses.Add(new DeleteClause(
                 [target],
@@ -186,7 +195,7 @@ public sealed class CypherMutationPlanner
 
     private void AddStagedUpdate(
         List<ICypherClause> clauses,
-        GraphMutationModel mutation,
+        GraphPropertyAssignment[] assignments,
         string alias,
         VariableRef target,
         IReadOnlyList<string> stagedStorageNames,
@@ -197,10 +206,10 @@ public sealed class CypherMutationPlanner
         {
             new(target, alias),
         };
-        for (var index = 0; index < mutation.Assignments.Count; index++)
+        for (var index = 0; index < assignments.Length; index++)
         {
             finalItems.Add(new ReturnItem(
-                LowerValue(mutation.Assignments[index], alias, lowerer, parameters),
+                LowerValue(assignments[index], alias, lowerer, parameters),
                 FinalValueAlias(index)));
         }
 
@@ -222,7 +231,7 @@ public sealed class CypherMutationPlanner
         {
             new("target", target),
         };
-        for (var index = 0; index < mutation.Assignments.Count; index++)
+        for (var index = 0; index < assignments.Length; index++)
         {
             rowEntries.Add(new MapEntry(FinalValueAlias(index), new VariableRef(FinalValueAlias(index))));
         }
@@ -236,7 +245,7 @@ public sealed class CypherMutationPlanner
         {
             new(new PropertyAccess(new VariableRef("__row"), "target"), alias),
         };
-        for (var index = 0; index < mutation.Assignments.Count; index++)
+        for (var index = 0; index < assignments.Length; index++)
         {
             var finalAlias = FinalValueAlias(index);
             restoredItems.Add(new ReturnItem(
@@ -245,7 +254,7 @@ public sealed class CypherMutationPlanner
         }
 
         clauses.Add(new WithClause(restoredItems, distinct: false));
-        clauses.Add(new SetClause(mutation.Assignments.Select((assignment, index) => new SetItem(
+        clauses.Add(new SetClause(assignments.Select((assignment, index) => new SetItem(
             assignment.Dynamic
                 ? new EscapedPropertyAccess(target, assignment.StorageName)
                 : new PropertyAccess(target, assignment.StorageName),

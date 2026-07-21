@@ -366,6 +366,198 @@ public interface IGraphCommandTests : IGraphTest
     }
 
     [Fact]
+    public async Task ComplexUpdate_ReplacesIndependentOwnedTreesAndScalarStateForEverySelectedNode()
+    {
+        var marker = $"command-complex-many-{Guid.NewGuid():N}";
+        var oldNames = new[] { marker + "-old-first", marker + "-old-second" };
+        for (var index = 0; index < oldNames.Length; index++)
+        {
+            await Graph.CreateNodeAsync(
+                new ComplexCommandNode
+                {
+                    Group = marker,
+                    Status = "before",
+                    Contact = new CommandContactValue
+                    {
+                        Name = oldNames[index],
+                        Address = new AddressValue { Street = "Old Street", City = "Old City" },
+                    },
+                },
+                cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        var unrelated = new DynamicNode(
+            [Labels.GetLabelFromType(typeof(CommandContactValue))],
+            new Dictionary<string, object?> { [nameof(CommandContactValue.Name)] = marker + "-unrelated" });
+        await Graph.CreateNodeAsync(unrelated, cancellationToken: TestContext.Current.CancellationToken);
+        var replacementName = marker + "-replacement";
+        var replacement = new CommandContactValue
+        {
+            Name = replacementName,
+            Address = new AddressValue { Street = "New Street", City = "New City" },
+        };
+
+        var affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<ComplexCommandNode>().Where(candidate => candidate.Group == marker),
+            setters => setters
+                .SetProperty(candidate => candidate.Status, "after")
+                .SetProperty(candidate => candidate.Contact, replacement),
+            TestContext.Current.CancellationToken);
+
+        var stored = await Graph.Nodes<ComplexCommandNode>()
+            .Where(candidate => candidate.Group == marker)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(2, affected);
+        Assert.Equal(2, stored.Count);
+        Assert.All(stored, candidate =>
+        {
+            Assert.Equal("after", candidate.Status);
+            Assert.NotNull(candidate.Contact);
+            Assert.Equal(replacementName, candidate.Contact.Name);
+            Assert.Equal("New Street", candidate.Contact.Address?.Street);
+            Assert.Equal("New City", candidate.Contact.Address?.City);
+        });
+        Assert.Equal(
+            2,
+            await Harness.CountNodesByPropertyAsync(
+                Graph,
+                Labels.GetLabelFromType(typeof(CommandContactValue)),
+                nameof(CommandContactValue.Name),
+                [replacementName],
+                TestContext.Current.CancellationToken));
+        Assert.Equal(
+            0,
+            await Harness.CountNodesByPropertyAsync(
+                Graph,
+                Labels.GetLabelFromType(typeof(CommandContactValue)),
+                nameof(CommandContactValue.Name),
+                oldNames,
+                TestContext.Current.CancellationToken));
+        _ = await Graph.GetDynamicNodeAsync(
+            unrelated.Id,
+            cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task ComplexUpdate_ClearsNullAndPreservesPolymorphicCollectionOrderAndEmptyCollections()
+    {
+        var marker = $"command-complex-collection-{Guid.NewGuid():N}";
+        var node = new ComplexCommandNode
+        {
+            Group = marker,
+            Contact = new CommandContactValue { Name = marker + "-old" },
+            Animals = [new AnimalDescription { Name = "old" }],
+        };
+        await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+        CommandContactValue? clearedContact = null;
+        List<AnimalDescription> replacement =
+        [
+            new DogDescription { Name = "Rex", Breed = "Labrador" },
+            new PoliceDogDescription
+            {
+                Name = "K9",
+                Breed = "Shepherd",
+                Badge = "K9-42",
+                Handler = new HandlerDescription { Name = "Officer Diaz" },
+            },
+            new AnimalDescription { Name = "Generic" },
+        ];
+
+        var affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<ComplexCommandNode>().Where(candidate => candidate.Group == marker),
+            setters => setters
+                .SetProperty(candidate => candidate.Contact, clearedContact)
+                .SetProperty(candidate => candidate.Animals, replacement),
+            TestContext.Current.CancellationToken);
+
+        var stored = await Graph.GetNodeAsync<ComplexCommandNode>(
+            node.Id,
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Null(stored.Contact);
+        Assert.Collection(
+            stored.Animals,
+            animal => Assert.IsType<DogDescription>(animal),
+            animal =>
+            {
+                var policeDog = Assert.IsType<PoliceDogDescription>(animal);
+                Assert.Equal("K9-42", policeDog.Badge);
+                Assert.Equal("Officer Diaz", policeDog.Handler?.Name);
+            },
+            animal => Assert.IsType<AnimalDescription>(animal));
+
+        List<AnimalDescription> empty = [];
+        affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<ComplexCommandNode>().Where(candidate => candidate.Group == marker),
+            setters => setters.SetProperty(candidate => candidate.Animals, empty),
+            TestContext.Current.CancellationToken);
+
+        stored = await Graph.GetNodeAsync<ComplexCommandNode>(
+            node.Id,
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Empty(stored.Animals);
+    }
+
+    [Fact]
+    public async Task DynamicComplexUpdate_ReplacesComplexAndScalarRepresentationsWithoutSyntheticIdentity()
+    {
+        var label = $"CommandComplexDynamic{Guid.NewGuid():N}";
+        var node = new DynamicNode(
+            [label],
+            new Dictionary<string, object?>
+            {
+                ["profile"] = "before",
+                ["status"] = "before",
+            });
+        await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+        var replacement = new Dictionary<string, object?>
+        {
+            ["name"] = "after",
+            ["address"] = new Dictionary<string, object?>
+            {
+                ["city"] = "Seattle",
+                ["lines"] = new[] { "one", "two" },
+            },
+        };
+
+        var affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.DynamicNodes().Where(candidate => candidate.Id == node.Id),
+            setters => setters
+                .SetProperty(candidate => candidate.Properties["profile"], replacement)
+                .SetProperty(candidate => candidate.Properties["status"], "after"),
+            TestContext.Current.CancellationToken);
+
+        var stored = await Graph.GetDynamicNodeAsync(
+            node.Id,
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal("after", stored.Properties["status"]);
+        var profile = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(stored.Properties["profile"]);
+        Assert.Equal("after", profile["name"]);
+        var address = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(profile["address"]);
+        Assert.Equal("Seattle", address["city"]);
+        Assert.Equal(
+            ["one", "two"],
+            Assert.IsAssignableFrom<System.Collections.IEnumerable>(address["lines"])
+                .Cast<object?>()
+                .Cast<string>());
+        Assert.DoesNotContain("Id", profile.Keys);
+        Assert.DoesNotContain("__nativeId", profile.Keys);
+
+        affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.DynamicNodes().Where(candidate => candidate.Id == node.Id),
+            setters => setters.SetProperty(candidate => candidate.Properties["profile"], "flat"),
+            TestContext.Current.CancellationToken);
+
+        stored = await Graph.GetDynamicNodeAsync(
+            node.Id,
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal("flat", stored.Properties["profile"]);
+    }
+
+    [Fact]
     public async Task SetBasedRelationshipUpdateAndDelete_UseSelectedRelationships()
     {
         var first = new Person { FirstName = "first" };

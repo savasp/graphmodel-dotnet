@@ -50,6 +50,14 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         Dictionary<string, object> RelationshipProperties);
 
     /// <summary>
+    /// Cypher clauses and parameters that replace selected complex properties below every row
+    /// currently bound to the supplied root variable.
+    /// </summary>
+    internal sealed record ElementBoundMutationFragment(
+        string Cypher,
+        IReadOnlyDictionary<string, object?> Parameters);
+
+    /// <summary>
     /// Walks the complex-property subtree of <paramref name="rootEntity"/> breadth-first and returns
     /// a flat list of value nodes to create, each addressed by an in-statement Cypher variable
     /// derived from <paramref name="rootVariable"/>. This shares the property/relationship shaping
@@ -120,6 +128,71 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         }
 
         return specs;
+    }
+
+    /// <summary>
+    /// Builds one statement-local replacement fragment. The caller supplies the frozen-root match
+    /// and scalar setters, then appends this fragment and its final return clause. All old subtree
+    /// deletion and new value-node creation therefore succeeds or fails as one Neo4j statement.
+    /// </summary>
+    internal static ElementBoundMutationFragment BuildElementBoundMutationFragment(
+        string rootVariable,
+        EntityInfo replacementEntity,
+        IReadOnlyList<string> relationshipTypesToClear,
+        IReadOnlyList<string> rootScalarPropertiesToClear)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootVariable);
+        ArgumentNullException.ThrowIfNull(replacementEntity);
+        ArgumentNullException.ThrowIfNull(relationshipTypesToClear);
+        ArgumentNullException.ThrowIfNull(rootScalarPropertiesToClear);
+        if (relationshipTypesToClear.Count == 0)
+        {
+            return new ElementBoundMutationFragment(string.Empty, new Dictionary<string, object?>());
+        }
+
+        var parameters = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["__complexRelationshipTypes"] = relationshipTypesToClear,
+        };
+        var cypher = new System.Text.StringBuilder();
+        cypher.AppendLine(FormattableString.Invariant($"WITH {rootVariable}"));
+        cypher.AppendLine(FormattableString.Invariant($"OPTIONAL MATCH ({rootVariable})-[__complexOwnerRelationship]->(__complexPropertyRoot)"));
+        cypher.AppendLine(FormattableString.Invariant(
+            $"WHERE __complexOwnerRelationship.{ComplexPropertyStorage.RelationshipMarkerProperty} = true AND type(__complexOwnerRelationship) IN $__complexRelationshipTypes"));
+        cypher.AppendLine(FormattableString.Invariant(
+            $"OPTIONAL MATCH (__complexPropertyRoot)-[__complexPropertyRelationships*0..{GraphDataModel.DefaultDepthAllowed - 1}]->(__complexPropertyNode)"));
+        cypher.AppendLine(FormattableString.Invariant(
+            $"WHERE ALL(relationship IN __complexPropertyRelationships WHERE relationship.{ComplexPropertyStorage.RelationshipMarkerProperty} = true)"));
+        cypher.AppendLine(FormattableString.Invariant(
+            $"WITH {rootVariable}, [node IN collect(DISTINCT __complexPropertyNode) WHERE node IS NOT NULL] AS __complexPropertyNodes"));
+        cypher.AppendLine(
+            "FOREACH (__complexPropertyNode IN __complexPropertyNodes | " +
+            "DETACH DELETE __complexPropertyNode)");
+
+        if (rootScalarPropertiesToClear.Count > 0)
+        {
+            var properties = rootScalarPropertiesToClear.Select(propertyName =>
+                $"{rootVariable}.{CypherIdentifier.Escape(propertyName, "dynamic property name")}");
+            cypher.AppendLine(FormattableString.Invariant($"REMOVE {string.Join(", ", properties)}"));
+        }
+
+        var specs = CollectElementBoundValueNodeSpecs(rootVariable, replacementEntity);
+        for (var index = 0; index < specs.Count; index++)
+        {
+            var spec = specs[index];
+            var relationshipVariable = $"__complexRelationship{index}";
+            var nodeParameter = $"__complexNodeProperties{index}";
+            var relationshipParameter = $"__complexRelationshipProperties{index}";
+            parameters[nodeParameter] = spec.NodeProperties;
+            parameters[relationshipParameter] = spec.RelationshipProperties;
+
+            cypher.AppendLine(FormattableString.Invariant(
+                $"CREATE ({spec.ParentVariable})-[{relationshipVariable}:{CypherIdentifier.Escape(spec.RelationshipType, "complex-property relationship type")}]->({spec.Variable}:{CypherIdentifier.Escape(spec.Label, "complex-property node label")})"));
+            cypher.AppendLine(FormattableString.Invariant(
+                $"SET {relationshipVariable} = ${relationshipParameter}, {spec.Variable} = ${nodeParameter}"));
+        }
+
+        return new ElementBoundMutationFragment(cypher.ToString(), parameters);
     }
 
     private static ValueNodeSpec BuildValueNodeSpec(

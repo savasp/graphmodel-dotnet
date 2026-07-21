@@ -33,6 +33,11 @@ internal static class EntityWriter
         }
     }
 
+    /// <summary>The decomposed owned value nodes and marker edges for a root entity.</summary>
+    public sealed record DecomposedComplexProperties(
+        IReadOnlyList<NodeRecord> ValueNodes,
+        IReadOnlyList<RelationshipRecord> Edges);
+
     /// <summary>Decomposes a serialized node into its store records.</summary>
     public static DecomposedNode DecomposeNode(EntityInfo entity)
     {
@@ -50,9 +55,24 @@ internal static class EntityWriter
 
         var valueNodes = new List<NodeRecord>();
         var edges = new List<RelationshipRecord>();
-        DecomposeComplexProperties(entity, node, valueNodes, edges, depth: 1);
+        AppendComplexProperties(entity, node.Key, valueNodes, edges, depth: 1);
 
         return new DecomposedNode(node, valueNodes, edges);
+    }
+
+    /// <summary>
+    /// Decomposes only the complex properties in <paramref name="entity"/>, binding their marker
+    /// edges to an existing private root key.
+    /// </summary>
+    public static DecomposedComplexProperties DecomposeComplexProperties(
+        EntityInfo entity,
+        Guid parentKey)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        var valueNodes = new List<NodeRecord>();
+        var edges = new List<RelationshipRecord>();
+        AppendComplexProperties(entity, parentKey, valueNodes, edges, depth: 1);
+        return new DecomposedComplexProperties(valueNodes, edges);
     }
 
     /// <summary>
@@ -85,9 +105,9 @@ internal static class EntityWriter
             SequenceNumber: 0);
     }
 
-    private static void DecomposeComplexProperties(
+    private static void AppendComplexProperties(
         EntityInfo entity,
-        NodeRecord parent,
+        Guid parentKey,
         List<NodeRecord> valueNodes,
         List<RelationshipRecord> edges,
         int depth)
@@ -110,13 +130,13 @@ internal static class EntityWriter
                 case null:
                     break;
                 case EntityInfo single:
-                    AddComplexValue(single, parent, relationshipType, sequenceNumber: 0, valueNodes, edges, depth);
+                    AddComplexValue(single, parentKey, relationshipType, sequenceNumber: 0, valueNodes, edges, depth);
                     break;
                 case EntityCollection collection:
                     var sequence = 0;
                     foreach (var item in collection.Entities)
                     {
-                        AddComplexValue(item, parent, relationshipType, sequence++, valueNodes, edges, depth);
+                        AddComplexValue(item, parentKey, relationshipType, sequence++, valueNodes, edges, depth);
                     }
 
                     break;
@@ -129,7 +149,7 @@ internal static class EntityWriter
 
     private static void AddComplexValue(
         EntityInfo entity,
-        NodeRecord parent,
+        Guid parentKey,
         string relationshipType,
         int sequenceNumber,
         List<NodeRecord> valueNodes,
@@ -152,7 +172,7 @@ internal static class EntityWriter
             Guid.NewGuid(),
             CompatibilityId: null,
             relationshipType,
-            parent.Key,
+            parentKey,
             valueNode.Key,
             RelationshipDirection.Outgoing,
             ActualType: null,
@@ -160,7 +180,7 @@ internal static class EntityWriter
             IsComplexProperty: true,
             SequenceNumber: sequenceNumber));
 
-        DecomposeComplexProperties(entity, valueNode, valueNodes, edges, depth + 1);
+        AppendComplexProperties(entity, valueNode.Key, valueNodes, edges, depth + 1);
     }
 
     private static Dictionary<string, StoredProperty> SnapshotSimpleProperties(
