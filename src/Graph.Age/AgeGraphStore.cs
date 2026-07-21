@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.Age;
 
 using Cvoya.Graph.Age.Core;
+using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.Age.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -70,13 +71,15 @@ public sealed class AgeGraphStore : IAsyncDisposable
         string graphName,
         SchemaRegistry? schemaRegistry,
         ILoggerFactory? loggerFactory,
-        Action? batchExecutionObserver)
+        Action? batchExecutionObserver,
+        Func<AgeBatchCommand, AgeBatchCommand>? batchCommandTransform = null)
     {
         this.dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
         ownsDataSource = false;
         GraphName = ResolveGraphName(graphName);
         LoggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         BatchExecutionObserver = batchExecutionObserver;
+        BatchCommandTransform = batchCommandTransform;
         Graph = new AgeGraph(this, GraphName, schemaRegistry ?? new SchemaRegistry(), LoggerFactory);
     }
 
@@ -120,6 +123,12 @@ public sealed class AgeGraphStore : IAsyncDisposable
     /// boundary. It deliberately stays internal so measuring round trips does not expand the public API.
     /// </summary>
     internal Action? BatchExecutionObserver { get; }
+
+    /// <summary>
+    /// Internal failure-injection seam applied to each graph batch command before execution. It is
+    /// used only by provider tests that prove post-batch validation restores operation atomicity.
+    /// </summary>
+    internal Func<AgeBatchCommand, AgeBatchCommand>? BatchCommandTransform { get; }
 
     /// <summary>
     /// Test instrumentation invoked once per execution of the graph-creation sequence, including

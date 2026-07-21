@@ -23,18 +23,21 @@ internal sealed partial class AgeQueryRunner
     private readonly NpgsqlTransaction transaction;
     private readonly ILogger<AgeQueryRunner> logger;
     private readonly Action? batchExecutionObserver;
+    private readonly Func<AgeBatchCommand, AgeBatchCommand>? batchCommandTransform;
 
     public AgeQueryRunner(
         string graphName,
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         ILoggerFactory? loggerFactory,
-        Action? batchExecutionObserver = null)
+        Action? batchExecutionObserver = null,
+        Func<AgeBatchCommand, AgeBatchCommand>? batchCommandTransform = null)
     {
         this.graphName = AgeSqlIdentifier.Validate(graphName, "graph name");
         this.connection = connection ?? throw new ArgumentNullException(nameof(connection));
         this.transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
         this.batchExecutionObserver = batchExecutionObserver;
+        this.batchCommandTransform = batchCommandTransform;
         logger = loggerFactory?.CreateLogger<AgeQueryRunner>() ?? NullLogger<AgeQueryRunner>.Instance;
     }
 
@@ -304,6 +307,10 @@ internal sealed partial class AgeQueryRunner
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        if (batchCommandTransform is not null)
+        {
+            commands = commands.Select(batchCommandTransform).ToArray();
+        }
 
         foreach (var command in commands)
         {

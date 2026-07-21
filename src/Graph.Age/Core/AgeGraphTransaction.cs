@@ -130,7 +130,8 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
                 connection,
                 transaction,
                 context.LoggerFactory,
-                context.Store.BatchExecutionObserver);
+                context.Store.BatchExecutionObserver,
+                context.Store.BatchCommandTransform);
         }
         catch
         {

@@ -13,7 +13,7 @@ using Cvoya.Graph.Querying.Commands;
 internal sealed class AgeGraphCommandExecutionContext(
     AgeGraphTransaction transaction,
     CypherEngine engine,
-    AgeGraphContext context) : IGraphRelationshipCommandExecutionContext
+    AgeGraphContext context) : IGraphCommandExecutionContext
 {
     public IGraphTransaction Transaction => transaction;
 
@@ -36,38 +36,57 @@ internal sealed class AgeGraphCommandExecutionContext(
     }
 
     public async Task CreateRelationshipAsync(
-        GraphEndpointIntent source,
+        GraphCommandEndpoint source,
         IRelationship relationship,
-        GraphEndpointIntent target,
+        GraphCommandEndpoint target,
         RelationshipDirection direction,
+        GraphRelationshipCreationMode mode,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(relationship);
         ArgumentNullException.ThrowIfNull(target);
 
-        var sourceGraphId = await ResolveAsync(source, cancellationToken).ConfigureAwait(false);
-        var targetGraphId = ReferenceEquals(source, target)
-            ? sourceGraphId
-            : await ResolveAsync(target, cancellationToken).ConfigureAwait(false);
-        await context.RelationshipManager.CreateRelationshipForCommandAsync(
+        if (!Enum.IsDefined(direction))
+        {
+            throw new ArgumentOutOfRangeException(nameof(direction));
+        }
+
+        if (!Enum.IsDefined(mode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mode));
+        }
+
+        if (mode == GraphRelationshipCreationMode.Standard &&
+            source is SelectedGraphCommandEndpoint selectedSource &&
+            target is SelectedGraphCommandEndpoint selectedTarget)
+        {
+            await context.RelationshipManager.CreateRelationshipForCommandAsync(
+                relationship,
+                GetGraphId(selectedSource, GraphEndpointRole.Source),
+                GetGraphId(selectedTarget, GraphEndpointRole.Target),
+                direction,
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await context.SubgraphManager.CreateSubgraphAsync(
+            source,
             relationship,
-            sourceGraphId,
-            targetGraphId,
+            target,
             direction,
+            mode,
             transaction,
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<long> ResolveAsync(
-        GraphEndpointIntent endpoint,
-        CancellationToken cancellationToken) => endpoint switch
+    private static long GetGraphId(
+        SelectedGraphCommandEndpoint endpoint,
+        GraphEndpointRole role) => endpoint switch
         {
-            SelectedGraphEndpoint { Element.Kind: GraphElementKind.Node, Element.NativeIdentity: long graphId } => graphId,
-            SelectedGraphEndpoint => throw new GraphException("A relationship endpoint selection must identify a node."),
-            NewGraphEndpoint { Node: { } node } => await context.NodeManager
-                .CreateNodeForCommandAsync(node, transaction, cancellationToken)
-                .ConfigureAwait(false),
-            _ => throw new GraphException("Unsupported relationship endpoint intent."),
+            { Element.Kind: GraphElementKind.Node, Element.NativeIdentity: long graphId } => graphId,
+            _ => throw new GraphException(
+                $"The selected {role.ToString().ToLowerInvariant()} endpoint is not an AGE node graphid."),
         };
 }

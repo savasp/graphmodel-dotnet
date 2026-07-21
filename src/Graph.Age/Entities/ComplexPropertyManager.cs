@@ -32,13 +32,15 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         Dictionary<string, object?> RelationshipProperties);
 
     /// <summary>
-    /// A deterministically-addressed value node used by subgraph batching. Root and parent IDs are
-    /// domain IDs precomputed before execution, so no result from one batch command must be fed to
-    /// another by the client.
+    /// A transiently-addressed value node used by subgraph batching. Correlation tokens are
+    /// operation-local plumbing and are kept separate from the serialized property maps.
     /// </summary>
     internal sealed record SubgraphValueNode(
-        string RootId,
-        string ParentId,
+        string RootCorrelationToken,
+        string RootStorageLabel,
+        string ParentCorrelationToken,
+        string ParentStorageLabel,
+        string CorrelationToken,
         EntityInfo Entity,
         Dictionary<string, object?> NodeProperties,
         Dictionary<string, object?> RelationshipProperties);
@@ -61,22 +63,42 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
     }
 
     internal IReadOnlyList<IReadOnlyList<SubgraphValueNode>> PlanSubgraphValueNodes(
-        params (string RootId, EntityInfo Entity)[] roots)
+        IReadOnlyList<(string CorrelationToken, string StorageLabel, EntityInfo Entity)> roots,
+        Func<string> createCorrelationToken)
     {
+        ArgumentNullException.ThrowIfNull(roots);
+        ArgumentNullException.ThrowIfNull(createCorrelationToken);
+
         var levels = new List<IReadOnlyList<SubgraphValueNode>>();
         var currentLevel = roots
-            .Select(root => (root.RootId, ParentId: root.RootId, root.Entity))
+            .Select(root => (
+                RootCorrelationToken: root.CorrelationToken,
+                RootStorageLabel: root.StorageLabel,
+                ParentCorrelationToken: root.CorrelationToken,
+                ParentStorageLabel: root.StorageLabel,
+                root.Entity))
             .ToList();
 
         for (var depth = 0; currentLevel.Count > 0; depth++)
         {
             var pending = new List<SubgraphValueNode>();
-            foreach (var (rootId, parentId, entity) in currentLevel)
+            foreach (var (
+                         rootCorrelationToken,
+                         rootStorageLabel,
+                         parentCorrelationToken,
+                         parentStorageLabel,
+                         entity) in currentLevel)
             {
-                var children = CollectPendingValueNodes([(parentId, entity)], depth);
+                var children = CollectPendingValueNodes(
+                    [(parentCorrelationToken, entity)],
+                    depth,
+                    assignSyntheticIds: false);
                 pending.AddRange(children.Select(child => new SubgraphValueNode(
-                    rootId,
+                    rootCorrelationToken,
+                    rootStorageLabel,
                     child.ParentElementId,
+                    parentStorageLabel,
+                    createCorrelationToken(),
                     child.Entity,
                     child.NodeProperties,
                     child.RelationshipProperties)));
@@ -88,12 +110,12 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             }
 
             levels.Add(pending);
-            currentLevel = pending.Select(child =>
-            {
-                var id = child.NodeProperties[nameof(Graph.IEntity.Id)] as string
-                    ?? throw new GraphException("A planned complex property node has no domain ID.");
-                return (child.RootId, ParentId: id, child.Entity);
-            }).ToList();
+            currentLevel = pending.Select(child => (
+                child.RootCorrelationToken,
+                child.RootStorageLabel,
+                ParentCorrelationToken: child.CorrelationToken,
+                ParentStorageLabel: SerializationBridge.PhysicalNodeLabel,
+                child.Entity)).ToList();
         }
 
         return levels;
@@ -101,7 +123,8 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
 
     private List<PendingValueNode> CollectPendingValueNodes(
         List<(string ParentElementId, EntityInfo Entity)> level,
-        int depth)
+        int depth,
+        bool assignSyntheticIds = true)
     {
         var pending = new List<PendingValueNode>();
 
@@ -123,7 +146,12 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
                 {
                     case EntityInfo childEntity:
                         pending.Add(CreatePendingValueNode(
-                            parentElementId, propertyName, complexProperty, childEntity, sequenceNumber: 0));
+                            parentElementId,
+                            propertyName,
+                            complexProperty,
+                            childEntity,
+                            sequenceNumber: 0,
+                            assignSyntheticIds));
                         break;
 
                     case EntityCollection collection:
@@ -131,7 +159,12 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
                         foreach (var item in collection.Entities)
                         {
                             pending.Add(CreatePendingValueNode(
-                                parentElementId, propertyName, complexProperty, item, index++));
+                                parentElementId,
+                                propertyName,
+                                complexProperty,
+                                item,
+                                index++,
+                                assignSyntheticIds));
                         }
                         break;
 
@@ -155,25 +188,33 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         string propertyName,
         Property property,
         EntityInfo entity,
-        int sequenceNumber)
+        int sequenceNumber,
+        bool assignSyntheticIds)
     {
         var relationshipType = property.RelationshipType ?? (property.PropertyInfo is null
             ? GraphDataModel.PropertyNameToRelationshipTypeName(propertyName)
             : GraphDataModel.GetComplexPropertyRelationshipType(property.PropertyInfo));
 
         var nodeProps = SerializationHelpers.SerializeSimpleProperties(entity);
-        nodeProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
+        if (assignSyntheticIds)
+        {
+            nodeProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
+        }
+
         nodeProps[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
         nodeProps["inheritance_labels"] = entity.ActualLabels.Count > 0
             ? entity.ActualLabels
             : [entity.Label];
         var relProps = new Dictionary<string, object?>
         {
-            [nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D"),
             ["SequenceNumber"] = sequenceNumber,
             [ComplexPropertyStorage.RelationshipMarkerProperty] = true,
             ["inheritance_labels"] = new[] { relationshipType },
         };
+        if (assignSyntheticIds)
+        {
+            relProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
+        }
 
         return new PendingValueNode(parentElementId, relationshipType, entity, nodeProps, relProps);
     }
