@@ -31,9 +31,12 @@ internal static class SerializationHelpers
     {
         ArgumentNullException.ThrowIfNull(entity);
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        // Dynamic property-bag entries carry no PropertyInfo; they are user data even when named
+        // like a framework structural property, so they are never stripped as legacy identity.
         return entity.SimpleProperties.TryGetValue(propertyName, out var property) &&
-            property.PropertyInfo.Name == propertyName &&
-            property.PropertyInfo.DeclaringType is { } declaringType &&
+            property.PropertyInfo is { } propertyInfo &&
+            propertyInfo.Name == propertyName &&
+            propertyInfo.DeclaringType is { } declaringType &&
             (declaringType == typeof(Graph.IEntity) ||
              declaringType == typeof(Graph.INode) ||
              declaringType == typeof(Graph.IRelationship) ||

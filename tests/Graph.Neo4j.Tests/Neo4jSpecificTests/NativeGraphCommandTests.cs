@@ -324,6 +324,39 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
     }
 
     [Fact]
+    public async Task RelationshipCreation_DynamicBagEntriesNamedLikeStructuralProperties_ArePersistedAsUserData()
+    {
+        var label = $"DynamicBagId{Guid.NewGuid():N}";
+        var relationshipType = $"DYNAMIC_BAG_{Guid.NewGuid():N}";
+        var source = new DynamicNode(
+            [label],
+            new Dictionary<string, object?> { ["Id"] = "user-supplied-node-id", ["name"] = "source" });
+        var relationship = new DynamicRelationship(
+            string.Empty,
+            string.Empty,
+            relationshipType,
+            new Dictionary<string, object?> { ["Id"] = "user-supplied-relationship-id" });
+        var target = new DynamicNode([label], new Dictionary<string, object?> { ["name"] = "target" });
+
+        await Neo4jGraphCommand.CreateAsync(
+            Graph,
+            source,
+            relationship,
+            target,
+            RelationshipDirection.Outgoing,
+            TestContext.Current.CancellationToken);
+
+        // A dynamic property-bag entry named "Id" is user data, not framework identity: it must be
+        // stored verbatim, while the target without one still gets no synthetic identity.
+        var record = await QueryRawSingleAsync(
+            $"MATCH (source:{label} {{name: 'source'}})-[r:{relationshipType}]->(target:{label} {{name: 'target'}}) " +
+            "RETURN source.Id AS sourceId, r.Id AS relationshipId, target.Id AS targetId");
+        Assert.Equal("user-supplied-node-id", record["sourceId"].As<string>());
+        Assert.Equal("user-supplied-relationship-id", record["relationshipId"].As<string>());
+        Assert.Null(record["targetId"].As<string?>());
+    }
+
+    [Fact]
     public async Task NewNativeSubgraph_DoesNotPersistLegacyOrReservedIdentityProtocol()
     {
         var marker = $"native-subgraph-{Guid.NewGuid():N}";

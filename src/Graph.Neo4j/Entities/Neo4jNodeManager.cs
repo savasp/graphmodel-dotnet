@@ -235,6 +235,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentException.ThrowIfNullOrWhiteSpace(elementId);
+        ArgumentNullException.ThrowIfNull(transaction);
         cancellationToken.ThrowIfCancellationRequested();
 
         GraphDataModel.EnsureNoReferenceCycle(node);
@@ -449,6 +450,14 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         CancellationToken cancellationToken)
     {
         var simpleProperties = BuildElementBoundNodeProperties(entity);
+
+        // Stored legacy Ids must survive the full-replace SET (#469 keeps legacy Id APIs working
+        // until the coordinated removal), unless the entity defines an Id of its own. A SET back
+        // to null is a no-op for nodes that never had one.
+        var preservesLegacyId = !simpleProperties.ContainsKey(nameof(Graph.IEntity.Id));
+        var captureLegacyIdClause = preservesLegacyId ? "WITH n, n.Id AS legacyId " : string.Empty;
+        var restoreLegacyIdClause = preservesLegacyId ? "SET n.Id = legacyId " : string.Empty;
+
         string cypher;
         if (entity.ActualType == typeof(Graph.DynamicNode) && entity.ActualLabels.Count > 0)
         {
@@ -469,11 +478,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 ? $"REMOVE n:{string.Join(":", escapedCurrentLabels)} "
                 : string.Empty;
             var newLabels = CypherIdentifier.EscapeLabels(entity.ActualLabels);
-            cypher = $"MATCH (n) WHERE elementId(n) = $elementId {removeLabelsClause}SET n = $props SET n:{newLabels} RETURN count(n) AS affectedCount";
+            cypher = $"MATCH (n) WHERE elementId(n) = $elementId {captureLegacyIdClause}{removeLabelsClause}SET n = $props {restoreLegacyIdClause}SET n:{newLabels} RETURN count(n) AS affectedCount";
         }
         else
         {
-            cypher = "MATCH (n) WHERE elementId(n) = $elementId SET n = $props RETURN count(n) AS affectedCount";
+            cypher = $"MATCH (n) WHERE elementId(n) = $elementId {captureLegacyIdClause}SET n = $props {restoreLegacyIdClause}RETURN count(n) AS affectedCount";
         }
 
         var result = await transaction.RunAsync(

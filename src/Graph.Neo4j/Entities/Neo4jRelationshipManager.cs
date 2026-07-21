@@ -207,6 +207,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(relationship);
         ArgumentException.ThrowIfNullOrWhiteSpace(elementId);
+        ArgumentNullException.ThrowIfNull(transaction);
         cancellationToken.ThrowIfCancellationRequested();
 
         GraphDataModel.EnsureNoReferenceCycle(relationship);
@@ -219,28 +220,50 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 $"Relationships cannot have complex properties. Found {entity.ComplexProperties.Count} complex properties on {relationship.GetType().Name}");
         }
 
+        var properties = BuildElementBoundRelationshipProperties(entity);
+
+        // Stored legacy identity must survive the full-replace SET (#469 keeps legacy Id APIs
+        // working until the coordinated removal: they address relationships by {Id: ...} and
+        // reject direction changes against the stored Direction), unless the entity defines the
+        // property itself. A SET back to null is a no-op for relationships that never had one.
+        var restoreLegacyIdClause = properties.ContainsKey(nameof(Graph.IEntity.Id))
+            ? string.Empty
+            : " SET r.Id = legacyId";
+        var restoreLegacyDirectionClause = properties.ContainsKey(nameof(Graph.Relationship.Direction))
+            ? string.Empty
+            : " SET r.Direction = legacyDirection";
+
+        // The stored type and metadata are compared through coalesce so a relationship without
+        // CVOYA CLR metadata (raw driver-seeded data) reads as an identity mismatch instead of a
+        // null that would poison the FOREACH guard and the boolean conversion below.
         var cypher = $"""
             OPTIONAL MATCH ()-[r]->()
             WHERE elementId(r) = $elementId
             WITH r,
-                 type(r) = $incomingStorageType AS physicalTypeMatches,
-                 r.{SerializationBridge.MetadataPropertyName} = $incomingClrType AS clrTypeMatches
+                 type(r) AS storedPhysicalType,
+                 r.{SerializationBridge.MetadataPropertyName} AS storedClrMetadata,
+                 r.Id AS legacyId,
+                 r.Direction AS legacyDirection
+            WITH r, storedPhysicalType, storedClrMetadata, legacyId, legacyDirection,
+                 coalesce(storedPhysicalType = $incomingStorageType, false) AS physicalTypeMatches,
+                 coalesce(storedClrMetadata = $incomingClrType, false) AS clrTypeMatches
             FOREACH (_ IN CASE WHEN r IS NOT NULL AND physicalTypeMatches AND clrTypeMatches THEN [1] ELSE [] END |
-                SET r = $props)
+                SET r = $props{restoreLegacyIdClause}{restoreLegacyDirectionClause})
             RETURN r IS NOT NULL AS exists,
                    physicalTypeMatches AS physicalTypeMatches,
                    clrTypeMatches AS clrTypeMatches,
-                   type(r) AS storedPhysicalType,
-                   r.{SerializationBridge.MetadataPropertyName} AS storedClrMetadata
+                   storedPhysicalType AS storedPhysicalType,
+                   storedClrMetadata AS storedClrMetadata
             """;
+        var incomingClrType = SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
         var result = await transaction.Transaction.RunAsync(
             cypher,
             new
             {
                 elementId,
                 incomingStorageType = entity.Label,
-                incomingClrType = SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType),
-                props = BuildElementBoundRelationshipProperties(entity)
+                incomingClrType,
+                props = properties
             }).WaitAsync(cancellationToken).ConfigureAwait(false);
         var record = await result.SingleAsync(cancellationToken).ConfigureAwait(false);
         if (!record["exists"].As<bool>())
@@ -250,7 +273,11 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
         if (!record["physicalTypeMatches"].As<bool>() || !record["clrTypeMatches"].As<bool>())
         {
-            throw new GraphException(RelationshipIdentityChangeMessage);
+            var storedClrIdentity = record["storedClrMetadata"] as string ?? "<missing>";
+            throw new GraphException(
+                $"{RelationshipIdentityChangeMessage} " +
+                $"Stored physical type is '{record["storedPhysicalType"].As<string>()}' and CLR identity is '{storedClrIdentity}'; " +
+                $"incoming relationship type is '{entity.Label}' and CLR type is '{incomingClrType}'.");
         }
 
         return true;
