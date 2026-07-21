@@ -99,10 +99,11 @@ validation, cancellation, or database failure.
 
 The compatibility inventory contains 465 runnable test methods. For this capability set,
 `ComplianceInventory.MinimumExecuted(declared)` is 456 methods and the strict compliance guard
-passes with 9 expected skips for undeclared capabilities: `RelationshipPredicates`, `ShortestPath`,
-`SetOperations`, and `OrderByEntity`. Theory data rows make the runtime case count slightly larger
-than the method inventory. The provider-specific adapter, dialect, SQL-envelope, full-text, and
-security tests are excluded from the table.
+confirms all 456 expected method identities with 9 expected skips for undeclared capabilities:
+`RelationshipPredicates`, `ShortestPath`, `SetOperations`, and `OrderByEntity`. Theory data rows
+make the runtime case count slightly larger than the method inventory but do not increase method
+coverage. The provider-specific adapter, dialect, SQL-envelope, full-text, and security tests are
+excluded from the table.
 
 Reproduce:
 

@@ -10,7 +10,7 @@ using Xunit.v3;
 /// The base class every compatibility test interface binding derives from (via a provider's own
 /// intermediate base class, e.g. <c>Neo4jTest</c>). Runs the per-test choreography every provider
 /// needs exactly once: skip on a missing declared capability, acquire the store, record the
-/// execution for <see cref="ComplianceGuard"/>, then dispose the store.
+/// running method identity for <see cref="ComplianceGuard"/>, then dispose the store.
 /// </summary>
 /// <param name="harness">The provider's test harness.</param>
 /// <param name="isolation">The store isolation this test requires. Defaults to
@@ -40,7 +40,10 @@ public abstract class CompatibilityTest(
     /// </summary>
     public virtual async ValueTask InitializeAsync()
     {
-        foreach (var capability in GetRequiredCapabilities().Where(c => !harness.Capabilities.Has(c)))
+        var testMethod = GetTestMethod();
+        var declaredCapabilities = harness.Capabilities;
+
+        foreach (var capability in GetRequiredCapabilities(testMethod).Where(c => !declaredCapabilities.Has(c)))
         {
             Assert.Skip(SkipReason(capability, harness.ProviderName));
             return;
@@ -48,7 +51,7 @@ public abstract class CompatibilityTest(
 
         graph = await harness.GetGraphAsync(isolation, TestContext.Current.CancellationToken);
 
-        ComplianceGuard.RecordExecution(harness.Capabilities);
+        ComplianceGuard.RecordExecution(testMethod, declaredCapabilities);
     }
 
     /// <summary>
@@ -85,18 +88,21 @@ public abstract class CompatibilityTest(
         $"Capability '{capability}' not declared by provider '{providerName}' " +
         $"(Cvoya.Graph.CompatibilityTests {SuiteVersion})";
 
-    private static IReadOnlyCollection<GraphCapability> GetRequiredCapabilities()
+    private static MethodInfo? GetTestMethod() =>
+        TestContext.Current.TestMethod is IXunitTestMethod { Method: { } method } ? method : null;
+
+    private static IReadOnlyCollection<GraphCapability> GetRequiredCapabilities(MethodInfo? method)
     {
         // Resolve the running test's method and read RequiresCapability at BOTH the method and its
-        // declaring-interface level, reusing the same reflection ComplianceInventory uses to size
-        // MinimumExecuted - so the runtime skip decision and the expected-count never disagree.
+        // declaring-interface level, reusing the same reflection ComplianceInventory uses to
+        // select expected method identities - so runtime skips and strict coverage never disagree.
         //
         // We deliberately do NOT read xUnit's aggregated trait collection: in xunit.v3 (3.2.2) an
         // interface-TYPE-level ITraitAttribute on a default-interface-method test is not surfaced
         // onto the running test's traits (only method-level ones are), and the suite gates whole
         // optional areas at the interface level (e.g. IFullTextSearchTests). Reflecting the method
         // covers both shapes; trusting traits silently ran interface-gated tests unskipped.
-        if (TestContext.Current.TestMethod is IXunitTestMethod { Method: { } method })
+        if (method is not null)
         {
             return ComplianceInventory.RequiredCapabilities(method);
         }

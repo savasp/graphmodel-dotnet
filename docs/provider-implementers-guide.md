@@ -299,7 +299,7 @@ The implementation seam is intentionally small:
 
 ## Certifying A Provider
 
-The `Cvoya.Graph.CompatibilityTests` package is a shippable TCK: a harness SPI, a capability registry so backends that legitimately lack a feature (e.g. server-side full-text search) skip rather than fail, and a compliance guard that catches a mis-wired provider project (one that discovers/runs far fewer tests than it should) instead of letting it silently "pass" with almost nothing executed.
+The `Cvoya.Graph.CompatibilityTests` package is a shippable TCK: a harness SPI, a capability registry so backends that legitimately lack a feature (e.g. server-side full-text search) skip rather than fail, and a compliance guard that catches a mis-wired provider project (one that omits required contract methods) instead of letting it silently "pass" with incomplete coverage.
 
 ### 1. Implement the harness SPI
 
@@ -381,11 +381,17 @@ GRAPHMODEL_COMPLIANCE_STRICT=1 dotnet test <your-test-project> --report-trx
 
 Under strict mode, the guard also promotes `GraphProviderUnavailableException` (unavailable infrastructure) from a skip to a hard failure, so a compliance lane can never "pass" simply because its backing store never came up.
 
+The guard records the declaring interface plus full method signature after each successful store
+acquisition, then compares those identities with the exact capability-eligible inventory. Multiple
+rows of one `[Theory]` still cover only that one method, and provider-specific tests cannot cover a
+missing TCK method. A failure lists every missing identity and the declared capability set. Strict
+mode also fails with a wiring error when the xUnit host does not expose the running `MethodInfo`.
+
 ### 5. Read the results
 
 - **Capability skips** carry a fixed, parseable reason: `Capability '<Name>' not declared by provider '<ProviderName>' (Cvoya.Graph.CompatibilityTests <version>)`. Any other skip or a nonzero failure count needs investigation.
-- **The compliance report**: fill in `COMPLIANCE.md` (template in `src/Cvoya.Graph.CompatibilityTests/COMPLIANCE.md`) from your TRX results - N passed / M skipped-by-declared-capability / 0 failed, where N is at least `ComplianceInventory.MinimumExecuted(yourDeclaredCapabilities)`.
-- **"Compatible"** means: 0 failed, every skip is a declared-capability skip, and the executed count meets the guard's floor for your declared capabilities.
+- **The compliance report**: fill in `COMPLIANCE.md` (template in `src/Cvoya.Graph.CompatibilityTests/COMPLIANCE.md`) from your TRX results - N passed cases / M skipped-by-declared-capability / 0 failed. Report `ComplianceInventory.MinimumExecuted(yourDeclaredCapabilities)` separately as the required method-identity inventory; theory rows can make N larger than that method count.
+- **"Compatible"** means: 0 failed, every skip is a declared-capability skip, and the strict guard confirms that every capability-eligible method identity executed.
 
 See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Graph.InMemory.Tests` for the full in-tree worked implementation.
 
