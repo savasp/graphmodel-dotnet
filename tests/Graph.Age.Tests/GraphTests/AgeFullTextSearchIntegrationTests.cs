@@ -3,6 +3,8 @@
 
 namespace Cvoya.Graph.Age.Tests.GraphTests;
 
+using Cvoya.Graph.Age.Core;
+using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.CompatibilityTests;
 
 /// <summary>
@@ -13,7 +15,7 @@ using Cvoya.Graph.CompatibilityTests;
 public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
     : AgeTest(harness, StoreIsolation.FreshStore)
 {
-    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
+    [Fact]
     public async Task Search_RunsOnCallerTransaction_SeesUncommittedWrites()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -35,7 +37,7 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
         Assert.Empty(afterRollback);
     }
 
-    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
+    [Fact]
     public async Task MixedSearch_AppliesOrderingPagingAndTerminalsAfterCombiningBothKinds()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -65,4 +67,185 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
 
         Assert.Equal(2, await this.Graph.Search(term).CountAsync(ct));
     }
+
+    [Fact]
+    public async Task Search_RawNativeElementsWithoutId_UsesGraphidWithoutExposingIt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string term = "ExternalSearchToken474";
+        long nodeGraphId;
+        long relationshipGraphId;
+        await using (var transaction = await this.Graph.GetTransactionAsync(ct))
+        {
+            await using var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
+                """
+                CREATE (source:Person)
+                SET source.FirstName = $term, source.LastName = 'External', source.Bio = ''
+                CREATE (target:Person)
+                SET target.FirstName = 'Endpoint', target.LastName = 'External', target.Bio = ''
+                CREATE (source)-[relationship:WORKS_REALLY_WELL_WITH]->(target)
+                SET relationship.HowWell = $term
+                RETURN id(source) AS nodeGraphId, id(relationship) AS relationshipGraphId
+                """,
+                new { term },
+                ct);
+            var record = await result.SingleAsync(ct);
+            nodeGraphId = record["nodeGraphId"].As<long>();
+            relationshipGraphId = record["relationshipGraphId"].As<long>();
+            await transaction.CommitAsync();
+        }
+
+        var node = Assert.Single(await this.Graph.SearchNodes<Person>(term).ToListAsync(ct));
+        var relationship = Assert.Single(
+            await this.Graph.SearchRelationships<KnowsWell>(term).ToListAsync(ct));
+        var mixed = await this.Graph.Search(term).ToListAsync(ct);
+
+        Assert.Equal(term, node.FirstName);
+        Assert.Equal(term, relationship.HowWell);
+        Assert.Empty(node.Id);
+        Assert.Empty(relationship.Id);
+        Assert.Equal(2, mixed.Count);
+        Assert.DoesNotContain(mixed, entity => entity.Id == nodeGraphId.ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
+        Assert.DoesNotContain(mixed, entity => entity.Id == relationshipGraphId.ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public async Task DynamicSearch_DiscoversUnregisteredExternalLabelTables()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string term = "UnregisteredExternalToken474";
+        await using (var transaction = await this.Graph.GetTransactionAsync(ct))
+        {
+            await using var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
+                """
+                CREATE (source:ExternalSearchNode)
+                SET source.Name = $term
+                CREATE (target:ExternalSearchNode)
+                SET target.Name = 'Endpoint'
+                CREATE (source)-[relationship:EXTERNAL_SEARCH_EDGE]->(target)
+                SET relationship.Description = $term
+                RETURN true AS created
+                """,
+                new { term },
+                ct);
+            _ = await result.SingleAsync(ct);
+            await transaction.CommitAsync();
+        }
+
+        var node = Assert.Single(await this.Graph.SearchNodes<DynamicNode>(term).ToListAsync(ct));
+        var relationship = Assert.Single(
+            await this.Graph.SearchRelationships<DynamicRelationship>(term).ToListAsync(ct));
+
+        Assert.Contains("ExternalSearchNode", node.Labels);
+        Assert.Equal(term, node.Properties["Name"]);
+        Assert.Equal("EXTERNAL_SEARCH_EDGE", relationship.Type);
+        Assert.Equal(term, relationship.Properties["Description"]);
+        Assert.Empty(node.Id);
+        Assert.Empty(relationship.Id);
+    }
+
+    [Fact]
+    public async Task Search_DuplicateDomainIds_CorrelatesEveryMatchingGraphid()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string term = "DuplicateIdentitySearchToken474";
+        const string duplicateId = "duplicate-search-id-474";
+        await this.Graph.CreateNodeAsync(
+            new Person { Id = duplicateId, FirstName = "First", LastName = term },
+            cancellationToken: ct);
+        await this.Graph.CreateNodeAsync(
+            new Person { Id = duplicateId, FirstName = "Second", LastName = term },
+            cancellationToken: ct);
+
+        var results = await this.Graph.SearchNodes<Person>(term)
+            .OrderBy(person => person.FirstName)
+            .ToListAsync(ct);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(["First", "Second"], results.Select(person => person.FirstName));
+        Assert.All(results, person => Assert.Equal(duplicateId, person.Id));
+    }
+
+    [Fact]
+    public async Task Search_ExcludesReservedUniversalTablesFromExternalRootDiscovery()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string term = "ReservedUniversalSearchToken474";
+        await using (var transaction = await this.Graph.GetTransactionAsync(ct))
+        {
+            var runner = ((AgeGraphTransaction)transaction).Runner;
+            await runner.EnsureLabelAsync("CvoyaNode", relationship: false, ct);
+            await runner.EnsureLabelAsync("CvoyaRelationship", relationship: true, ct);
+            await using var result = await runner.RunAsync(
+                """
+                CREATE (source:CvoyaNode)
+                SET source.SearchText = $term
+                CREATE (target:CvoyaNode)
+                SET target.SearchText = 'Endpoint'
+                CREATE (source)-[relationship:CvoyaRelationship]->(target)
+                SET relationship.SearchText = $term
+                RETURN true AS created
+                """,
+                new { term },
+                ct);
+            _ = await result.SingleAsync(ct);
+            await transaction.CommitAsync();
+        }
+
+        Assert.Empty(await this.Graph.SearchNodes<DynamicNode>(term).ToListAsync(ct));
+        Assert.Empty(await this.Graph.SearchRelationships<DynamicRelationship>(term).ToListAsync(ct));
+        Assert.Empty(await this.Graph.Search(term).ToListAsync(ct));
+    }
+
+    [Fact]
+    public async Task Search_DomainIdIsOrdinarySearchableData()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string searchableId = "SearchableDomainIdToken474";
+        var person = new Person
+        {
+            Id = searchableId,
+            FirstName = "Ordinary",
+            LastName = "Identity",
+        };
+        await this.Graph.CreateNodeAsync(person, cancellationToken: ct);
+
+        var result = Assert.Single(await this.Graph.SearchNodes<Person>(searchableId).ToListAsync(ct));
+
+        Assert.Equal(searchableId, result.Id);
+    }
+
+    [Fact]
+    public async Task GlobalSearch_TreatsARegisteredLabelWithNoIncludedPropertiesAsUnsearchable()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string term = "OptedOutStorageToken474";
+        await this.Graph.CreateNodeAsync(new SearchOptedOutNode { Secret = term }, cancellationToken: ct);
+
+        // The label owns a native table with no full-text candidate. Catalog discovery must not
+        // mistake it for an externally managed label, whose contract is "every string value".
+        Assert.Empty(await this.Graph.SearchNodes<SearchOptedOutNode>(term).ToListAsync(ct));
+        Assert.Empty(await this.Graph.Search(term).ToListAsync(ct));
+    }
+}
+
+/// <summary>
+/// A registered node type that excludes every string property — including <c>Id</c> — from
+/// full-text search, so it contributes no phase-one candidate while still owning a native label
+/// table.
+/// </summary>
+#pragma warning disable CG011 // Opting Id out of full-text search requires declaring it here, not on the Node base record.
+[Node(Label = "SearchOptedOutNode")]
+public record SearchOptedOutNode : INode
+#pragma warning restore CG011
+{
+    [Property(IncludeInFullTextSearch = false)]
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+
+    [Property(IncludeInFullTextSearch = false)]
+    public string Secret { get; set; } = string.Empty;
+
+    public IReadOnlyList<string> Labels { get; set; } = [];
 }

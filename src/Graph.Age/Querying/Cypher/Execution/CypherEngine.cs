@@ -536,25 +536,33 @@ internal sealed class CypherEngine
         AgeGraphTransaction transaction,
         CancellationToken cancellationToken)
     {
-        var nodeIds = await AgeFullTextSearch.FindMatchingIdsAsync(
+        var nodeMatches = await AgeFullTextSearch.FindMatchesAsync(
             typeof(INode), root.SearchQuery, _schemaRegistry, transaction.Runner, cancellationToken)
             .ConfigureAwait(false);
-        var relationshipIds = await AgeFullTextSearch.FindMatchingIdsAsync(
+        var relationshipMatches = await AgeFullTextSearch.FindMatchesAsync(
             typeof(IRelationship), root.SearchQuery, _schemaRegistry, transaction.Runner, cancellationToken)
             .ConfigureAwait(false);
-        AgeFullTextSearch.EnforceIdSetLimit(nodeIds.Count + relationshipIds.Count);
+        var combinedMatchCount = nodeMatches
+            .Concat(relationshipMatches)
+            .Select(match => (match.Target, match.GraphId))
+            .Distinct()
+            .Count();
+        AgeFullTextSearch.EnforceIdSetLimit(combinedMatchCount);
 
-        var nodes = nodeIds.Count == 0
+        var nodeGraphIds = nodeMatches.Select(match => match.GraphId).Distinct().ToArray();
+        var relationshipGraphIds = relationshipMatches.Select(match => match.GraphId).Distinct().ToArray();
+
+        var nodes = nodeGraphIds.Length == 0
             ? []
             : await ExecuteAsync<List<INode>>(
-                AgeFullTextSearchRewriter.BuildIdFilter(root.NodeSource, typeof(INode), [.. nodeIds]),
+                AgeFullTextSearchRewriter.BuildGraphIdFilter(root.NodeSource, typeof(INode), nodeGraphIds),
                 transaction,
                 cancellationToken).ConfigureAwait(false) ?? [];
-        var relationships = relationshipIds.Count == 0
+        var relationships = relationshipGraphIds.Length == 0
             ? []
             : await ExecuteAsync<List<IRelationship>>(
-                AgeFullTextSearchRewriter.BuildIdFilter(
-                    root.RelationshipSource, typeof(IRelationship), [.. relationshipIds]),
+                AgeFullTextSearchRewriter.BuildGraphIdFilter(
+                    root.RelationshipSource, typeof(IRelationship), relationshipGraphIds),
                 transaction,
                 cancellationToken).ConfigureAwait(false) ?? [];
 

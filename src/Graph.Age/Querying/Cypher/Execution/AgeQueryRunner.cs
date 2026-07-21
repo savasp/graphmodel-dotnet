@@ -9,7 +9,9 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Cvoya.Graph.Age.Querying;
 using Cvoya.Graph.Age.Schema;
+using Cvoya.Graph.Age.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -134,13 +136,119 @@ internal sealed partial class AgeQueryRunner
     }
 
     /// <summary>
+    /// Discovers concrete native and externally managed label tables for one entity kind from AGE's
+    /// catalog. Provider-reserved universal tables are excluded from root discovery.
+    /// </summary>
+    internal async Task<List<AgeFullTextSearch.GraphLabelTable>> DiscoverFullTextTablesAsync(
+        bool relationship,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT label.name
+            FROM ag_catalog.ag_label AS label
+            JOIN ag_catalog.ag_graph AS graph ON graph.graphid = label.graph
+            WHERE graph.name = @graphName
+              AND label.kind = @labelKind
+              AND label.name <> @reservedNodeTable
+              AND label.name <> @reservedRelationshipTable
+            ORDER BY label.name
+            """;
+        command.Parameters.AddWithValue("graphName", graphName);
+        command.Parameters.AddWithValue("labelKind", relationship ? "e" : "v");
+        command.Parameters.AddWithValue("reservedNodeTable", SerializationBridge.PhysicalNodeLabel);
+        command.Parameters.AddWithValue(
+            "reservedRelationshipTable",
+            SerializationBridge.PhysicalRelationshipType);
+        await using var commandLease = command.ConfigureAwait(false);
+
+        try
+        {
+            var tables = new List<AgeFullTextSearch.GraphLabelTable>();
+            var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await using var readerLease = reader.ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                tables.Add(new AgeFullTextSearch.GraphLabelTable(reader.GetString(0)));
+            }
+
+            return tables;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsQueryExecutionFailure(exception))
+        {
+            throw WrapQueryExecutionFailure(exception);
+        }
+    }
+
+    /// <summary>Executes one combined phase-one search and reads its private graphid context.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security",
+        "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "AgeFullTextSearch composes SQL only from catalog-vetted identifiers, " +
+            "compile-time constants, and bound search text.")]
+    internal async Task<List<AgeFullTextSearch.FullTextMatch>> QueryFullTextMatchesAsync(
+        string sql,
+        string query,
+        AgeFullTextSearch.FullTextTarget expectedTarget,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sql);
+        ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.Parameters.Add(new NpgsqlParameter("query", query));
+        await using var commandLease = command.ConfigureAwait(false);
+
+        try
+        {
+            var matches = new List<AgeFullTextSearch.FullTextMatch>();
+            var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await using var readerLease = reader.ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var target = reader.GetString(1) switch
+                {
+                    "Node" => AgeFullTextSearch.FullTextTarget.Nodes,
+                    "Relationship" => AgeFullTextSearch.FullTextTarget.Relationships,
+                    var value => throw new GraphException($"AGE full-text search returned unknown entity kind '{value}'."),
+                };
+                if (target != expectedTarget)
+                {
+                    throw new GraphException("AGE full-text search returned an entity kind outside its requested scope.");
+                }
+
+                matches.Add(new AgeFullTextSearch.FullTextMatch(reader.GetInt64(0), target));
+            }
+
+            return matches;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsQueryExecutionFailure(exception))
+        {
+            throw WrapQueryExecutionFailure(exception);
+        }
+    }
+
+    /// <summary>
     /// Runs a plain (non-<c>cypher()</c>) SQL statement on this runner's connection and transaction,
-    /// binding the caller-supplied search text to the <c>@query</c> parameter, and returns the string
-    /// values of the first result column. This is the phase-1 seam for full-text search: AGE cannot
-    /// express Postgres text search in its Cypher subset, so the provider runs it as SQL over the
-    /// label tables and seeds the residual Cypher query with the matching ids (see
-    /// <see cref="Querying.AgeFullTextSearch"/>). It executes on the SAME transaction as the residual
-    /// query, so it observes that transaction's uncommitted writes.
+    /// optionally binding one text value to a <c>@query</c> parameter, and returns the string values
+    /// of the first result column. It executes on the SAME transaction as the caller's Cypher, so it
+    /// observes that transaction's uncommitted writes. Phase-one full-text search has its own typed
+    /// seam (<see cref="QueryFullTextMatchesAsync"/>); this general one remains for diagnostics and
+    /// catalog assertions such as <c>EXPLAIN</c> plans and lock inspection.
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
         "Security",

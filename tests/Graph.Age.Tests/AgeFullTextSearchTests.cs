@@ -5,113 +5,82 @@ namespace Cvoya.Graph.Age.Tests;
 
 using Cvoya.Graph.Age.Querying;
 
-/// <summary>
-/// Provider-free tests for the phase-1 full-text SQL construction. These assert the exact SQL shape
-/// per search kind (typed / untyped / dynamic / relationship) so that the semantics the GIN-index
-/// work (#291) must preserve are pinned. The only user input, the search text, always travels as the
-/// <c>@query</c> bind parameter with the <c>'simple'</c> regconfig.
-/// </summary>
+/// <summary>Provider-free coverage for AGE phase-one full-text SQL construction.</summary>
 public sealed class AgeFullTextSearchTests
 {
-    private static readonly string N = System.Environment.NewLine;
-
     [Fact]
-    public void BuildTypedSql_SingleCandidate_RendersTsvectorLabelTestAndBoundQuery()
+    public void BuildTypedSql_NativeNodeTable_ReturnsGraphidContextAndUsesIncludedProperties()
     {
         var sql = AgeFullTextSearch.BuildTypedSql(
             "cvoya_g1",
-            "CvoyaNode",
-            [new AgeFullTextSearch.FullTextCandidate("Person", ["FirstName", "LastName", "Bio"])]);
+            "Person",
+            [new AgeFullTextSearch.FullTextCandidate("Person", ["Id", "FirstName", "Bio"])]);
 
-        Assert.Equal(
-            "SELECT (properties::text::jsonb) ->> 'Id' AS id" + N +
-            "FROM \"cvoya_g1\".\"CvoyaNode\"" + N +
-            "WHERE to_tsvector('simple', \"cvoya_g1\".age_fulltext_blob(properties)) @@ plainto_tsquery('simple', @query)" + N +
-            "  AND ((to_tsvector('simple', concat_ws(' ', (properties::text::jsonb) ->> 'FirstName', " +
-            "(properties::text::jsonb) ->> 'LastName', (properties::text::jsonb) ->> 'Bio')) " +
-            "@@ plainto_tsquery('simple', @query) " +
-            "AND jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'Person')))" + N +
-            "LIMIT 10001",
-            sql);
+        Assert.Contains("SELECT id::text::bigint AS graph_id", sql, StringComparison.Ordinal);
+        Assert.Contains("'Node' AS entity_kind", sql, StringComparison.Ordinal);
+        Assert.Contains("FROM ONLY \"cvoya_g1\".\"Person\"", sql, StringComparison.Ordinal);
+        Assert.Contains("(properties::text::jsonb) ->> 'Id'", sql, StringComparison.Ordinal);
+        Assert.Contains("(properties::text::jsonb) ->> 'FirstName'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("->> 'Id' AS id", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("age_fulltext_blob", sql, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void BuildTypedSql_HasCoarseIndexableConjunctBeforePrecisePredicate()
+    public void BuildTypedSql_RelationshipTable_PreservesRelationshipKind()
     {
         var sql = AgeFullTextSearch.BuildTypedSql(
             "cvoya_g1",
-            "CvoyaNode",
-            [new AgeFullTextSearch.FullTextCandidate("Person", ["Bio"])]);
+            "WORKS_REALLY_WELL_WITH",
+            [new AgeFullTextSearch.FullTextCandidate("KnowsWell", ["HowWell"])],
+            relationship: true);
 
-        // The coarse conjunct matches the GIN index expression verbatim so the planner can use it; the
-        // precise per-type predicate follows as a recheck (coarse superset of precise).
-        var coarse = "to_tsvector('simple', \"cvoya_g1\".age_fulltext_blob(properties)) @@ plainto_tsquery('simple', @query)";
-        Assert.Contains($"WHERE {coarse}{N}  AND (", sql, StringComparison.Ordinal);
+        Assert.Contains("'Relationship' AS entity_kind", sql, StringComparison.Ordinal);
+        Assert.Contains("FROM ONLY \"cvoya_g1\".\"WORKS_REALLY_WELL_WITH\"", sql, StringComparison.Ordinal);
+        Assert.Contains("->> 'HowWell'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("__graphModelComplexProperty", sql, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void BuildTypedSql_MultipleCandidates_OrsPerTypePredicates()
+    public void BuildDynamicSql_UsesFunctionFreeAllStringFallback_AndTreatsIdNormally()
+    {
+        var sql = AgeFullTextSearch.BuildDynamicSql("cvoya_g1", "Person");
+
+        Assert.Contains("jsonb_each((properties::text::jsonb))", sql, StringComparison.Ordinal);
+        Assert.Contains("jsonb_typeof(age_fulltext_value.value) = 'string'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("age_fulltext_blob", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("NOT IN ('Id'", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SearchablePhysicalTable_RejectsAgeBaseAndProviderReservedTables()
+    {
+        Assert.False(AgeFullTextSearch.IsSearchablePhysicalTable("_ag_label_vertex"));
+        Assert.False(AgeFullTextSearch.IsSearchablePhysicalTable("_ag_label_edge"));
+        Assert.False(AgeFullTextSearch.IsSearchablePhysicalTable("CvoyaNode"));
+        Assert.False(AgeFullTextSearch.IsSearchablePhysicalTable("CvoyaRelationship"));
+        Assert.True(AgeFullTextSearch.IsSearchablePhysicalTable("Person"));
+        Assert.True(AgeFullTextSearch.IsSearchablePhysicalTable("EXTERNAL_SEARCH_EDGE"));
+    }
+
+    [Fact]
+    public void BuildTypedSql_EscapesSingleQuotesInProperties()
     {
         var sql = AgeFullTextSearch.BuildTypedSql(
             "cvoya_g1",
-            "CvoyaNode",
-            [
-                new AgeFullTextSearch.FullTextCandidate("Person", ["Bio"]),
-                new AgeFullTextSearch.FullTextCandidate("Manager", ["Bio", "Department"]),
-            ]);
-
-        // Inheritance is expressed as one disjunct per concrete type, each with its own label test and
-        // its own searchable properties (so Manager's Department participates only for Manager rows).
-        Assert.Contains("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'Person')", sql, StringComparison.Ordinal);
-        Assert.Contains("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'Manager')", sql, StringComparison.Ordinal);
-        Assert.Contains("(properties::text::jsonb) ->> 'Department'", sql, StringComparison.Ordinal);
-        Assert.Contains($"){N}       OR (", sql, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void BuildTypedSql_RelationshipTable_TargetsRelationshipTable()
-    {
-        var sql = AgeFullTextSearch.BuildTypedSql(
-            "cvoya_g1",
-            "CvoyaRelationship",
-            [new AgeFullTextSearch.FullTextCandidate("KnowsWell", ["HowWell"])]);
-
-        Assert.Contains("FROM \"cvoya_g1\".\"CvoyaRelationship\"", sql, StringComparison.Ordinal);
-        Assert.Contains("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'KnowsWell')", sql, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void BuildDynamicSql_IsTheCoarseAllValuesPredicate()
-    {
-        var sql = AgeFullTextSearch.BuildDynamicSql("cvoya_g1", "CvoyaNode");
-
-        // Dynamic search matches on all string values, which is exactly the indexed coarse expression,
-        // so it is served directly by the GIN index with no precise recheck.
-        Assert.Equal(
-            "SELECT (properties::text::jsonb) ->> 'Id' AS id" + N +
-            "FROM \"cvoya_g1\".\"CvoyaNode\"" + N +
-            "WHERE to_tsvector('simple', \"cvoya_g1\".age_fulltext_blob(properties)) @@ plainto_tsquery('simple', @query)" + N +
-            "LIMIT 10001",
-            sql);
-    }
-
-    [Fact]
-    public void BuildTypedSql_EscapesSingleQuotesInLabelsAndProperties()
-    {
-        var sql = AgeFullTextSearch.BuildTypedSql(
-            "cvoya_g1",
-            "CvoyaNode",
+            "Person",
             [new AgeFullTextSearch.FullTextCandidate("O'Brien", ["Ap'os"])]);
 
-        Assert.Contains("(properties::text::jsonb) ->> 'Ap''os'", sql, StringComparison.Ordinal);
-        Assert.Contains("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'O''Brien')", sql, StringComparison.Ordinal);
+        Assert.Contains("->> 'Ap''os'", sql, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void IdSetLimit_IsTenThousand()
+    public void CombinedQuery_DeduplicatesBeforeApplyingTheTenThousandLimit()
     {
-        // The id list rides to AGE as a single agtype parameter blob; the phase-1 SQL fetches one past
-        // the limit so the provider can fail informatively rather than build an unbounded parameter.
+        var sql = AgeFullTextSearch.BuildDynamicSql("cvoya_g1", "Person");
+
+        Assert.StartsWith("SELECT DISTINCT graph_id, entity_kind", sql, StringComparison.Ordinal);
+        Assert.EndsWith("LIMIT 10001", sql, StringComparison.Ordinal);
         Assert.Equal(10_000, AgeFullTextSearch.MaxMatchedIds);
     }
 
@@ -128,8 +97,10 @@ public sealed class AgeFullTextSearchTests
         var exception = Assert.Throws<GraphException>(
             () => AgeFullTextSearch.EnforceIdSetLimit(AgeFullTextSearch.MaxMatchedIds + 1));
 
-        Assert.Contains(AgeFullTextSearch.MaxMatchedIds.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            exception.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            AgeFullTextSearch.MaxMatchedIds.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            exception.Message,
+            StringComparison.Ordinal);
         Assert.Contains("Narrow the query", exception.Message, StringComparison.Ordinal);
     }
 }

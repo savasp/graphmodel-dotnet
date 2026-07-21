@@ -48,8 +48,7 @@ An application that already owns its connection pool can pass an AGE-enabled
 - atomic endpoint–relationship–endpoint creation in one Npgsql batch round-trip, including nested
   complex-property subtrees and create-missing endpoint semantics;
 - complex-property persistence and cascading cleanup;
-- native logical AGE labels/types for new roots, with migration-free reads and mutations across
-  legacy `CvoyaNode`/`CvoyaRelationship` rows;
+- native logical AGE labels/types for model roots and catalog-vetted raw native data;
 - write-scoped native label/type provisioning (ordinary reads perform no DDL);
 - scalar-key grouped aggregation through AGE-native `WITH` grouping and aggregate functions;
 - correlated collection projections and relationship/complex-collection counts, lowered to
@@ -57,22 +56,20 @@ An application that already owns its connection pool can pass an AGE-enabled
 - agtype adaptation for vertices, edges, paths, maps, arrays, large integers, decimals, and
   ISO-8601 temporal values.
 
-The provider does not currently declare full-text search, nested transactions,
-or shortest path. Unsupported operations fail
-during translation or are capability-skipped by the provider compatibility suite.
+The provider declares full-text search. It does not currently declare nested transactions or
+shortest path. Unsupported operations fail during translation or are capability-skipped by the
+provider compatibility suite.
 
 ### Native storage and commands
 
 New `Person` nodes are stored in AGE's `Person` label table and new `KNOWS` relationships use the
 native `KNOWS` type. Concrete raw AGE rows need no CVOYA discriminator, inheritance, entity-kind, or
-CLR metadata to participate in typed, dynamic, and traversal queries. Existing rows in the legacy
-`CvoyaNode` / `CvoyaRelationship` tables continue to match through the same query predicates and can
-be updated or deleted without migration. Provider-owned complex-value nodes remain isolated through
-their relationship marker.
+CLR metadata to participate in typed, dynamic, and traversal queries. Provider-owned complex-value
+nodes remain isolated through their relationship marker and reserved physical storage.
 
 AGE catalog label names are limited to plain symbolic names. A mapped name outside that grammar
-(for example, a label containing a space) retains the legacy physical-table representation so the
-existing escaped-identifier API remains usable; reserved provider names are rejected before writing.
+(for example, a label containing a space) uses the provider-reserved physical-table representation
+so the escaped-identifier API remains usable; reserved provider names are rejected before writing.
 
 Set updates and deletes first freeze distinct `id(n)` / `id(r)` values inside the active write
 transaction, then mutate only those graphids. Endpoint-intent relationship creation likewise joins
@@ -109,12 +106,19 @@ maps continue through the provider-neutral result wire model and shared material
 
 ### Full-text search
 
-The former AGE search implementation correlates through the transitional public `Id` property and
-only scans the two legacy physical tables, so it is not declared as a capability with native logical
-storage. Issue #474 tracks graphid correlation across native, legacy, and external label tables.
-Managed full-text functions and indexes are no longer provisioned by ordinary graph creation or
-reads; explicit `RecreateIndexesAsync` remains the only provisioning entry point while that work is
-completed.
+AGE full-text search discovers the graph's concrete vertex/edge tables from the AGE catalog, searches
+native logical storage and externally managed labels, then correlates the combined distinct result
+through transaction-local `id(n)` / `id(r)` values. The provider-reserved `CvoyaNode` and
+`CvoyaRelationship` tables are excluded from external root discovery. Graphids remain provider
+plumbing and are never substituted for public `Id` data; a domain property named `Id` participates
+like any other included string property.
+
+Registered labels search exactly their included string properties, and a registered type with no
+included property matches nothing. Global searches use the all-string fallback only for genuinely
+unregistered external labels; dynamic entities retain their public all-string-value contract.
+Ordinary reads inline the PostgreSQL text-search predicate and require no managed function, index,
+or DDL permission. The existing index-recreation API remains available, but current search neither
+consults nor depends on its managed artifacts.
 
 ## Local AGE
 

@@ -5,7 +5,9 @@ namespace Cvoya.Graph.Age.Tests;
 
 using System.Linq.Expressions;
 using System.Reflection;
+using Cvoya.Graph.Age;
 using Cvoya.Graph.Age.Querying;
+using Cvoya.Graph.Age.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.CompatibilityTests;
 
 /// <summary>
@@ -43,17 +45,17 @@ public sealed class AgeFullTextSearchRewriterTests
     }
 
     [Fact]
-    public void ApplyRewrite_ReplacesSearchWithWhereContainsOverId_RecoveringElementType()
+    public void ApplyRewrite_ReplacesSearchWithPrivateGraphidPredicate_RecoveringElementType()
     {
         var root = Root<Person>();
         var search = Search<Person>(root, "cloud");
-        var ids = new[] { "id-1", "id-2" };
+        var graphIds = new long[] { 101, 202 };
 
         var rewritten = AgeFullTextSearchRewriter.ApplyRewrite(
             search,
-            new Dictionary<MethodCallExpression, string[]> { [search] = ids });
+            new Dictionary<MethodCallExpression, long[]> { [search] = graphIds });
 
-        // Search(source, "cloud") becomes Where(source, e => ids.Contains(e.Id)).
+        // Search(source, "cloud") becomes Where(source, e => graphIds.Contains(NativeIdentity(e))).
         var where = Assert.IsAssignableFrom<MethodCallExpression>(rewritten);
         Assert.Equal(nameof(GraphQueryableExtensions.Where), where.Method.Name);
         Assert.Equal(typeof(Person), where.Method.GetGenericArguments()[0]);
@@ -63,11 +65,13 @@ public sealed class AgeFullTextSearchRewriterTests
         Assert.Equal(typeof(Person), predicate.Parameters[0].Type);
         var contains = Assert.IsAssignableFrom<MethodCallExpression>(predicate.Body);
         Assert.Equal(nameof(Enumerable.Contains), contains.Method.Name);
-        // The captured id set is the constant first argument; e.Id is the value being tested.
+        // The captured graphid set is the constant first argument; the value is an internal marker,
+        // never a member access to IEntity.Id.
         var constant = Assert.IsAssignableFrom<ConstantExpression>(contains.Arguments[0]);
-        Assert.Equal(ids, Assert.IsType<string[]>(constant.Value));
-        var idAccess = Assert.IsAssignableFrom<MemberExpression>(contains.Arguments[1]);
-        Assert.Equal(nameof(IEntity.Id), idAccess.Member.Name);
+        Assert.Equal(graphIds, Assert.IsType<long[]>(constant.Value));
+        var nativeIdentity = Assert.IsAssignableFrom<MethodCallExpression>(contains.Arguments[1]);
+        Assert.Equal("NativeIdentity", nativeIdentity.Method.Name);
+        Assert.Same(predicate.Parameters[0], nativeIdentity.Arguments[0]);
     }
 
     [Fact]
@@ -78,16 +82,35 @@ public sealed class AgeFullTextSearchRewriterTests
         var traversal = Expression.Call(
             PathSegmentsDefinition.MakeGenericMethod(typeof(Person), typeof(KnowsWell), typeof(Person)),
             search);
-        var ids = new[] { "id-1", "id-2" };
+        var graphIds = new long[] { 101, 202 };
 
         var rewritten = Assert.IsAssignableFrom<MethodCallExpression>(AgeFullTextSearchRewriter.ApplyRewrite(
             traversal,
-            new Dictionary<MethodCallExpression, string[]> { [search] = ids }));
+            new Dictionary<MethodCallExpression, long[]> { [search] = graphIds }));
 
         Assert.Equal(nameof(GraphTraversalExtensions.PathSegments), rewritten.Method.Name);
         var where = Assert.IsAssignableFrom<MethodCallExpression>(rewritten.Arguments[0]);
         Assert.Equal(nameof(GraphQueryableExtensions.Where), where.Method.Name);
         Assert.Same(root, where.Arguments[0]);
+    }
+
+    [Fact]
+    public async Task BuildGraphIdFilter_LowersToNativeIdentityWithoutPublicIdAccess()
+    {
+        await using var store = new AgeGraphStore(
+            "Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres",
+            "translation");
+        var source = store.Graph.Nodes<Person>();
+        var expression = AgeFullTextSearchRewriter.BuildGraphIdFilter(
+            source.Expression,
+            typeof(Person),
+            [101, 202]);
+        var visitor = new CypherQueryVisitor(typeof(Person));
+
+        visitor.Visit(expression);
+
+        Assert.Contains("id(src) IN $", visitor.Query.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("src.Id IN", visitor.Query.Text, StringComparison.Ordinal);
     }
 
     private static Expression StripQuote(Expression expression) =>

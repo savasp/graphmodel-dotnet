@@ -17,6 +17,7 @@ public sealed class AgeDialectTests
 
         Assert.Equal(
             CapabilitySet.Of(
+                GraphCapability.FullTextSearch,
                 GraphCapability.Transactions,
                 GraphCapability.ComplexPropertyCascade,
                 GraphCapability.MultiLabelMatch,

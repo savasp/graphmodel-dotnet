@@ -6,14 +6,13 @@ namespace Cvoya.Graph.Age.Querying;
 using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
+using Cvoya.Graph.Cypher;
 
 /// <summary>
 /// Lowers full-text search out of the LINQ expression tree before the shared Cypher pipeline runs.
 /// AGE cannot express full-text in its Cypher subset, so each <c>Search(source, query)</c> call is
-/// replaced by an equivalent <c>Where(source, e =&gt; ids.Contains(e.Id))</c>, where <c>ids</c> is the
-/// result of phase 1 (a Postgres text-search query, <see cref="AgeFullTextSearch"/>). The residual,
-/// search-free expression flows through the completely unchanged shared planner and renderer, so
-/// aliases, projections, paging, and composition all come out right by construction.
+/// replaced by an equivalent private native-identity predicate. The shared Cypher planner lowers
+/// that marker to <c>id(alias) IN $graphIds</c>; no public entity property participates in correlation.
 /// </summary>
 /// <remarks>
 /// Placement matters: phase 1 is an async database call and the Cypher visitor is synchronous, so the
@@ -32,7 +31,10 @@ internal sealed class AgeFullTextSearchRewriter
     private static readonly MethodInfo EnumerableContainsMethod = typeof(Enumerable)
         .GetMethods(BindingFlags.Public | BindingFlags.Static)
         .Single(method => method.Name == nameof(Enumerable.Contains) && method.GetParameters().Length == 2)
-        .MakeGenericMethod(typeof(string));
+        .MakeGenericMethod(typeof(long));
+
+    private static readonly MethodInfo NativeIdentityMethod = typeof(AgeFullTextSearchRewriter)
+        .GetMethod(nameof(NativeIdentity), BindingFlags.NonPublic | BindingFlags.Static)!;
 
     private readonly SchemaRegistry _schemaRegistry;
 
@@ -57,15 +59,15 @@ internal sealed class AgeFullTextSearchRewriter
             return expression;
         }
 
-        var idsBySearch = new Dictionary<MethodCallExpression, string[]>();
+        var idsBySearch = new Dictionary<MethodCallExpression, long[]>();
         foreach (var search in searches)
         {
             var elementType = search.Method.GetGenericArguments()[0];
             var query = ExtractQuery(search);
-            var ids = await AgeFullTextSearch
-                .FindMatchingIdsAsync(elementType, query, _schemaRegistry, runner, cancellationToken)
+            var matches = await AgeFullTextSearch
+                .FindMatchesAsync(elementType, query, _schemaRegistry, runner, cancellationToken)
                 .ConfigureAwait(false);
-            idsBySearch[search] = [.. ids];
+            idsBySearch[search] = matches.Select(match => match.GraphId).Distinct().ToArray();
         }
 
         return ApplyRewrite(expression, idsBySearch);
@@ -80,24 +82,22 @@ internal sealed class AgeFullTextSearchRewriter
 
     /// <summary>
     /// Synchronous rewrite half: replaces each located <c>Search(source, q)</c> with
-    /// <c>Where(source, e =&gt; ids.Contains(e.Id))</c>. Test seam so the rewrite is exercisable without a
-    /// database (phase 1 supplies the ids in production).
+    /// <c>Where(source, e =&gt; graphIds.Contains(NativeIdentity(e)))</c>. Test seam so the rewrite is
+    /// exercisable without a database (phase 1 supplies the graphids in production).
     /// </summary>
     internal static Expression ApplyRewrite(
         Expression expression,
-        IReadOnlyDictionary<MethodCallExpression, string[]> idsBySearch) =>
+        IReadOnlyDictionary<MethodCallExpression, long[]> idsBySearch) =>
         new SearchToWhereRewriter(idsBySearch).Visit(expression);
 
-    /// <summary>Builds the residual id-membership predicate used by both typed and mixed search.</summary>
-    internal static MethodCallExpression BuildIdFilter(Expression source, Type elementType, string[] ids)
+    /// <summary>Builds the residual native graphid predicate used by both typed and mixed search.</summary>
+    internal static MethodCallExpression BuildGraphIdFilter(Expression source, Type elementType, long[] graphIds)
     {
         var parameter = Expression.Parameter(elementType, "e");
-        var idProperty = elementType.GetProperty(nameof(Graph.IEntity.Id))
-            ?? typeof(Graph.IEntity).GetProperty(nameof(Graph.IEntity.Id))!;
         var predicateBody = Expression.Call(
             EnumerableContainsMethod,
-            Expression.Constant(ids, typeof(IEnumerable<string>)),
-            Expression.Property(parameter, idProperty));
+            Expression.Constant(graphIds, typeof(IEnumerable<long>)),
+            Expression.Call(NativeIdentityMethod, parameter));
         var predicate = Expression.Lambda(predicateBody, parameter);
 
         return Expression.Call(
@@ -105,6 +105,11 @@ internal sealed class AgeFullTextSearchRewriter
             source,
             Expression.Quote(predicate));
     }
+
+    [CypherNativeElementIdentity]
+    private static long NativeIdentity(Graph.IEntity element) =>
+        throw new InvalidOperationException(
+            $"{nameof(NativeIdentity)} is an expression-tree marker and cannot execute on the client.");
 
     private static string ExtractQuery(MethodCallExpression search)
     {
@@ -153,8 +158,8 @@ internal sealed class AgeFullTextSearchRewriter
 
     }
 
-    /// <summary>Replaces each located <c>Search(source, query)</c> with <c>Where(source, e =&gt; ids.Contains(e.Id))</c>.</summary>
-    private sealed class SearchToWhereRewriter(IReadOnlyDictionary<MethodCallExpression, string[]> idsBySearch)
+    /// <summary>Replaces each search with a private native-graphid membership predicate.</summary>
+    private sealed class SearchToWhereRewriter(IReadOnlyDictionary<MethodCallExpression, long[]> idsBySearch)
         : ExpressionVisitor
     {
         protected override Expression VisitMethodCall(MethodCallExpression node)
@@ -164,7 +169,7 @@ internal sealed class AgeFullTextSearchRewriter
                 // Visit the source first so a nested Search (chained Search calls) is rewritten too.
                 var source = Visit(node.Arguments[0]);
                 var elementType = node.Method.GetGenericArguments()[0];
-                return BuildIdFilter(source, elementType, ids);
+                return BuildGraphIdFilter(source, elementType, ids);
             }
 
             return base.VisitMethodCall(node);
