@@ -46,8 +46,13 @@ internal sealed class CypherEngine
     private readonly ILoggerFactory? _loggerFactory;
     private readonly AgeFullTextSearchRewriter _fullTextSearchRewriter;
     private readonly SchemaRegistry _schemaRegistry;
+    private readonly string _graphName;
 
-    public CypherEngine(EntityFactory entityFactory, SchemaRegistry schemaRegistry, ILoggerFactory? loggerFactory)
+    public CypherEngine(
+        EntityFactory entityFactory,
+        SchemaRegistry schemaRegistry,
+        string graphName,
+        ILoggerFactory? loggerFactory)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
         _logger = loggerFactory?.CreateLogger<CypherEngine>() ?? NullLogger<CypherEngine>.Instance;
@@ -57,6 +62,7 @@ internal sealed class CypherEngine
         _materializer = new GraphResultMaterializer(entityFactory, loggerFactory);
         _loggerFactory = loggerFactory;
         _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
+        _graphName = graphName ?? throw new ArgumentNullException(nameof(graphName));
         _fullTextSearchRewriter = new AgeFullTextSearchRewriter(schemaRegistry);
     }
 
@@ -113,6 +119,7 @@ internal sealed class CypherEngine
 
         cancellationToken.ThrowIfCancellationRequested();
         var nativeIdentities = selected.Select(item => item.NativeIdentity).ToArray();
+        var constraintPlan = GraphMutationConstraintPlan.Create(mutation, _schemaRegistry);
         if (mutation.Kind == GraphMutationKind.Delete &&
             mutation.Selection.ElementKind == GraphElementKind.Node)
         {
@@ -124,12 +131,123 @@ internal sealed class CypherEngine
         }
         else
         {
+            if (!constraintPlan.IsEmpty)
+            {
+                var rows = await ReadConstraintRowsAsync(
+                    mutation,
+                    nativeIdentities,
+                    constraintPlan,
+                    transaction,
+                    cancellationToken).ConfigureAwait(false);
+                var proposed = constraintPlan.ValidateFinalValues(rows);
+                await ValidateUnselectedConstraintsAsync(
+                    nativeIdentities.Cast<long>().ToArray(),
+                    constraintPlan,
+                    proposed,
+                    transaction,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             var statement = new CypherMutationPlanner(AgeDialect.PlanningInstance)
                 .Plan(mutation, nativeIdentities);
             _ = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
         }
 
         return selected.Count;
+    }
+
+    private async Task<IReadOnlyList<GraphMutationConstraintRow>> ReadConstraintRowsAsync(
+        GraphMutationModel mutation,
+        IReadOnlyList<object> nativeIdentities,
+        GraphMutationConstraintPlan constraintPlan,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await transaction.Runner.AcquireElementLocksAsync(
+            nativeIdentities.Cast<long>().ToArray(),
+            mutation.Selection.ElementKind == GraphElementKind.Relationship,
+            cancellationToken).ConfigureAwait(false);
+        var statement = new CypherMutationPlanner(AgeDialect.PlanningInstance).PlanConstraintValues(
+            mutation,
+            nativeIdentities,
+            constraintPlan.Properties.Select(property => property.StorageName).ToArray(),
+            acquireWriteLock: false);
+        var records = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
+        var rows = records.Select(record => new GraphMutationConstraintRow(
+            record["__nativeId"].As<long>(),
+            constraintPlan.Properties.Select((property, index) => new
+            {
+                property.StorageName,
+                Value = (object?)record[CypherMutationPlanner.ConstraintValueColumn(index)].As<object>(),
+            })
+                .ToDictionary(item => item.StorageName, item => item.Value, StringComparer.Ordinal)))
+            .ToArray();
+        GraphMutationConstraintPlan.ValidateTargetRows(nativeIdentities, rows);
+        return rows;
+    }
+
+    private async Task ValidateUnselectedConstraintsAsync(
+        IReadOnlyList<long> selectedIdentities,
+        GraphMutationConstraintPlan constraintPlan,
+        IReadOnlyList<GraphMutationConstraintValue> proposed,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (!CypherIdentifier.IsNativeLabelName(constraintPlan.LabelOrType))
+        {
+            throw new GraphQueryTranslationException(
+                $"AGE atomic key and unique updates require a native label or relationship type; " +
+                $"'{constraintPlan.LabelOrType}' uses non-native fallback storage.");
+        }
+
+        var entityKind = constraintPlan.ElementKind == GraphElementKind.Node
+            ? AgeUniquenessLockKey.NodeEntityKind
+            : AgeUniquenessLockKey.RelationshipEntityKind;
+        await transaction.Runner.AcquireUniquenessLocksAsync(
+            proposed.Select(candidate => AgeUniquenessLockKey.Compute(
+                _graphName,
+                entityKind,
+                constraintPlan.LabelOrType,
+                candidate.Constraint.Description,
+                candidate.Values)).ToArray(),
+            cancellationToken).ConfigureAwait(false);
+
+        var escapedName = CypherIdentifier.Escape(
+            constraintPlan.LabelOrType,
+            constraintPlan.ElementKind == GraphElementKind.Node ? "node label" : "relationship type");
+        var match = constraintPlan.ElementKind == GraphElementKind.Node
+            ? $"MATCH (candidate:{escapedName})"
+            : $"MATCH ()-[candidate:{escapedName}]->()";
+        foreach (var candidate in proposed)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var parameters = new Dictionary<string, object?>
+            {
+                ["selectedIds"] = selectedIdentities,
+            };
+            var predicates = new List<string>
+            {
+                "NOT (id(candidate) IN $selectedIds)",
+            };
+            for (var index = 0; index < candidate.Constraint.Properties.Count; index++)
+            {
+                var parameterName = $"constraintValue{index}";
+                parameters[parameterName] = candidate.Values[index];
+                predicates.Add(
+                    $"candidate.{CypherIdentifier.Escape(candidate.Constraint.Properties[index].StorageName, "property name")} = ${parameterName}");
+            }
+
+            var records = await _executor.ExecuteAsync(
+                $"{match} WHERE {string.Join(" AND ", predicates)} RETURN count(candidate) AS duplicateCount",
+                parameters,
+                ["duplicateCount"],
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+            if (records.Single()["duplicateCount"].As<long>() > 0)
+            {
+                throw constraintPlan.CreateViolation(candidate.Constraint);
+            }
+        }
     }
 
     private async Task<IReadOnlyList<SelectedGraphElement>> SelectPlannedAsync(

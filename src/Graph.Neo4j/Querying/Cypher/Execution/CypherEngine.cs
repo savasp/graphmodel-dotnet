@@ -44,10 +44,12 @@ internal sealed class CypherEngine
     private readonly GraphResultMaterializer _materializer;
     private readonly Neo4jRecordAdapter _recordAdapter = new();
     private readonly ILoggerFactory? _loggerFactory;
+    private readonly SchemaRegistry _schemaRegistry;
 
-    public CypherEngine(EntityFactory entityFactory, ILoggerFactory? loggerFactory)
+    public CypherEngine(EntityFactory entityFactory, SchemaRegistry schemaRegistry, ILoggerFactory? loggerFactory)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
+        _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
         _logger = loggerFactory?.CreateLogger<CypherEngine>() ?? NullLogger<CypherEngine>.Instance;
 
         // Create our internal components
@@ -93,6 +95,8 @@ internal sealed class CypherEngine
 
         cancellationToken.ThrowIfCancellationRequested();
         var nativeIdentities = selected.Select(item => item.NativeIdentity).ToArray();
+        await _schemaRegistry.InitializeAsync(cancellationToken).ConfigureAwait(false);
+        var constraintPlan = GraphMutationConstraintPlan.Create(mutation, _schemaRegistry);
         if (mutation.Kind == GraphMutationKind.Delete &&
             mutation.Selection.ElementKind == GraphElementKind.Node)
         {
@@ -111,12 +115,105 @@ internal sealed class CypherEngine
         }
         else
         {
+            if (!constraintPlan.IsEmpty)
+            {
+                var rows = await ReadConstraintRowsAsync(
+                    mutation,
+                    nativeIdentities,
+                    constraintPlan,
+                    transaction,
+                    cancellationToken).ConfigureAwait(false);
+                var proposed = constraintPlan.ValidateFinalValues(rows);
+                await ValidateUnselectedConstraintsAsync(
+                    nativeIdentities.Cast<string>().ToArray(),
+                    constraintPlan,
+                    proposed,
+                    transaction,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             var statement = new CypherMutationPlanner(Neo4jDialect.Instance)
-                .Plan(mutation, nativeIdentities);
+                .Plan(
+                    mutation,
+                    nativeIdentities,
+                    constraintPlan.Properties
+                        .Where(property => property.Assignment is not null)
+                        .Select(property => property.StorageName)
+                        .ToArray());
             _ = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
         }
 
         return selected.Count;
+    }
+
+    private async Task<IReadOnlyList<GraphMutationConstraintRow>> ReadConstraintRowsAsync(
+        GraphMutationModel mutation,
+        IReadOnlyList<object> nativeIdentities,
+        GraphMutationConstraintPlan constraintPlan,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var statement = new CypherMutationPlanner(Neo4jDialect.Instance).PlanConstraintValues(
+            mutation,
+            nativeIdentities,
+            constraintPlan.Properties.Select(property => property.StorageName).ToArray(),
+            acquireWriteLock: true);
+        var records = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
+        var rows = records.Select(record => new GraphMutationConstraintRow(
+            record["__nativeId"].As<string>(),
+            constraintPlan.Properties.Select((property, index) => new
+            {
+                property.StorageName,
+                Value = (object?)record[CypherMutationPlanner.ConstraintValueColumn(index)],
+            })
+                .ToDictionary(item => item.StorageName, item => item.Value, StringComparer.Ordinal)))
+            .ToArray();
+        GraphMutationConstraintPlan.ValidateTargetRows(nativeIdentities, rows);
+        return rows;
+    }
+
+    private async Task ValidateUnselectedConstraintsAsync(
+        IReadOnlyList<string> selectedIdentities,
+        GraphMutationConstraintPlan constraintPlan,
+        IReadOnlyList<GraphMutationConstraintValue> proposed,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var escapedName = CypherIdentifier.Escape(
+            constraintPlan.LabelOrType,
+            constraintPlan.ElementKind == GraphElementKind.Node ? "node label" : "relationship type");
+        var match = constraintPlan.ElementKind == GraphElementKind.Node
+            ? $"MATCH (candidate:{escapedName})"
+            : $"MATCH ()-[candidate:{escapedName}]->()";
+        foreach (var candidate in proposed)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var parameters = new Dictionary<string, object?>
+            {
+                ["selectedIds"] = selectedIdentities,
+            };
+            var predicates = new List<string>
+            {
+                "NOT (elementId(candidate) IN $selectedIds)",
+            };
+            for (var index = 0; index < candidate.Constraint.Properties.Count; index++)
+            {
+                var parameterName = $"constraintValue{index}";
+                parameters[parameterName] = candidate.Values[index];
+                predicates.Add(
+                    $"candidate.{CypherIdentifier.Escape(candidate.Constraint.Properties[index].StorageName, "property name")} = ${parameterName}");
+            }
+
+            var records = await _executor.ExecuteAsync(
+                $"{match} WHERE {string.Join(" AND ", predicates)} RETURN count(candidate) AS duplicateCount",
+                parameters,
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+            if (records.Single()["duplicateCount"].As<long>() > 0)
+            {
+                throw constraintPlan.CreateViolation(candidate.Constraint);
+            }
+        }
     }
 
     private async Task<List<global::Neo4j.Driver.IRecord>> ExecuteStatementAsync(

@@ -193,6 +193,12 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 throw new EntityNotFoundException($"Relationship with ID {relationship.Id} not found for update");
             }
 
+            // Existing-row writers take the physical row lock before uniqueness locks. Set-based
+            // constrained updates use the same ordering, preventing cross-API lock inversion.
+            await transaction.Runner.AcquireElementLocksAsync(
+                [target.GraphId],
+                relationship: true,
+                cancellationToken).ConfigureAwait(false);
             await ValidateRelationshipUniquenessAsync(
                 relationship, transaction.Runner, target.GraphId, cancellationToken).ConfigureAwait(false);
 

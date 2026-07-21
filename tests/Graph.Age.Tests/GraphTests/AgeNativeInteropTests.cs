@@ -231,6 +231,110 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
     }
 
     [Fact]
+    public async Task ConstrainedNodeUpdateSeesRawNativeRowsButNotLegacyUniversalRows()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var marker = $"atomic-node-{Guid.NewGuid():N}";
+        var externalEmail = $"external-{Guid.NewGuid():N}@example.test";
+        var legacyEmail = $"legacy-{Guid.NewGuid():N}@example.test";
+        await Graph.CreateNodeAsync(
+            new AtomicMutationNode
+            {
+                KeyGroup = marker,
+                KeyCode = "selected",
+                Email = $"selected-{Guid.NewGuid():N}@example.test",
+                Marker = marker,
+            },
+            cancellationToken: cancellationToken);
+        await RunRawAsync(
+            """
+            CREATE (external:AtomicMutationNode)
+            SET external.KeyGroup = $marker,
+                external.KeyCode = 'external',
+                external.Email = $externalEmail,
+                external.Marker = 'raw-native'
+            CREATE (legacy:CvoyaNode)
+            SET legacy.inheritance_labels = ['AtomicMutationNode'],
+                legacy.Email = $legacyEmail,
+                legacy.Marker = 'legacy-universal'
+            RETURN true AS created
+            """,
+            new { marker, externalEmail, legacyEmail },
+            cancellationToken);
+
+        await Assert.ThrowsAsync<GraphException>(() => GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<AtomicMutationNode>().Where(candidate => candidate.Marker == marker),
+            setters => setters
+                .SetProperty(candidate => candidate.Email, externalEmail)
+                .SetProperty(candidate => candidate.Marker, "must-roll-back"),
+            cancellationToken));
+
+        var affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<AtomicMutationNode>().Where(candidate => candidate.Marker == marker),
+            setters => setters.SetProperty(candidate => candidate.Email, legacyEmail),
+            cancellationToken);
+        var storedEmail = await Graph.Nodes<AtomicMutationNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .Select(candidate => candidate.Email)
+            .SingleAsync(cancellationToken);
+
+        Assert.Equal(1, affected);
+        Assert.Equal(legacyEmail, storedEmail);
+    }
+
+    [Fact]
+    public async Task ConstrainedRelationshipUpdateSeesRawNativeRowsButNotLegacyUniversalRows()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var marker = $"atomic-relationship-{Guid.NewGuid():N}";
+        var externalCode = $"external-{Guid.NewGuid():N}";
+        var legacyCode = $"legacy-{Guid.NewGuid():N}";
+        var source = new Person { FirstName = marker + "-source" };
+        var target = new Person { FirstName = marker + "-target" };
+        await Graph.CreateNodeAsync(source, cancellationToken: cancellationToken);
+        await Graph.CreateNodeAsync(target, cancellationToken: cancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new AtomicMutationRelationship(source.Id, target.Id)
+            {
+                Code = $"selected-{Guid.NewGuid():N}",
+                Marker = marker,
+            },
+            cancellationToken: cancellationToken);
+        await RunRawAsync(
+            """
+            MATCH (source:Person {Id: $sourceId}), (target:Person {Id: $targetId})
+            CREATE (source)-[external:ATOMIC_MUTATION_RELATIONSHIP]->(target)
+            SET external.Code = $externalCode, external.Marker = 'raw-native'
+            CREATE (source)-[legacy:CvoyaRelationship]->(target)
+            SET legacy.Type = 'ATOMIC_MUTATION_RELATIONSHIP',
+                legacy.Code = $legacyCode,
+                legacy.Marker = 'legacy-universal'
+            RETURN true AS created
+            """,
+            new { sourceId = source.Id, targetId = target.Id, externalCode, legacyCode },
+            cancellationToken);
+
+        await Assert.ThrowsAsync<GraphException>(() => GraphCommandExtensions.UpdateAsync(
+            Graph.Relationships<AtomicMutationRelationship>().Where(candidate => candidate.Marker == marker),
+            setters => setters
+                .SetProperty(candidate => candidate.Code, externalCode)
+                .SetProperty(candidate => candidate.Marker, "must-roll-back"),
+            cancellationToken));
+
+        var affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.Relationships<AtomicMutationRelationship>().Where(candidate => candidate.Marker == marker),
+            setters => setters.SetProperty(candidate => candidate.Code, legacyCode),
+            cancellationToken);
+        var storedCode = await Graph.Relationships<AtomicMutationRelationship>()
+            .Where(candidate => candidate.Marker == marker)
+            .Select(candidate => candidate.Code)
+            .SingleAsync(cancellationToken);
+
+        Assert.Equal(1, affected);
+        Assert.Equal(legacyCode, storedCode);
+    }
+
+    [Fact]
     public async Task RelationshipCommandsSupportEveryEndpointIntentAndExplicitSelfLoop()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

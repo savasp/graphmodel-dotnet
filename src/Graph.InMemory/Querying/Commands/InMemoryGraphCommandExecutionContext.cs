@@ -51,8 +51,9 @@ internal sealed class InMemoryGraphCommandExecutionContext(
             return Task.FromResult(selected.Count);
         }
 
+        var constraintPlan = GraphMutationConstraintPlan.Create(mutation, schemaRegistry);
         var updates = PrepareUpdates(mutation, selected, cancellationToken);
-        transaction.Apply(state => ApplyUpdates(state, updates));
+        transaction.Apply(state => ApplyUpdates(state, updates, constraintPlan));
         return Task.FromResult(selected.Count);
     }
 
@@ -131,7 +132,10 @@ internal sealed class InMemoryGraphCommandExecutionContext(
             _ => throw new GraphException($"Graph element kind '{selected.Kind}' is not supported."),
         };
 
-    private static StoreState ApplyUpdates(StoreState state, IReadOnlyList<PreparedUpdate> updates)
+    private static StoreState ApplyUpdates(
+        StoreState state,
+        IReadOnlyList<PreparedUpdate> updates,
+        GraphMutationConstraintPlan constraintPlan)
     {
         foreach (var update in updates)
         {
@@ -170,7 +174,62 @@ internal sealed class InMemoryGraphCommandExecutionContext(
             }
         }
 
+        ValidateConstraints(state, updates, constraintPlan);
         return state;
+    }
+
+    private static void ValidateConstraints(
+        StoreState state,
+        IReadOnlyList<PreparedUpdate> updates,
+        GraphMutationConstraintPlan constraintPlan)
+    {
+        if (constraintPlan.IsEmpty)
+        {
+            return;
+        }
+
+        var selectedKeys = updates
+            .Select(update => RequireIdentity<Guid>(update.Target))
+            .ToHashSet();
+        var rows = updates.Select(update =>
+        {
+            var key = RequireIdentity<Guid>(update.Target);
+            var properties = update.Target.Kind == GraphElementKind.Node
+                ? state.Nodes[key].Properties
+                : state.Relationships[key].Properties;
+            return new GraphMutationConstraintRow(
+                key,
+                constraintPlan.Properties.ToDictionary(
+                    property => property.StorageName,
+                    property => properties.GetValueOrDefault(property.StorageName)?.Value,
+                    StringComparer.Ordinal));
+        }).ToArray();
+        var proposed = constraintPlan.ValidateFinalValues(rows);
+
+        IEnumerable<IReadOnlyDictionary<string, StoredProperty>> unselected =
+            constraintPlan.ElementKind == GraphElementKind.Node
+                ? state.Nodes.Values
+                    .Where(node => !node.IsComplexValue &&
+                        !selectedKeys.Contains(node.Key) &&
+                        string.Equals(node.Label, constraintPlan.LabelOrType, StringComparison.Ordinal))
+                    .Select(node => node.Properties)
+                : state.Relationships.Values
+                    .Where(relationship => !relationship.IsComplexProperty &&
+                        !selectedKeys.Contains(relationship.Key) &&
+                        string.Equals(relationship.Type, constraintPlan.LabelOrType, StringComparison.Ordinal))
+                    .Select(relationship => relationship.Properties);
+
+        var stored = unselected.ToArray();
+        foreach (var candidate in proposed)
+        {
+            if (stored.Any(properties => GraphMutationConstraint.Matches(
+                    candidate.Values,
+                    candidate.Constraint.Properties.Select(property =>
+                        properties.GetValueOrDefault(property.StorageName)?.Value).ToArray())))
+            {
+                throw constraintPlan.CreateViolation(candidate.Constraint);
+            }
+        }
     }
 
     private static Dictionary<string, StoredProperty> ApplyAssignments(

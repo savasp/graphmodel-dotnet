@@ -24,6 +24,9 @@
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Cvoya.Graph.Age</_Parameter1>
         </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Neo4j</_Parameter1>
+        </AssemblyAttribute>
     </ItemGroup>
 
     <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">

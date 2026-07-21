@@ -14,6 +14,38 @@ public record Person : Node
     public Point Location { get; set; } = new Point { Longitude = 0.0, Latitude = 0.0, Height = 0.0 };
 }
 
+[Node("AtomicMutationNode")]
+public record AtomicMutationNode : Node
+{
+    [Property(IsKey = true)]
+    public string KeyGroup { get; set; } = string.Empty;
+
+    [Property(IsKey = true)]
+    public string KeyCode { get; set; } = string.Empty;
+
+    [Property(IsUnique = true)]
+    public string Email { get; set; } = string.Empty;
+
+    public string Marker { get; set; } = string.Empty;
+}
+
+[Node("AtomicOrdinaryIdNode")]
+#pragma warning disable CG002, CG011 // This direct implementation separates transitional identity from a domain property named Id.
+public record AtomicOrdinaryIdNode : INode
+{
+    string IEntity.Id { get; init; } = Guid.NewGuid().ToString("N");
+
+    IReadOnlyList<string> INode.Labels => [];
+
+    public IReadOnlyList<string> Labels { get; set; } = [];
+
+    [Property(Label = "ordinary_id")]
+    public string Id { get; set; } = string.Empty;
+
+    public string Marker { get; set; } = string.Empty;
+}
+#pragma warning restore CG002, CG011
+
 public record Manager : Person
 {
     public string Department { get; set; } = string.Empty;
@@ -123,6 +155,19 @@ public record Knows : Relationship
     public DateTime Since { get; set; } = DateTime.UtcNow;
 }
 
+[Relationship(Label = "ATOMIC_MUTATION_RELATIONSHIP")]
+public record AtomicMutationRelationship : Relationship
+{
+    public AtomicMutationRelationship() : base(string.Empty, string.Empty) { }
+
+    public AtomicMutationRelationship(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+
+    [Property(IsUnique = true)]
+    public string Code { get; set; } = string.Empty;
+
+    public string Marker { get; set; } = string.Empty;
+}
+
 [Relationship(Label = "WORKS_REALLY_WELL_WITH")]
 public record KnowsWell : Knows
 {
@@ -198,5 +243,3 @@ public class ComplexClassD
     public string Property1 { get; set; } = string.Empty;
     public string Property2 { get; set; } = string.Empty;
 }
-
-
