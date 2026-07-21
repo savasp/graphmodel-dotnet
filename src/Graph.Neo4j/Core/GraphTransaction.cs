@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Neo4j.Core;
 
+using System.Runtime.ExceptionServices;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -21,6 +22,8 @@ internal class GraphTransaction : IGraphTransaction
     private IAsyncTransaction? _transaction;
     private bool _committed;
     private bool _rolledBack;
+    private bool _rollbackAttempted;
+    private bool _disposed;
     private readonly ILogger<GraphTransaction> _logger;
 
     /// <summary>
@@ -89,6 +92,7 @@ internal class GraphTransaction : IGraphTransaction
         if (_transaction == null || _committed || _rolledBack)
             throw new GraphException("Transaction is not active.");
 
+        _rollbackAttempted = true;
         await _transaction.RollbackAsync().ConfigureAwait(false);
         _rolledBack = true;
     }
@@ -98,43 +102,96 @@ internal class GraphTransaction : IGraphTransaction
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        if (_transaction != null && !_committed && !_rolledBack)
+        if (_disposed)
         {
+            return;
+        }
+
+        _disposed = true;
+        Exception? cleanupFailure = null;
+        var transaction = _transaction;
+        _transaction = null;
+
+        if (transaction != null)
+        {
+            if (!_committed && !_rolledBack && !_rollbackAttempted)
+            {
+                _rollbackAttempted = true;
+                try
+                {
+                    await transaction.RollbackAsync().ConfigureAwait(false);
+                    _rolledBack = true;
+                }
+                catch (Exception exception)
+                {
+                    cleanupFailure = exception;
+                    _logger.LogWarningGraphTransactionRollbackFailure(exception);
+                }
+            }
+
             try
             {
-                // Auto-rollback uncommitted transactions
-                await _transaction.RollbackAsync().ConfigureAwait(false);
-                _transaction.Dispose();
-                _transaction = null;
+                transaction.Dispose();
             }
-            catch
+            catch (Exception exception)
             {
-                // Ignore rollback errors during disposal
+                cleanupFailure ??= exception;
+                _logger.LogWarningGraphTransactionDriverDisposalFailure(exception);
             }
         }
 
-        // Close the session
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await _session.CloseAsync().WaitAsync(cts.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception) when (cts.IsCancellationRequested)
         {
             _logger.LogWarningGraphTransaction111();
+            cleanupFailure ??= new TimeoutException(
+                "Timed out while closing the Neo4j session.",
+                exception);
         }
         catch (Exception ex)
         {
-            _logger.LogErrorGraphTransaction115(ex.Message);
+            cleanupFailure ??= ex;
+            _logger.LogErrorGraphTransactionSessionCloseFailure(ex);
+        }
+
+        if (cleanupFailure is not null)
+        {
+            ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
         }
     }
 
     internal async Task BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_transaction is not null)
+        {
+            throw new GraphException("Transaction has already started.");
+        }
 
-        _logger.LogDebugGraphTransaction123();
-        _transaction = await _session.BeginTransactionAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
-        _logger.LogDebugGraphTransaction125();
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            _logger.LogDebugGraphTransaction123();
+            _transaction = await _session.BeginTransactionAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+            _logger.LogDebugGraphTransaction125();
+        }
+        catch
+        {
+            try
+            {
+                await DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception cleanupException)
+            {
+                _logger.LogWarningGraphTransactionBeginCleanupFailure(cleanupException);
+            }
+
+            throw;
+        }
     }
 }

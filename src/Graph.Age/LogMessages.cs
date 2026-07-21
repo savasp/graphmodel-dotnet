@@ -250,8 +250,11 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error executing query")]
     internal static partial void LogErrorGraphQueryProvider86(this ILogger logger, Exception exception);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back abandoned streaming query transaction")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back streaming query transaction during cleanup")]
     internal static partial void LogWarningGraphQueryProvider89(this ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to dispose streaming query transaction during cleanup")]
+    internal static partial void LogWarningGraphQueryProviderTransactionDisposalFailure(this ILogger logger, Exception exception);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "{Indent}Method: {Method} from {DeclaringType}")]
     internal static partial void LogDebugGraphQueryProvider97(this ILogger logger, global::System.String indent, global::System.String method, global::System.String? declaringType);

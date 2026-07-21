@@ -13,8 +13,17 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Closing session timed out. The session may not have been closed properly.")]
     internal static partial void LogWarningGraphTransaction111(this ILogger logger);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "An error occurred while closing the session: {Message}")]
-    internal static partial void LogErrorGraphTransaction115(this ILogger logger, global::System.String message);
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back an uncommitted Neo4j transaction during disposal")]
+    internal static partial void LogWarningGraphTransactionRollbackFailure(this ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to dispose the underlying Neo4j driver transaction")]
+    internal static partial void LogWarningGraphTransactionDriverDisposalFailure(this ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to close the Neo4j session")]
+    internal static partial void LogErrorGraphTransactionSessionCloseFailure(this ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to clean up the Neo4j session after transaction begin failed")]
+    internal static partial void LogWarningGraphTransactionBeginCleanupFailure(this ILogger logger, Exception exception);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Beginning new transaction")]
     internal static partial void LogDebugGraphTransaction123(this ILogger logger);
@@ -124,17 +133,17 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to recreate managed indexes")]
     internal static partial void LogErrorNeo4jGraph572(this ILogger logger, Exception exception);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back cancelled transaction")]
-    internal static partial void LogWarningTransactionHelpers53(this ILogger logger, Exception exception);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back cancelled transaction")]
-    internal static partial void LogWarningTransactionHelpers57(this ILogger logger, Exception exception);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back cancelled transaction")]
-    internal static partial void LogWarningTransactionHelpers61(this ILogger logger, Exception exception);
-
     [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "{ErrorMessage}")]
     internal static partial void LogErrorTransactionHelpers69(this ILogger logger, Exception exception, global::System.String errorMessage);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back cancelled transaction")]
+    internal static partial void LogWarningTransactionHelpersCancelledRollbackFailure(this ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back failed transaction")]
+    internal static partial void LogWarningTransactionHelpersFailedRollbackFailure(this ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to dispose transaction after a failed operation")]
+    internal static partial void LogWarningTransactionHelpersDisposalFailure(this ILogger logger, Exception exception);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Skipping null complex property {PropertyName}")]
     internal static partial void LogDebugComplexPropertyManager88(this ILogger logger, global::System.String propertyName);
@@ -271,8 +280,11 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error executing query")]
     internal static partial void LogErrorGraphQueryProvider80(this ILogger logger, Exception exception);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back abandoned streaming query transaction")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back streaming query transaction during cleanup")]
     internal static partial void LogWarningGraphQueryProvider83(this ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to dispose streaming query transaction during cleanup")]
+    internal static partial void LogWarningGraphQueryProviderTransactionDisposalFailure(this ILogger logger, Exception exception);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "{Indent}Method: {Method} from {DeclaringType}")]
     internal static partial void LogDebugGraphQueryProvider91(this ILogger logger, global::System.String indent, global::System.String method, global::System.String? declaringType);

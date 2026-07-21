@@ -10,7 +10,6 @@ using Cvoya.Graph.Neo4j.Querying.Cypher.Execution;
 using Cvoya.Graph.Querying;
 using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Querying.Linq;
-using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -98,8 +97,6 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
 
     protected override bool IsTransactionActive(GraphTransaction graphTransaction) => graphTransaction.IsActive;
 
-    protected override bool IsDriverException(Exception exception) => exception is Neo4jException;
-
     protected override void LogExecution(Expression expression, Type resultType, bool streaming)
     {
         if (streaming)
@@ -123,6 +120,9 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
 
     protected override void LogRollbackFailure(Exception exception) =>
         logger.LogWarningGraphQueryProvider83(exception);
+
+    protected override void LogDisposalFailure(Exception exception) =>
+        logger.LogWarningGraphQueryProviderTransactionDisposalFailure(exception);
 
     private void LogExpressionTree(Expression expression, int depth = 0)
     {
