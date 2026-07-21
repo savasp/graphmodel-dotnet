@@ -3,7 +3,6 @@
 
 namespace Cvoya.Graph.Neo4j.Core;
 
-using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 
 
@@ -26,6 +25,7 @@ internal static class TransactionHelpers
             isReadOnly,
             cancellationToken).ConfigureAwait(false);
 
+        var failed = false;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -42,23 +42,16 @@ internal static class TransactionHelpers
         }
         catch (OperationCanceledException)
         {
+            failed = true;
             if (transaction == null)
             {
                 try
                 {
                     await tx.RollbackAsync().ConfigureAwait(false);
                 }
-                catch (GraphException ex)
+                catch (Exception rollbackException)
                 {
-                    logger?.LogWarningTransactionHelpers53(ex);
-                }
-                catch (Neo4jException ex)
-                {
-                    logger?.LogWarningTransactionHelpers57(ex);
-                }
-                catch (InvalidOperationException ex)
-                {
-                    logger?.LogWarningTransactionHelpers61(ex);
+                    logger?.LogWarningTransactionHelpersCancelledRollbackFailure(rollbackException);
                 }
             }
 
@@ -66,10 +59,18 @@ internal static class TransactionHelpers
         }
         catch (Exception ex)
         {
+            failed = true;
             logger?.LogErrorTransactionHelpers69(ex, errorMessage);
             if (transaction == null)
             {
-                await tx.RollbackAsync().ConfigureAwait(false);
+                try
+                {
+                    await tx.RollbackAsync().ConfigureAwait(false);
+                }
+                catch (Exception rollbackException)
+                {
+                    logger?.LogWarningTransactionHelpersFailedRollbackFailure(rollbackException);
+                }
             }
 
             throw;
@@ -78,7 +79,14 @@ internal static class TransactionHelpers
         {
             if (transaction == null)
             {
-                await tx.DisposeAsync().ConfigureAwait(false);
+                try
+                {
+                    await tx.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception disposeException) when (failed)
+                {
+                    logger?.LogWarningTransactionHelpersDisposalFailure(disposeException);
+                }
             }
         }
     }

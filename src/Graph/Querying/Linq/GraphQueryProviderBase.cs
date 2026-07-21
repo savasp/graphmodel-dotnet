@@ -6,6 +6,7 @@ namespace Cvoya.Graph.Querying.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using Cvoya.Graph.Querying.Linq.Helpers;
 
 internal abstract class GraphQueryProviderBase<TTransaction> : IStreamingGraphQueryProvider
@@ -108,22 +109,40 @@ internal abstract class GraphQueryProviderBase<TTransaction> : IStreamingGraphQu
 
         TTransaction? transaction = null;
         var completed = false;
+        var failureState = new StreamFailureState();
 
         try
         {
-            transaction = await GetOrCreateTransactionAsync(cancellationToken).ConfigureAwait(false);
+            transaction = await TrackFailureAsync(
+                () => GetOrCreateTransactionAsync(cancellationToken),
+                failureState).ConfigureAwait(false);
 
-            await foreach (var item in StreamCoreAsync<TResult>(expression, transaction, cancellationToken)
-                .WithCancellation(cancellationToken)
-                .ConfigureAwait(false))
+            var enumerator = TrackFailure(
+                () => StreamCoreAsync<TResult>(expression, transaction, cancellationToken)
+                    .GetAsyncEnumerator(cancellationToken),
+                failureState);
+
+            try
             {
-                yield return item;
+                while (await MoveNextWithFailureTrackingAsync(enumerator, failureState).ConfigureAwait(false))
+                {
+                    yield return TrackFailure(() => enumerator.Current, failureState);
+                }
+            }
+            finally
+            {
+                await DisposeEnumeratorWithFailureTrackingAsync(enumerator, failureState).ConfigureAwait(false);
             }
 
             if (ownsTransaction)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                await transaction.CommitAsync().ConfigureAwait(false);
+                await TrackFailureAsync(
+                    async () =>
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        await transaction.CommitAsync().ConfigureAwait(false);
+                    },
+                    failureState).ConfigureAwait(false);
             }
 
             completed = true;
@@ -132,20 +151,40 @@ internal abstract class GraphQueryProviderBase<TTransaction> : IStreamingGraphQu
         {
             if (ownsTransaction && transaction is not null)
             {
+                Exception? cleanupFailure = null;
                 if (!completed && IsTransactionActive(transaction))
                 {
                     try
                     {
                         await transaction.RollbackAsync().ConfigureAwait(false);
                     }
-                    catch (Exception exception) when (
-                        exception is GraphException or InvalidOperationException || IsDriverException(exception))
+                    catch (Exception exception)
                     {
                         LogRollbackFailure(exception);
+                        if (!failureState.HasPrimaryFailure)
+                        {
+                            cleanupFailure = exception;
+                        }
                     }
                 }
 
-                await transaction.DisposeAsync().ConfigureAwait(false);
+                try
+                {
+                    await transaction.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    LogDisposalFailure(exception);
+                    if (!failureState.HasPrimaryFailure && cleanupFailure is null)
+                    {
+                        cleanupFailure = exception;
+                    }
+                }
+
+                if (cleanupFailure is not null)
+                {
+                    ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
+                }
             }
         }
     }
@@ -163,8 +202,6 @@ internal abstract class GraphQueryProviderBase<TTransaction> : IStreamingGraphQu
 
     protected abstract bool IsTransactionActive(TTransaction transaction);
 
-    protected abstract bool IsDriverException(Exception exception);
-
     protected virtual bool UnwrapCreateQueryInvocationException => false;
 
     protected virtual bool ShouldWrapCreateQueryException(Exception exception) => true;
@@ -175,6 +212,10 @@ internal abstract class GraphQueryProviderBase<TTransaction> : IStreamingGraphQu
 
     protected abstract void LogRollbackFailure(Exception exception);
 
+    protected abstract void LogEnumeratorDisposalFailure(Exception exception);
+
+    protected abstract void LogDisposalFailure(Exception exception);
+
     IQueryable<TElement> IQueryProvider.CreateQuery<TElement>(Expression expression) =>
         CreateQuery<TElement>(expression);
 
@@ -182,4 +223,90 @@ internal abstract class GraphQueryProviderBase<TTransaction> : IStreamingGraphQu
         Task.Run(() => ExecuteAsync<TResult>(expression, CancellationToken.None))
             .GetAwaiter()
             .GetResult();
+
+    private static TResult TrackFailure<TResult>(
+        Func<TResult> operation,
+        StreamFailureState failureState)
+    {
+        try
+        {
+            return operation();
+        }
+        catch
+        {
+            failureState.HasPrimaryFailure = true;
+            throw;
+        }
+    }
+
+    private static async Task<TResult> TrackFailureAsync<TResult>(
+        Func<Task<TResult>> operation,
+        StreamFailureState failureState)
+    {
+        try
+        {
+            return await operation().ConfigureAwait(false);
+        }
+        catch
+        {
+            failureState.HasPrimaryFailure = true;
+            throw;
+        }
+    }
+
+    private static async Task TrackFailureAsync(
+        Func<Task> operation,
+        StreamFailureState failureState)
+    {
+        try
+        {
+            await operation().ConfigureAwait(false);
+        }
+        catch
+        {
+            failureState.HasPrimaryFailure = true;
+            throw;
+        }
+    }
+
+    private static async ValueTask<bool> MoveNextWithFailureTrackingAsync<TResult>(
+        IAsyncEnumerator<TResult> enumerator,
+        StreamFailureState failureState)
+    {
+        try
+        {
+            return await enumerator.MoveNextAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            failureState.HasPrimaryFailure = true;
+            throw;
+        }
+    }
+
+    private async ValueTask DisposeEnumeratorWithFailureTrackingAsync<TResult>(
+        IAsyncEnumerator<TResult> enumerator,
+        StreamFailureState failureState)
+    {
+        try
+        {
+            await enumerator.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            if (failureState.HasPrimaryFailure)
+            {
+                LogEnumeratorDisposalFailure(exception);
+                return;
+            }
+
+            failureState.HasPrimaryFailure = true;
+            throw;
+        }
+    }
+
+    private sealed class StreamFailureState
+    {
+        public bool HasPrimaryFailure { get; set; }
+    }
 }

@@ -25,6 +25,7 @@ public sealed class GraphQueryProviderBaseTests
         Assert.Equal(0, transaction.CommitCount);
         Assert.Equal(1, transaction.RollbackCount);
         Assert.Equal(1, transaction.DisposeCount);
+        Assert.Equal(["Rollback", "Dispose"], transaction.Events);
     }
 
     [Fact]
@@ -45,14 +46,16 @@ public sealed class GraphQueryProviderBaseTests
         Assert.Equal(1, transaction.CommitCount);
         Assert.Equal(0, transaction.RollbackCount);
         Assert.Equal(1, transaction.DisposeCount);
+        Assert.Equal(["Commit", "Dispose"], transaction.Events);
     }
 
     [Fact]
-    public async Task DriverRollbackFailureIsClassifiedLoggedAndDoesNotMaskCleanup()
+    public async Task AbandonedStreamSurfacesRollbackFailureAfterDisposal()
     {
+        var rollbackException = new TestDriverException();
         var transaction = new RecordingTransaction
         {
-            RollbackException = new TestDriverException(),
+            RollbackException = rollbackException,
         };
         var provider = new RecordingProvider(transaction, [1, 2]);
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -60,17 +63,206 @@ public sealed class GraphQueryProviderBaseTests
             .GetAsyncEnumerator(cancellationToken);
 
         Assert.True(await enumerator.MoveNextAsync());
-        await enumerator.DisposeAsync();
+        var exception = await Assert.ThrowsAsync<TestDriverException>(
+            () => enumerator.DisposeAsync().AsTask());
 
+        Assert.Same(rollbackException, exception);
         Assert.Equal(1, transaction.RollbackCount);
         Assert.Equal(1, transaction.DisposeCount);
         Assert.Equal(1, provider.RollbackFailureCount);
+        Assert.Equal(["Rollback", "Dispose"], transaction.Events);
     }
 
-    private sealed class RecordingProvider(RecordingTransaction transaction, IReadOnlyList<int> values)
-        : GraphQueryProviderBase<RecordingTransaction>(CreateGraph(), ownsTransaction: true)
+    [Fact]
+    public async Task StreamFailureIsPreservedWhenRollbackAndDisposalFail()
+    {
+        var streamException = new TestStreamException();
+        var transaction = new RecordingTransaction
+        {
+            RollbackException = new TestRollbackException(),
+            DisposeException = new TestDisposeException(),
+        };
+        var provider = new RecordingProvider(transaction, [])
+        {
+            StreamException = streamException,
+        };
+
+        var exception = await Assert.ThrowsAsync<TestStreamException>(
+            () => ConsumeAsync(provider.StreamAsync<int>(
+                Expression.Constant(0),
+                TestContext.Current.CancellationToken)));
+
+        Assert.Same(streamException, exception);
+        Assert.Equal(1, transaction.RollbackCount);
+        Assert.Equal(1, transaction.DisposeCount);
+        Assert.Equal(1, provider.RollbackFailureCount);
+        Assert.Equal(1, provider.DisposalFailureCount);
+        Assert.Equal(["Rollback", "Dispose"], transaction.Events);
+    }
+
+    [Fact]
+    public async Task StreamFailureIsPreservedWhenEnumeratorAndTransactionCleanupFail()
+    {
+        var streamException = new TestStreamException();
+        var transaction = new RecordingTransaction
+        {
+            RollbackException = new TestRollbackException(),
+            DisposeException = new TestDisposeException(),
+        };
+        var provider = new RecordingProvider(transaction, [])
+        {
+            StreamException = streamException,
+            EnumeratorDisposeException = new TestEnumeratorDisposeException(),
+        };
+
+        var exception = await Assert.ThrowsAsync<TestStreamException>(
+            () => ConsumeAsync(provider.StreamAsync<int>(
+                Expression.Constant(0),
+                TestContext.Current.CancellationToken)));
+
+        Assert.Same(streamException, exception);
+        Assert.Equal(1, provider.EnumeratorDisposeCount);
+        Assert.Equal(1, provider.EnumeratorDisposalFailureCount);
+        Assert.Equal(1, transaction.RollbackCount);
+        Assert.Equal(1, transaction.DisposeCount);
+        Assert.Equal(1, provider.RollbackFailureCount);
+        Assert.Equal(1, provider.DisposalFailureCount);
+        Assert.Equal(["Rollback", "Dispose"], transaction.Events);
+    }
+
+    [Fact]
+    public async Task CancellationIsPreservedWhenDisposalFails()
+    {
+        var cancellationException = new OperationCanceledException(TestContext.Current.CancellationToken);
+        var transaction = new RecordingTransaction
+        {
+            DisposeException = new TestDisposeException(),
+        };
+        var provider = new RecordingProvider(transaction, [])
+        {
+            StreamException = cancellationException,
+        };
+
+        var exception = await Assert.ThrowsAsync<OperationCanceledException>(
+            () => ConsumeAsync(provider.StreamAsync<int>(
+                Expression.Constant(0),
+                TestContext.Current.CancellationToken)));
+
+        Assert.Same(cancellationException, exception);
+        Assert.Equal(1, transaction.RollbackCount);
+        Assert.Equal(1, transaction.DisposeCount);
+        Assert.Equal(1, provider.DisposalFailureCount);
+    }
+
+    [Fact]
+    public async Task CommitFailureIsPreservedWhenDisposalFails()
+    {
+        var commitException = new TestCommitException();
+        var transaction = new RecordingTransaction
+        {
+            CommitException = commitException,
+            DisposeException = new TestDisposeException(),
+        };
+        var provider = new RecordingProvider(transaction, [1]);
+
+        var exception = await Assert.ThrowsAsync<TestCommitException>(
+            () => ConsumeAsync(provider.StreamAsync<int>(
+                Expression.Constant(0),
+                TestContext.Current.CancellationToken)));
+
+        Assert.Same(commitException, exception);
+        Assert.Equal(1, transaction.CommitCount);
+        Assert.Equal(1, transaction.RollbackCount);
+        Assert.Equal(1, transaction.DisposeCount);
+        Assert.Equal(1, provider.DisposalFailureCount);
+        Assert.Equal(["Commit", "Rollback", "Dispose"], transaction.Events);
+    }
+
+    [Fact]
+    public async Task SuccessfulStreamSurfacesDisposalFailure()
+    {
+        var disposeException = new TestDisposeException();
+        var transaction = new RecordingTransaction
+        {
+            DisposeException = disposeException,
+        };
+        var provider = new RecordingProvider(transaction, [1]);
+
+        var exception = await Assert.ThrowsAsync<TestDisposeException>(
+            () => ConsumeAsync(provider.StreamAsync<int>(
+                Expression.Constant(0),
+                TestContext.Current.CancellationToken)));
+
+        Assert.Same(disposeException, exception);
+        Assert.Equal(1, transaction.CommitCount);
+        Assert.Equal(0, transaction.RollbackCount);
+        Assert.Equal(1, transaction.DisposeCount);
+        Assert.Equal(1, provider.DisposalFailureCount);
+    }
+
+    [Fact]
+    public async Task AbandonedStreamSurfacesDisposalFailureAfterRollback()
+    {
+        var disposeException = new TestDisposeException();
+        var transaction = new RecordingTransaction
+        {
+            DisposeException = disposeException,
+        };
+        var provider = new RecordingProvider(transaction, [1, 2]);
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var enumerator = provider.StreamAsync<int>(Expression.Constant(0), cancellationToken)
+            .GetAsyncEnumerator(cancellationToken);
+
+        Assert.True(await enumerator.MoveNextAsync());
+        var exception = await Assert.ThrowsAsync<TestDisposeException>(
+            () => enumerator.DisposeAsync().AsTask());
+
+        Assert.Same(disposeException, exception);
+        Assert.Equal(1, transaction.RollbackCount);
+        Assert.Equal(1, transaction.DisposeCount);
+        Assert.Equal(1, provider.DisposalFailureCount);
+        Assert.Equal(["Rollback", "Dispose"], transaction.Events);
+    }
+
+    [Fact]
+    public async Task CallerOwnedStreamDoesNotCleanUpSuppliedTransaction()
+    {
+        var streamException = new TestStreamException();
+        var transaction = new RecordingTransaction();
+        var provider = new RecordingProvider(transaction, [], ownsTransaction: false)
+        {
+            StreamException = streamException,
+        };
+
+        var exception = await Assert.ThrowsAsync<TestStreamException>(
+            () => ConsumeAsync(provider.StreamAsync<int>(
+                Expression.Constant(0),
+                TestContext.Current.CancellationToken)));
+
+        Assert.Same(streamException, exception);
+        Assert.Equal(0, transaction.CommitCount);
+        Assert.Equal(0, transaction.RollbackCount);
+        Assert.Equal(0, transaction.DisposeCount);
+        Assert.Empty(transaction.Events);
+    }
+
+    private sealed class RecordingProvider(
+        RecordingTransaction transaction,
+        IReadOnlyList<int> values,
+        bool ownsTransaction = true)
+        : GraphQueryProviderBase<RecordingTransaction>(CreateGraph(), ownsTransaction)
     {
         public int RollbackFailureCount { get; private set; }
+
+        public int EnumeratorDisposalFailureCount { get; private set; }
+
+        public int DisposalFailureCount { get; private set; }
+
+        public Exception? StreamException { get; init; }
+
+        public Exception? EnumeratorDisposeException { get; init; }
+
+        public int EnumeratorDisposeCount { get; private set; }
 
         protected override Task<TResult> ExecuteCoreAsync<TResult>(
             Expression expression,
@@ -80,9 +272,18 @@ public sealed class GraphQueryProviderBaseTests
         protected override Task<RecordingTransaction> GetOrCreateTransactionAsync(
             CancellationToken cancellationToken) => Task.FromResult(transaction);
 
-        protected override async IAsyncEnumerable<TResult> StreamCoreAsync<TResult>(
+        protected override IAsyncEnumerable<TResult> StreamCoreAsync<TResult>(
             Expression expression,
             RecordingTransaction transaction,
+            CancellationToken cancellationToken) =>
+            EnumeratorDisposeException is null
+                ? StreamValuesAsync<TResult>(cancellationToken)
+                : new FaultingAsyncEnumerable<TResult>(
+                    StreamException!,
+                    EnumeratorDisposeException,
+                    () => EnumeratorDisposeCount++);
+
+        private async IAsyncEnumerable<TResult> StreamValuesAsync<TResult>(
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             foreach (var value in values)
@@ -91,11 +292,14 @@ public sealed class GraphQueryProviderBaseTests
                 await Task.Yield();
                 yield return (TResult)(object)value;
             }
+
+            if (StreamException is not null)
+            {
+                throw StreamException;
+            }
         }
 
         protected override bool IsTransactionActive(RecordingTransaction transaction) => transaction.IsActive;
-
-        protected override bool IsDriverException(Exception exception) => exception is TestDriverException;
 
         protected override void LogExecution(Expression expression, Type resultType, bool streaming)
         {
@@ -106,6 +310,29 @@ public sealed class GraphQueryProviderBaseTests
         }
 
         protected override void LogRollbackFailure(Exception exception) => RollbackFailureCount++;
+
+        protected override void LogEnumeratorDisposalFailure(Exception exception) =>
+            EnumeratorDisposalFailureCount++;
+
+        protected override void LogDisposalFailure(Exception exception) => DisposalFailureCount++;
+    }
+
+    private sealed class FaultingAsyncEnumerable<T>(
+        Exception streamException,
+        Exception disposeException,
+        Action onDispose) : IAsyncEnumerable<T>, IAsyncEnumerator<T>
+    {
+        public T Current => throw new InvalidOperationException("The faulting stream never produces a value.");
+
+        public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) => this;
+
+        public ValueTask<bool> MoveNextAsync() => ValueTask.FromException<bool>(streamException);
+
+        public ValueTask DisposeAsync()
+        {
+            onDispose();
+            return ValueTask.FromException(disposeException);
+        }
     }
 
     private sealed class RecordingTransaction : IGraphTransaction
@@ -113,6 +340,10 @@ public sealed class GraphQueryProviderBaseTests
         private bool completed;
 
         public Exception? RollbackException { get; init; }
+
+        public Exception? CommitException { get; init; }
+
+        public Exception? DisposeException { get; init; }
 
         public bool IsActive => !completed;
 
@@ -122,9 +353,17 @@ public sealed class GraphQueryProviderBaseTests
 
         public int DisposeCount { get; private set; }
 
+        public List<string> Events { get; } = [];
+
         public Task CommitAsync()
         {
             CommitCount++;
+            Events.Add("Commit");
+            if (CommitException is not null)
+            {
+                throw CommitException;
+            }
+
             completed = true;
             return Task.CompletedTask;
         }
@@ -132,6 +371,7 @@ public sealed class GraphQueryProviderBaseTests
         public Task RollbackAsync()
         {
             RollbackCount++;
+            Events.Add("Rollback");
             if (RollbackException is not null)
             {
                 throw RollbackException;
@@ -144,11 +384,34 @@ public sealed class GraphQueryProviderBaseTests
         public ValueTask DisposeAsync()
         {
             DisposeCount++;
+            Events.Add("Dispose");
+            if (DisposeException is not null)
+            {
+                throw DisposeException;
+            }
+
             return ValueTask.CompletedTask;
         }
     }
 
     private sealed class TestDriverException : Exception;
+
+    private sealed class TestStreamException : Exception;
+
+    private sealed class TestCommitException : Exception;
+
+    private sealed class TestRollbackException : Exception;
+
+    private sealed class TestDisposeException : Exception;
+
+    private sealed class TestEnumeratorDisposeException : Exception;
+
+    private static async Task ConsumeAsync<T>(IAsyncEnumerable<T> stream)
+    {
+        await foreach (var _ in stream)
+        {
+        }
+    }
 
     private static IGraph CreateGraph() => DispatchProxy.Create<IGraph, GraphProxy>();
 

@@ -146,8 +146,6 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
 
     protected override bool IsTransactionActive(AgeGraphTransaction graphTransaction) => graphTransaction.IsActive;
 
-    protected override bool IsDriverException(Exception exception) => exception is NpgsqlException;
-
     protected override bool UnwrapCreateQueryInvocationException => true;
 
     protected override bool ShouldWrapCreateQueryException(Exception exception) =>
@@ -176,6 +174,12 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransa
 
     protected override void LogRollbackFailure(Exception exception) =>
         logger.LogWarningGraphQueryProvider89(exception);
+
+    protected override void LogEnumeratorDisposalFailure(Exception exception) =>
+        logger.LogWarningGraphQueryProviderEnumeratorDisposalFailure(exception);
+
+    protected override void LogDisposalFailure(Exception exception) =>
+        logger.LogWarningGraphQueryProviderTransactionDisposalFailure(exception);
 
     private void LogExpressionTree(Expression expression, int depth = 0)
     {
