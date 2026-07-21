@@ -199,4 +199,36 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
 
         Assert.Equal(searchableId, result.Id);
     }
+
+    [Fact]
+    public async Task GlobalSearch_TreatsARegisteredLabelWithNoIncludedPropertiesAsUnsearchable()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string term = "OptedOutStorageToken474";
+        await this.Graph.CreateNodeAsync(new SearchOptedOutNode { Secret = term }, cancellationToken: ct);
+
+        // The label owns a native table with no full-text candidate. Catalog discovery must not
+        // mistake it for an externally managed label, whose contract is "every string value".
+        Assert.Empty(await this.Graph.SearchNodes<SearchOptedOutNode>(term).ToListAsync(ct));
+        Assert.Empty(await this.Graph.Search(term).ToListAsync(ct));
+    }
+}
+
+/// <summary>
+/// A registered node type that excludes every string property — including <c>Id</c> — from
+/// full-text search, so it contributes no phase-one candidate while still owning a native label
+/// table.
+/// </summary>
+#pragma warning disable CG011 // Opting Id out of full-text search requires declaring it here, not on the Node base record.
+[Node(Label = "SearchOptedOutNode")]
+public record SearchOptedOutNode : INode
+#pragma warning restore CG011
+{
+    [Property(IncludeInFullTextSearch = false)]
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+
+    [Property(IncludeInFullTextSearch = false)]
+    public string Secret { get; set; } = string.Empty;
+
+    public IReadOnlyList<string> Labels { get; set; } = [];
 }

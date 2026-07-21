@@ -18,7 +18,6 @@ public sealed class AgeFullTextSearchTests
 
         Assert.Contains("SELECT id::text::bigint AS graph_id", sql, StringComparison.Ordinal);
         Assert.Contains("'Node' AS entity_kind", sql, StringComparison.Ordinal);
-        Assert.Contains("'CvoyaNode' AS storage_name", sql, StringComparison.Ordinal);
         Assert.Contains("FROM ONLY \"cvoya_g1\".\"CvoyaNode\"", sql, StringComparison.Ordinal);
         Assert.Contains("(properties::text::jsonb) ->> 'Id'", sql, StringComparison.Ordinal);
         Assert.Contains("(properties::text::jsonb) ->> 'FirstName'", sql, StringComparison.Ordinal);
@@ -116,7 +115,7 @@ public sealed class AgeFullTextSearchTests
     {
         var sql = AgeFullTextSearch.BuildDynamicSql("cvoya_g1", "Person");
 
-        Assert.Contains("GROUP BY graph_id, entity_kind", sql, StringComparison.Ordinal);
+        Assert.StartsWith("SELECT DISTINCT graph_id, entity_kind", sql, StringComparison.Ordinal);
         Assert.EndsWith("LIMIT 10001", sql, StringComparison.Ordinal);
         Assert.Equal(10_000, AgeFullTextSearch.MaxMatchedIds);
     }

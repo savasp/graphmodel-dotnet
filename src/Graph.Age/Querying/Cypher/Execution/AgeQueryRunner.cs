@@ -234,10 +234,7 @@ internal sealed partial class AgeQueryRunner
                     throw new GraphException("AGE full-text search returned an entity kind outside its requested scope.");
                 }
 
-                matches.Add(new AgeFullTextSearch.FullTextMatch(
-                    reader.GetInt64(0),
-                    target,
-                    reader.GetString(2)));
+                matches.Add(new AgeFullTextSearch.FullTextMatch(reader.GetInt64(0), target));
             }
 
             return matches;
@@ -254,12 +251,11 @@ internal sealed partial class AgeQueryRunner
 
     /// <summary>
     /// Runs a plain (non-<c>cypher()</c>) SQL statement on this runner's connection and transaction,
-    /// binding the caller-supplied search text to the <c>@query</c> parameter, and returns the string
-    /// values of the first result column. This is the phase-1 seam for full-text search: AGE cannot
-    /// express Postgres text search in its Cypher subset, so the provider runs it as SQL over the
-    /// label tables and seeds the residual Cypher query with the matching ids (see
-    /// <see cref="Querying.AgeFullTextSearch"/>). It executes on the SAME transaction as the residual
-    /// query, so it observes that transaction's uncommitted writes.
+    /// optionally binding one text value to a <c>@query</c> parameter, and returns the string values
+    /// of the first result column. It executes on the SAME transaction as the caller's Cypher, so it
+    /// observes that transaction's uncommitted writes. Phase-one full-text search has its own typed
+    /// seam (<see cref="QueryFullTextMatchesAsync"/>); this general one remains for diagnostics and
+    /// catalog assertions such as <c>EXPLAIN</c> plans and lock inspection.
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
         "Security",

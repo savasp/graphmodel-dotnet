@@ -93,8 +93,8 @@ public sealed class AgeDialect : ICypherDialect
     /// <inheritdoc/>
     /// <remarks>
     /// Unreachable backstop. AGE's two-phase full-text lowering removes the search expression before
-    /// the shared planner and renderer run; reaching this hook therefore indicates a provider bug. This collapses
-    /// the four former full-text name members into a single throwing hook (issue #292).
+    /// the shared planner and renderer run; reaching this hook therefore indicates a provider bug.
+    /// This collapses the four former full-text name members into a single throwing hook (issue #292).
     /// </remarks>
     public string RenderFullTextSearch(FullTextSearchClause clause, ICypherRenderContext context) =>
         throw FullTextNotSupported();
