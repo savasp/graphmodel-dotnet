@@ -4,6 +4,8 @@
 namespace Cvoya.Graph.Age.Entities;
 
 using Cvoya.Graph.Age.Core;
+using Cvoya.Graph.Age.Querying;
+using Cvoya.Graph.Age.Querying.Cypher;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.Age.Serialization;
 using Cvoya.Graph.Serialization;
@@ -33,11 +35,14 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         var sourceEntity = SerializeNode(source);
         var targetEntity = SerializeNode(target);
         var relationshipEntity = SerializeRelationship(relationship);
-        var sourceChecks = context.NodeManager.BuildNodeUniquenessChecks(source, excludeId: null);
-        var targetChecks = context.NodeManager.BuildNodeUniquenessChecks(target, excludeId: null);
+        var sourceStorageLabel = StorageName(sourceEntity, relationship: false);
+        var targetStorageLabel = StorageName(targetEntity, relationship: false);
+        var relationshipStorageType = StorageName(relationshipEntity, relationship: true);
+        var sourceChecks = context.NodeManager.BuildNodeUniquenessChecks(source, excludeGraphId: null);
+        var targetChecks = context.NodeManager.BuildNodeUniquenessChecks(target, excludeGraphId: null);
         var relationshipChecks = context.RelationshipManager.BuildRelationshipUniquenessChecks(
             relationship,
-            excludeId: null);
+            excludeGraphId: null);
 
         var marker = $"{TransientCreatedMarkerPrefix}_{Guid.NewGuid():N}";
         var sameEndpoint = string.Equals(source.Id, target.Id, StringComparison.Ordinal);
@@ -64,7 +69,30 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             valueNodeLevels,
             marker,
             createMissingEndpoints,
-            sameEndpoint);
+            sameEndpoint,
+            sourceStorageLabel,
+            targetStorageLabel,
+            relationshipStorageType);
+
+        foreach (var nodeLabel in new[] { sourceStorageLabel, targetStorageLabel }.Distinct(StringComparer.Ordinal))
+        {
+            await transaction.Runner
+                .EnsureLabelAsync(nodeLabel, relationship: false, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        await transaction.Runner
+            .EnsureLabelAsync(relationshipStorageType, relationship: true, cancellationToken)
+            .ConfigureAwait(false);
+        if (valueNodeLevels.Count > 0)
+        {
+            await transaction.Runner
+                .EnsureLabelAsync(SerializationBridge.PhysicalNodeLabel, relationship: false, cancellationToken)
+                .ConfigureAwait(false);
+            await transaction.Runner
+                .EnsureLabelAsync(SerializationBridge.PhysicalRelationshipType, relationship: true, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         // The batch interleaves the uniqueness probes with the writes they guard, so the locks have
         // to be held before the batch is sent - not as commands inside it - for the whole subgraph
@@ -128,7 +156,10 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         IReadOnlyList<IReadOnlyList<ComplexPropertyManager.SubgraphValueNode>> valueNodeLevels,
         string marker,
         bool createMissingEndpoints,
-        bool sameEndpoint)
+        bool sameEndpoint,
+        string sourceStorageLabel,
+        string targetStorageLabel,
+        string relationshipStorageType)
         where TSource : class, Graph.INode
         where TRelationship : class, Graph.IRelationship
         where TTarget : class, Graph.INode
@@ -158,15 +189,24 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
 
         if (createMissingEndpoints)
         {
-            commands.Add(BuildMergeRootCommand("source_root", source.Id, sourceEntity, marker));
+            commands.Add(BuildMergeRootCommand(
+                "source_root", source.Id, sourceEntity, marker, sourceStorageLabel));
             if (!sameEndpoint)
             {
-                commands.Add(BuildMergeRootCommand("target_root", target.Id, targetEntity, marker));
+                commands.Add(BuildMergeRootCommand(
+                    "target_root", target.Id, targetEntity, marker, targetStorageLabel));
             }
         }
         else
         {
-            commands.Add(BuildCreateOnlyRootsCommand(sourceEntity, targetEntity, source.Id, target.Id, marker));
+            commands.Add(BuildCreateOnlyRootsCommand(
+                sourceEntity,
+                targetEntity,
+                source.Id,
+                target.Id,
+                marker,
+                sourceStorageLabel,
+                targetStorageLabel));
         }
 
         for (var depth = 0; depth < valueNodeLevels.Count; depth++)
@@ -178,11 +218,12 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             relationship,
             relationshipEntity,
             marker,
-            createMissingEndpoints));
+            createMissingEndpoints,
+            relationshipStorageType));
         commands.Add(CountCommand(
             "cleanup",
             $"""
-            MATCH (n:{SerializationBridge.PhysicalNodeLabel})
+            MATCH (n)
             WHERE n.{marker} = true
             REMOVE n.{marker}
             RETURN count(n) AS cleanedCount
@@ -213,7 +254,9 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         EntityInfo targetEntity,
         string sourceId,
         string targetId,
-        string marker)
+        string marker,
+        string sourceStorageLabel,
+        string targetStorageLabel)
     {
         var parameters = new Dictionary<string, object?>
         {
@@ -221,8 +264,10 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             ["targetId"] = targetId,
         };
         var sourceProperties = AgeNodeManager.BuildNodeProperties(sourceEntity);
+        AddLegacyNodeIdentity(sourceEntity, sourceStorageLabel, sourceProperties);
         sourceProperties[marker] = true;
         var targetProperties = AgeNodeManager.BuildNodeProperties(targetEntity);
+        AddLegacyNodeIdentity(targetEntity, targetStorageLabel, targetProperties);
         targetProperties[marker] = true;
         var sourceSet = AgeCypherProperties.BuildSetClause(
             "source",
@@ -234,6 +279,8 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             targetProperties,
             parameters,
             "targetProperty");
+        var sourceLabel = CypherIdentifier.Escape(sourceStorageLabel, "source node label");
+        var targetLabel = CypherIdentifier.Escape(targetStorageLabel, "target node label");
 
         return CountCommand(
             "roots",
@@ -243,9 +290,9 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             OPTIONAL MATCH (existingTarget {Id: $targetId})
             WITH sourceCount, count(existingTarget) AS targetCount
             UNWIND CASE WHEN sourceCount = 0 AND targetCount = 0 THEN [1] ELSE [] END AS createRow
-            CREATE (source:{{SerializationBridge.PhysicalNodeLabel}})
+            CREATE (source:{{sourceLabel}})
             {{sourceSet}}
-            CREATE (target:{{SerializationBridge.PhysicalNodeLabel}})
+            CREATE (target:{{targetLabel}})
             {{targetSet}}
             RETURN count(source) + count(target) AS createdCount
             """,
@@ -257,16 +304,19 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         string name,
         string id,
         EntityInfo entity,
-        string marker)
+        string marker,
+        string storageLabel)
     {
         var parameters = new Dictionary<string, object?> { ["id"] = id };
         var properties = AgeNodeManager.BuildNodeProperties(entity);
+        AddLegacyNodeIdentity(entity, storageLabel, properties);
         properties[marker] = true;
         var setClause = AgeCypherProperties.BuildSetClause(
             "node",
             properties,
             parameters,
             "nodeProperty");
+        var physicalLabel = CypherIdentifier.Escape(storageLabel, "node label");
 
         return CountCommand(
             name,
@@ -274,7 +324,7 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             OPTIONAL MATCH (existing {Id: $id})
             WITH count(existing) AS existingCount
             UNWIND CASE WHEN existingCount = 0 THEN [1] ELSE [] END AS createRow
-            CREATE (node:{{SerializationBridge.PhysicalNodeLabel}})
+            CREATE (node:{{physicalLabel}})
             {{setClause}}
             RETURN count(node) AS createdCount
             """,
@@ -325,9 +375,9 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             $"complex_level_{depth}",
             $"""
             UNWIND $rows AS row
-            MATCH (root:{SerializationBridge.PhysicalNodeLabel})
+            MATCH (root)
             WHERE root.Id = row.rootId AND root.{marker} = true
-            MATCH (parent:{SerializationBridge.PhysicalNodeLabel})
+            MATCH (parent)
             WHERE parent.Id = row.parentId AND parent.{marker} = true
             CREATE (parent)-[propertyRelationship:{SerializationBridge.PhysicalRelationshipType}]->(complex:{SerializationBridge.PhysicalNodeLabel})
             {relationshipSet}
@@ -342,7 +392,8 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         TRelationship relationship,
         EntityInfo entity,
         string marker,
-        bool createMissingEndpoints)
+        bool createMissingEndpoints,
+        string storageType)
         where TRelationship : class, Graph.IRelationship
     {
         var direction = LegacyRelationshipEndpoints.LegacyDirection(relationship);
@@ -359,11 +410,22 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             ["targetNodeId"] = targetNodeId,
         };
         var properties = AgeRelationshipManager.BuildRelationshipProperties(entity);
+        properties[nameof(Graph.DynamicRelationship.Direction)] = direction.ToString();
+        if (string.Equals(storageType, SerializationBridge.PhysicalRelationshipType, StringComparison.Ordinal))
+        {
+            properties[nameof(Graph.IRelationship.Type)] = entity.Label;
+            properties[AgeElementMatcher.InheritanceLabelsProperty] =
+                new[] { Labels.GetLabelFromType(entity.ActualType) };
+            properties[SerializationBridge.MetadataPropertyName] =
+                SerializationBridge.CreateScalarMetadata(entity.ActualType);
+        }
+
         var setClause = AgeCypherProperties.BuildSetClause(
             "relationship",
             properties,
             parameters,
             "relationshipProperty");
+        var physicalType = CypherIdentifier.Escape(storageType, "relationship type");
 
         // In create-only mode both endpoints must carry this batch's transient marker: the roots
         // command creates either both endpoints or neither, so the gate keeps the edge from
@@ -382,16 +444,34 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             OPTIONAL MATCH ()-[existing {Id: $relationshipId}]-()
             WITH count(existing) AS existingCount
             UNWIND CASE WHEN existingCount = 0 THEN [1] ELSE [] END AS createRow
-            MATCH (source:{{SerializationBridge.PhysicalNodeLabel}})
+            MATCH (source)
             WHERE source.Id = $sourceNodeId
-            MATCH (target:{{SerializationBridge.PhysicalNodeLabel}})
+            MATCH (target)
             WHERE target.Id = $targetNodeId{{createdEndpointsGate}}
-            CREATE (source)-[relationship:{{SerializationBridge.PhysicalRelationshipType}}]->(target)
+            CREATE (source)-[relationship:{{physicalType}}]->(target)
             {{setClause}}
             RETURN count(relationship) AS createdCount
             """,
             parameters,
             "createdCount");
+    }
+
+    private static string StorageName(EntityInfo entity, bool relationship) =>
+        CypherIdentifier.IsNativeLabelName(entity.Label)
+            ? entity.Label
+            : relationship
+                ? SerializationBridge.PhysicalRelationshipType
+                : SerializationBridge.PhysicalNodeLabel;
+
+    private static void AddLegacyNodeIdentity(
+        EntityInfo entity,
+        string storageLabel,
+        Dictionary<string, object?> properties)
+    {
+        if (string.Equals(storageLabel, SerializationBridge.PhysicalNodeLabel, StringComparison.Ordinal))
+        {
+            properties[AgeElementMatcher.InheritanceLabelsProperty] = AgeNodeManager.LegacyLogicalLabels(entity);
+        }
     }
 
     private static AgeBatchCommand CountCommand(

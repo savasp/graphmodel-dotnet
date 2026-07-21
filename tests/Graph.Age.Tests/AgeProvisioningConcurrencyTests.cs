@@ -237,8 +237,8 @@ public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graph
 
     /// <summary>
     /// Proves the store honours the whole usable-store contract, not just the presence of a row in
-    /// <c>ag_catalog.ag_graph</c>: CRUD and query work, the physical label tables the provider writes
-    /// through exist, and the managed full-text indexes were created.
+    /// <c>ag_catalog.ag_graph</c>: CRUD and query work, the one logical label required by the write
+    /// exists, and ordinary first use did not create legacy or managed full-text infrastructure.
     /// </summary>
     private static async Task AssertGraphIsUsableAsync(
         NpgsqlDataSource dataSource,
@@ -258,7 +258,7 @@ public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graph
         Assert.Contains(queried, candidate => candidate.Id == person.Id);
 
         Assert.Equal(
-            [SerializationBridge.PhysicalNodeLabel, SerializationBridge.PhysicalRelationshipType],
+            ["Person"],
             await ScalarStringsAsync(
                 dataSource,
                 """
@@ -273,12 +273,11 @@ public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graph
                     command.Parameters.AddWithValue("name", graphName);
                     command.Parameters.AddWithValue(
                         "labels",
-                        new[] { SerializationBridge.PhysicalNodeLabel, SerializationBridge.PhysicalRelationshipType });
+                        new[] { "Person", SerializationBridge.PhysicalNodeLabel, SerializationBridge.PhysicalRelationshipType });
                 },
                 cancellationToken));
 
-        Assert.Equal(
-            [AgeFullTextIndex.NodeIndexName, AgeFullTextIndex.RelationshipIndexName],
+        Assert.Empty(
             await ScalarStringsAsync(
                 dataSource,
                 """

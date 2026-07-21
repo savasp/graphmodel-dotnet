@@ -216,7 +216,6 @@ public sealed class GraphMutationModelBuilderTests
     }
 
     [Theory]
-    [InlineData(nameof(Person.Id))]
     [InlineData(nameof(Person.Ignored))]
     [InlineData(nameof(Person.DomainKey))]
     [InlineData(nameof(Person.UniqueName))]
@@ -239,6 +238,17 @@ public sealed class GraphMutationModelBuilderTests
 
         Assert.Throws<GraphQueryTranslationException>(() =>
             GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), chain)));
+    }
+
+    [Fact]
+    public void BuildUpdate_AcceptsDomainIdAsOrdinaryMutableData()
+    {
+        Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> setters = builder =>
+            builder.SetProperty(person => person.Id, "changed");
+
+        var mutation = GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), setters));
+
+        Assert.Equal(nameof(IEntity.Id), Assert.Single(mutation.Assignments).StorageName);
     }
 
     [Fact]

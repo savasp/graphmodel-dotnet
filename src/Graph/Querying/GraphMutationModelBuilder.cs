@@ -197,7 +197,8 @@ internal static class GraphMutationModelBuilder
                 $"Structural graph member '{property.Name}' cannot be updated by SetProperty.");
         }
 
-        if (property.DeclaringType is { } declaring &&
+        var domainId = property.Name == nameof(IEntity.Id);
+        if (!domainId && property.DeclaringType is { } declaring &&
             (declaring == typeof(IEntity) || declaring == typeof(INode) || declaring == typeof(IRelationship) ||
              declaring == typeof(Node) || declaring == typeof(Relationship) ||
              declaring == typeof(DynamicNode) || declaring == typeof(DynamicRelationship)))

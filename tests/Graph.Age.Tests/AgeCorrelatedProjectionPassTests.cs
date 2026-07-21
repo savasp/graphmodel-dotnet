@@ -121,7 +121,9 @@ public sealed class AgeCorrelatedProjectionPassTests
         var rendered = Translate(query).Text;
 
         Assert.DoesNotContain("COUNT {", rendered);
-        Assert.Equal(3, rendered.Split("OPTIONAL MATCH", StringSplitOptions.None).Length - 1);
+        Assert.Equal(3, rendered.Split('\n').Count(line =>
+            line.StartsWith("OPTIONAL MATCH", StringComparison.Ordinal) &&
+            line.Contains("__age_count", StringComparison.Ordinal)));
         Assert.Contains("count(__age_count0_relationship0) AS __age_count0", rendered);
         Assert.Contains("ORDER BY __age_count0 DESC", rendered);
     }
@@ -284,7 +286,8 @@ public sealed class AgeCorrelatedProjectionPassTests
         // grouped optional-match count compared against zero.
         Assert.DoesNotContain("EXISTS {", rendered);
         Assert.Contains("OPTIONAL MATCH", rendered);
-        Assert.Contains("count(__age_count0_relationship0) AS __age_count0", rendered);
+        Assert.Contains("count(CASE WHEN", rendered);
+        Assert.Contains("THEN __age_count0_relationship0 ELSE null END) AS __age_count0", rendered);
         Assert.Contains("__age_count0 > 0", rendered);
     }
 
@@ -329,7 +332,7 @@ public sealed class AgeCorrelatedProjectionPassTests
         Assert.Contains("count(__age_count0_relationship0) AS __age_count0", rendered);
         Assert.True(
             rendered.IndexOf("collect(", StringComparison.Ordinal) <
-            rendered.IndexOf("OPTIONAL MATCH", StringComparison.Ordinal));
+            rendered.IndexOf("OPTIONAL MATCH (src)-[__age_count0_relationship0]", StringComparison.Ordinal));
     }
 
     [Fact]

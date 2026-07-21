@@ -48,16 +48,37 @@ An application that already owns its connection pool can pass an AGE-enabled
 - atomic endpoint–relationship–endpoint creation in one Npgsql batch round-trip, including nested
   complex-property subtrees and create-missing endpoint semantics;
 - complex-property persistence and cascading cleanup;
-- inheritance queries through one physical AGE label plus `inheritance_labels`;
-- full-text search, lowered to a two-phase Postgres text-search query (see below);
+- native logical AGE labels/types for new roots, with migration-free reads and mutations across
+  legacy `CvoyaNode`/`CvoyaRelationship` rows;
+- write-scoped native label/type provisioning (ordinary reads perform no DDL);
 - scalar-key grouped aggregation through AGE-native `WITH` grouping and aggregate functions;
 - correlated collection projections and relationship/complex-collection counts, lowered to
   AGE-supported grouped matches (see below); and
 - agtype adaptation for vertices, edges, paths, maps, arrays, large integers, decimals, and
   ISO-8601 temporal values.
 
-The provider does not declare nested transactions or shortest path. Unsupported operations fail
+The provider does not currently declare full-text search, nested transactions,
+or shortest path. Unsupported operations fail
 during translation or are capability-skipped by the provider compatibility suite.
+
+### Native storage and commands
+
+New `Person` nodes are stored in AGE's `Person` label table and new `KNOWS` relationships use the
+native `KNOWS` type. Concrete raw AGE rows need no CVOYA discriminator, inheritance, entity-kind, or
+CLR metadata to participate in typed, dynamic, and traversal queries. Existing rows in the legacy
+`CvoyaNode` / `CvoyaRelationship` tables continue to match through the same query predicates and can
+be updated or deleted without migration. Provider-owned complex-value nodes remain isolated through
+their relationship marker.
+
+AGE catalog label names are limited to plain symbolic names. A mapped name outside that grammar
+(for example, a label containing a space) retains the legacy physical-table representation so the
+existing escaped-identifier API remains usable; reserved provider names are rejected before writing.
+
+Set updates and deletes first freeze distinct `id(n)` / `id(r)` values inside the active write
+transaction, then mutate only those graphids. Endpoint-intent relationship creation likewise joins
+selected or newly created endpoints by graphid and supports selected/selected, hybrid, all-new, and
+explicit self-loop shapes. Caller-owned multi-statement commands are isolated behind a savepoint.
+These command contracts remain internal until the shared public surface lands in issue #477.
 
 ### Scalar-key grouped aggregation
 
@@ -88,19 +109,12 @@ maps continue through the provider-neutral result wire model and shared material
 
 ### Full-text search
 
-AGE has no full-text operator in its Cypher subset, so `Search(...)` is lowered to Postgres text
-search *before* the shared Cypher pipeline runs: phase 1 runs a `to_tsvector(...) @@
-plainto_tsquery('simple', @query)` query over the graph's label table on the caller's transaction
-and collects the matching entities' `Id`s; the provider then rewrites `Search(source, query)` to
-`Where(source, e => ids.Contains(e.Id))` and lets the unchanged planner and renderer serve the
-residual query. Matching is case-insensitive, whole-token, and multi-term-AND (the `'simple'`
-regconfig sits on the cross-provider contract floor); terms are normalized by the shared tokenizer
-and always sent as a bind parameter, never interpolated. Mixed `graph.Search()` queries scan both
-physical tables and combine nodes and relationships before applying ordering, paging, or terminals.
-A single search may seed at most 10,000 ids (a larger match set fails with an actionable error).
-Phase 1 is accelerated by one coarse, blob-level GIN index on each physical table (created at graph
-provisioning and rebuilt by `RecreateIndexesAsync`); dropping an index degrades performance but never
-correctness. See [COMPLIANCE.md](COMPLIANCE.md) for the full semantics.
+The former AGE search implementation correlates through the transitional public `Id` property and
+only scans the two legacy physical tables, so it is not declared as a capability with native logical
+storage. Issue #474 tracks graphid correlation across native, legacy, and external label tables.
+Managed full-text functions and indexes are no longer provisioned by ordinary graph creation or
+reads; explicit `RecreateIndexesAsync` remains the only provisioning entry point while that work is
+completed.
 
 ## Local AGE
 

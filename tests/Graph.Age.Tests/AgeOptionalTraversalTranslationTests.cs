@@ -23,7 +23,9 @@ public sealed class AgeOptionalTraversalTranslationTests
         var text = visitor.Query.Text;
 
         Assert.Contains("OPTIONAL MATCH", text, StringComparison.Ordinal);
-        Assert.True(text.IndexOf("WHERE", StringComparison.Ordinal) < text.IndexOf("OPTIONAL MATCH", StringComparison.Ordinal));
+        Assert.True(
+            text.IndexOf("WHERE", StringComparison.Ordinal) <
+            text.IndexOf("OPTIONAL MATCH (src)-[", StringComparison.Ordinal));
         Assert.Contains("AS Source", text, StringComparison.Ordinal);
         Assert.Contains("AS Target", text, StringComparison.Ordinal);
     }

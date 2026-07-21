@@ -17,24 +17,35 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.ComplexPropertyCascade,
         GraphCapability.MultiLabelMatch,
         GraphCapability.LabelFiltering,
-        GraphCapability.OrderByEntity,
         GraphCapability.OptionalTraversal,
-        GraphCapability.FullTextSearch,
         GraphCapability.CallSubqueries,
         GraphCapability.PatternSizeProjection,
         GraphCapability.GroupByAggregation);
+
+    // The shared planner may represent scalar projected sort keys and path-decomposition order
+    // coordinates as variable references. Let it construct those internal rows, while the AGE
+    // expression validator rejects caller-authored whole-entity ordering before planning.
+    private static readonly CapabilitySet PlanningCapabilities = CapabilitySet.Of(
+        GraphCapability.Transactions,
+        GraphCapability.ComplexPropertyCascade,
+        GraphCapability.MultiLabelMatch,
+        GraphCapability.LabelFiltering,
+        GraphCapability.OptionalTraversal,
+        GraphCapability.CallSubqueries,
+        GraphCapability.PatternSizeProjection,
+        GraphCapability.GroupByAggregation,
+        GraphCapability.OrderByEntity);
 
     private static readonly CapabilitySet CommandPlanningCapabilities = CapabilitySet.Of(
         GraphCapability.Transactions,
         GraphCapability.ComplexPropertyCascade,
         GraphCapability.MultiLabelMatch,
         GraphCapability.LabelFiltering,
-        GraphCapability.OrderByEntity,
         GraphCapability.OptionalTraversal,
-        GraphCapability.FullTextSearch,
         GraphCapability.CallSubqueries,
         GraphCapability.PatternSizeProjection,
         GraphCapability.GroupByAggregation,
+        GraphCapability.OrderByEntity,
         GraphCapability.RelationshipPredicates);
 
     private readonly CapabilitySet capabilities;
@@ -50,7 +61,7 @@ public sealed class AgeDialect : ICypherDialect
     /// <summary>Gets the shared Apache AGE dialect instance.</summary>
     public static AgeDialect Instance { get; } = new();
 
-    internal static AgeDialect PlanningInstance { get; } = Instance;
+    internal static AgeDialect PlanningInstance { get; } = new(PlanningCapabilities);
 
     /// <summary>
     /// Gets the planning dialect for the narrower command-selection grammar. Command selections
@@ -66,7 +77,7 @@ public sealed class AgeDialect : ICypherDialect
     /// <inheritdoc/>
     /// <remarks>
     /// AGE-compatible lowering implements correlated collections, pattern counts and existence
-    /// filters, multi-label matches, entity ordering, and optional traversal before rendering. Full-text search is lowered
+    /// filters, multi-label matches, scalar ordering, and optional traversal before rendering. Full-text search is lowered
     /// earlier still, at the expression level, to a two-phase Postgres text-search query
     /// (<see cref="Querying.AgeFullTextSearch"/>).
     /// Scalar-key grouping uses AGE's native grouping and aggregate support through the shared
@@ -78,10 +89,10 @@ public sealed class AgeDialect : ICypherDialect
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Unreachable backstop. AGE lowers full-text search in its own expression-level rewrite, and the
-    /// rewrite removes the search expression before the shared planner and renderer run. AGE does
-    /// declare <see cref="GraphCapability.FullTextSearch"/> because the lowering implements the
-    /// user-visible capability; reaching this hook therefore indicates a provider bug. This collapses
+    /// Unreachable backstop. AGE's legacy full-text lowering removes the search expression before the
+    /// shared planner and renderer run. Native/legacy graphid correlation is tracked by issue #474, so
+    /// the provider does not currently declare <see cref="GraphCapability.FullTextSearch"/>; reaching
+    /// this hook therefore indicates a provider bug. This collapses
     /// the four former full-text name members into a single throwing hook (issue #292).
     /// </remarks>
     public string RenderFullTextSearch(FullTextSearchClause clause, ICypherRenderContext context) =>

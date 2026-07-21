@@ -19,13 +19,20 @@ public sealed record RelationshipPattern : PatternElement
     /// name is one identifier — a <c>|</c> in it is part of the name, not an alternation.</param>
     /// <param name="direction">The relationship direction.</param>
     /// <param name="depth">The optional variable-length depth range.</param>
-    public RelationshipPattern(string? alias, string? type, CypherDirection direction, DepthRange? depth)
+    /// <param name="isComplexProperty">Whether this pattern traverses provider-owned complex-property storage.</param>
+    public RelationshipPattern(
+        string? alias,
+        string? type,
+        CypherDirection direction,
+        DepthRange? depth,
+        bool isComplexProperty = false)
         : this(
             alias,
             direction,
             depth,
             ArgumentValidation.OptionalName(type, nameof(type)) is { } single ? [single] : [],
-            nameof(type))
+            nameof(type),
+            isComplexProperty)
     {
     }
 
@@ -39,12 +46,14 @@ public sealed record RelationshipPattern : PatternElement
     /// <param name="types">The relationship type names to match as alternatives; empty matches any
     /// type. Each entry is one identifier — renderers join and escape them, so a <c>|</c> inside a
     /// name is part of that name, not an alternation separator.</param>
+    /// <param name="isComplexProperty">Whether this pattern traverses provider-owned complex-property storage.</param>
     public RelationshipPattern(
         string? alias,
         CypherDirection direction,
         DepthRange? depth,
-        IReadOnlyList<string> types)
-        : this(alias, direction, depth, types, nameof(types))
+        IReadOnlyList<string> types,
+        bool isComplexProperty = false)
+        : this(alias, direction, depth, types, nameof(types), isComplexProperty)
     {
     }
 
@@ -53,12 +62,14 @@ public sealed record RelationshipPattern : PatternElement
         CypherDirection direction,
         DepthRange? depth,
         IReadOnlyList<string> types,
-        string typesParameterName)
+        string typesParameterName,
+        bool isComplexProperty)
     {
         Alias = ArgumentValidation.OptionalName(alias, nameof(alias));
         Types = ArgumentValidation.StringList(types, typesParameterName);
         Direction = ArgumentValidation.DefinedEnum(direction, nameof(direction));
         Depth = depth;
+        IsComplexProperty = isComplexProperty;
     }
 
     /// <summary>
@@ -80,4 +91,10 @@ public sealed record RelationshipPattern : PatternElement
     /// Gets the optional variable-length depth range.
     /// </summary>
     public DepthRange? Depth { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether this pattern traverses provider-owned complex-property
+    /// storage rather than an ordinary domain relationship.
+    /// </summary>
+    public bool IsComplexProperty { get; }
 }

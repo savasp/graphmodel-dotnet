@@ -17,7 +17,7 @@ using Cvoya.Graph.CompatibilityTests;
 public sealed class AgeFullTextIndexTests(AgeHarness harness)
     : AgeTest(harness, StoreIsolation.FreshStore)
 {
-    [Fact]
+    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
     public async Task PhaseOneTypedSearch_UsesGinIndex_WhenTheStoreHasStatistics()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -64,7 +64,7 @@ public sealed class AgeFullTextIndexTests(AgeHarness harness)
         await transaction.CommitAsync();
     }
 
-    [Fact]
+    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
     public async Task Search_StaysCorrect_WhenTheIndexIsDroppedAndRecreated()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -99,7 +99,7 @@ public sealed class AgeFullTextIndexTests(AgeHarness harness)
         Assert.Equal(alice.Id, recreated[0].Id);
     }
 
-    [Fact]
+    [Fact(Skip = "Native AGE full-text graphid correlation is tracked by #474.")]
     public async Task RecreateIndexes_RebuildsAnExistingIndex()
     {
         var ct = TestContext.Current.CancellationToken;

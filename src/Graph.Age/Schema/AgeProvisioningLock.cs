@@ -13,15 +13,13 @@ using Npgsql;
 /// transaction-scoped advisory lock keyed by graph name.
 /// </summary>
 /// <remarks>
-/// Provisioning is a check-then-create sequence - probe <c>ag_catalog.ag_graph</c>, create the graph
-/// when it is absent, create the physical label tables, create the managed full-text objects - and
-/// nothing makes that sequence atomic on its own. Independent stores, workers, or application
-/// instances starting together can each observe an absent graph and then collide inside
-/// <c>ag_catalog.create_graph</c> (or in the <c>CREATE OR REPLACE FUNCTION</c> and <c>CREATE INDEX</c>
-/// statements that follow it), so first use fails intermittently even though the target graph and the
-/// credentials are perfectly valid. A store-local gate cannot help there, because those peers share no
-/// memory. Holding this lock for the whole sequence makes them run one at a time, so every peer after
-/// the first finds the graph already present and only confirms the remaining steps.
+/// Graph and native-label provisioning are check-then-create sequences, and nothing makes either
+/// sequence atomic on its own. Independent stores, workers, or application instances starting
+/// together can each observe an absent catalog object and then collide inside
+/// <c>ag_catalog.create_graph</c>, <c>create_vlabel</c>, or <c>create_elabel</c>. A store-local gate
+/// cannot help there because those peers share no memory. Holding this lock around a missing
+/// object's second probe and creation makes them run one at a time. Existing native labels are
+/// detected before taking the lock, so ordinary concurrent writes do not serialize here.
 /// <para>
 /// The lock uses the two-key <c>pg_advisory_xact_lock(int, int)</c> overload. PostgreSQL keeps that key
 /// space completely separate from the single-key space that <see cref="Entities.AgeUniquenessLockKey"/>

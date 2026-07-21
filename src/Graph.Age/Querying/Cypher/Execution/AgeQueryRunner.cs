@@ -9,10 +9,12 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Cvoya.Graph.Age.Schema;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Npgsql.Age.Types;
+using NpgsqlTypes;
 
 internal sealed partial class AgeQueryRunner
 {
@@ -47,6 +49,80 @@ internal sealed partial class AgeQueryRunner
 
     /// <summary>The AGE graph name, which is also the Postgres schema holding this graph's label tables.</summary>
     public string GraphName => graphName;
+
+    /// <summary>
+    /// Discovers or creates one native AGE vertex/edge label inside the current write transaction.
+    /// The graph-scoped advisory lock serializes the catalog check-and-create sequence across stores.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security",
+        "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "Command text selects between two compile-time constants; graph and label names are bound parameters.")]
+    internal async Task EnsureLabelAsync(
+        string label,
+        bool relationship,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // The common path must not take the graph-wide provisioning lock: callers can hold
+        // unrelated uniqueness locks for the lifetime of their transaction, and serializing every
+        // ordinary write here would make independent writes block one another. A missing-label
+        // result is only a hint; lock and probe again before creating to close the race.
+        if (await LabelExistsAsync(label, relationship, cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
+
+        await AgeProvisioningLock
+            .AcquireAsync(connection, transaction, graphName, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (await LabelExistsAsync(label, relationship, cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
+
+        var createCommand = connection.CreateCommand();
+        await using var createLease = createCommand.ConfigureAwait(false);
+        createCommand.Transaction = transaction;
+        createCommand.CommandText = relationship
+            ? "SELECT ag_catalog.create_elabel(@graphName, @labelName)"
+            : "SELECT ag_catalog.create_vlabel(@graphName, @labelName)";
+        createCommand.Parameters.Add(new NpgsqlParameter("graphName", graphName)
+        {
+            NpgsqlDbType = NpgsqlDbType.Unknown,
+        });
+        createCommand.Parameters.Add(new NpgsqlParameter("labelName", label)
+        {
+            NpgsqlDbType = NpgsqlDbType.Unknown,
+        });
+        await createCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> LabelExistsAsync(
+        string label,
+        bool relationship,
+        CancellationToken cancellationToken)
+    {
+        var existsCommand = connection.CreateCommand();
+        await using var existsLease = existsCommand.ConfigureAwait(false);
+        existsCommand.Transaction = transaction;
+        existsCommand.CommandText = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM ag_catalog.ag_label AS label
+                JOIN ag_catalog.ag_graph AS graph ON graph.graphid = label.graph
+                WHERE graph.name = @graphName
+                  AND label.name = @labelName
+                  AND label.kind = @labelKind)
+            """;
+        existsCommand.Parameters.AddWithValue("graphName", graphName);
+        existsCommand.Parameters.AddWithValue("labelName", label);
+        existsCommand.Parameters.AddWithValue("labelKind", relationship ? "e" : "v");
+        return await existsCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is true;
+    }
 
     /// <summary>
     /// Runs a plain (non-<c>cypher()</c>) SQL statement on this runner's connection and transaction,

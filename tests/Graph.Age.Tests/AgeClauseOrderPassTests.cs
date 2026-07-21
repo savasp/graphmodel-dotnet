@@ -95,7 +95,7 @@ public sealed class AgeClauseOrderPassTests
     }
 
     [Fact]
-    public void RewritesEntityOrderingToPublicId()
+    public void DoesNotRewriteEntityOrderingToPublicId()
     {
         var statement = Statement(
             Match("src"),
@@ -108,7 +108,7 @@ public sealed class AgeClauseOrderPassTests
             """
             MATCH (src)
             RETURN src
-            ORDER BY src.Id DESC
+            ORDER BY src DESC
             """,
             rendered.Text);
     }
@@ -178,7 +178,7 @@ public sealed class AgeClauseOrderPassTests
     }
 
     [Fact]
-    public void RewritesEveryEntityAliasAndKeepsOtherOrderingItems()
+    public void KeepsEntityAliasesAndOtherOrderingItems()
     {
         var statement = Statement(
             new MatchClause(
@@ -205,7 +205,7 @@ public sealed class AgeClauseOrderPassTests
             """
             MATCH (src)-[r]->(tgt)
             RETURN src
-            ORDER BY src.Id, tgt.Id DESC, r.Id, src.Name
+            ORDER BY src, tgt DESC, r, src.Name
             """,
             rendered.Text);
     }

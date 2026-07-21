@@ -26,6 +26,49 @@ public sealed class AgeRecordAdapterTests
         Assert.Empty(adapted.Entries["ComplexProperties"].Items);
     }
 
+    [Fact]
+    public void NativeVertexUsesPhysicalLogicalLabelWithoutMetadata()
+    {
+        var value = new Agtype(
+            """{"id":844424930131969,"label":"Person","properties":{"FirstName":"Raw"}}::vertex""");
+        var record = new AgeRecord(new Dictionary<string, object?> { ["value"] = value });
+
+        var adapted = new AgeRecordAdapter().Adapt(record)["value"];
+
+        Assert.Equal(["Person"], adapted.Labels);
+        Assert.DoesNotContain("CvoyaNode", adapted.Labels);
+    }
+
+    [Fact]
+    public void LegacyVertexSuppressesPhysicalCvoyaLabel()
+    {
+        var value = new Agtype(
+            """{"id":844424930131969,"label":"CvoyaNode","properties":{"inheritance_labels":["Person"]}}::vertex""");
+        var record = new AgeRecord(new Dictionary<string, object?> { ["value"] = value });
+
+        var adapted = new AgeRecordAdapter().Adapt(record)["value"];
+
+        Assert.Equal(["Person"], adapted.Labels);
+    }
+
+    [Theory]
+    [InlineData("KNOWS", "IGNORED", "KNOWS")]
+    [InlineData("CvoyaRelationship", "KNOWS", "KNOWS")]
+    public void RelationshipTypePrefersNativeTypeAndFallsBackForLegacy(
+        string physicalType,
+        string storedType,
+        string expectedType)
+    {
+        var value = new Agtype(
+            $"{{\"id\":1125899906842625,\"label\":\"{physicalType}\",\"start_id\":844424930131969," +
+            $"\"end_id\":844424930131970,\"properties\":{{\"Type\":\"{storedType}\"}}}}::edge");
+        var record = new AgeRecord(new Dictionary<string, object?> { ["value"] = value });
+
+        var adapted = new AgeRecordAdapter().Adapt(record)["value"];
+
+        Assert.Equal(expectedType, adapted.RelationshipType);
+    }
+
     [Theory]
     [InlineData("9223372036854775807", typeof(long))]
     [InlineData("1234567890.123456789::numeric", typeof(decimal))]

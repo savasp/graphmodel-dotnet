@@ -92,6 +92,13 @@ internal static class CypherIdentifier
             : $"`{identifier!.Replace("`", "``")}`";
     }
 
+    /// <summary>Gets whether AGE can use the identifier as a native catalog label name.</summary>
+    internal static bool IsNativeLabelName(string identifier)
+    {
+        Validate(identifier);
+        return IsPlainSymbolicName(identifier);
+    }
+
     private static bool IsPlainSymbolicName(string identifier)
     {
         if (!char.IsAsciiLetter(identifier[0]) && identifier[0] != '_')

@@ -6,6 +6,7 @@ namespace Cvoya.Graph.Age.Querying.Cypher.Execution;
 using System.Collections;
 using System.Globalization;
 using System.Text.Json;
+using Cvoya.Graph.Age.Serialization;
 using Cvoya.Graph.Serialization.Results;
 using Npgsql.Age.Types;
 
@@ -88,7 +89,11 @@ internal sealed class AgeRecordAdapter
     private GraphValue AdaptVertex(Vertex<Dictionary<string, object>> vertex)
     {
         var labels = new List<string>();
-        if (!string.IsNullOrWhiteSpace(vertex.Label))
+        if (!string.Equals(
+                vertex.Label,
+                SerializationBridge.PhysicalNodeLabel,
+                StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(vertex.Label))
         {
             labels.Add(vertex.Label);
         }
@@ -106,17 +111,24 @@ internal sealed class AgeRecordAdapter
 
     private GraphValue AdaptEdge(Edge<Dictionary<string, object>> edge)
     {
-        var relationshipType = edge.Properties.TryGetValue(nameof(IRelationship.Type), out var logicalType)
-            ? Convert.ToString(logicalType, CultureInfo.InvariantCulture)
-            : edge.Properties.TryGetValue("inheritance_labels", out var hierarchy)
-                ? ReadStrings(hierarchy).FirstOrDefault()
-                : null;
+        var nativeType = string.Equals(
+            edge.Label,
+            SerializationBridge.PhysicalRelationshipType,
+            StringComparison.Ordinal)
+                ? null
+                : edge.Label;
+        var relationshipType = nativeType ??
+            (edge.Properties.TryGetValue(nameof(IRelationship.Type), out var logicalType)
+                ? Convert.ToString(logicalType, CultureInfo.InvariantCulture)
+                : edge.Properties.TryGetValue("inheritance_labels", out var hierarchy)
+                    ? ReadStrings(hierarchy).FirstOrDefault()
+                    : null);
         var properties = edge.Properties
             .Where(pair => pair.Key != "inheritance_labels")
             .ToDictionary(pair => pair.Key, pair => AdaptValue(pair.Value), StringComparer.Ordinal);
         return GraphValue.Relationship(
             edge.Id.Value.ToString(CultureInfo.InvariantCulture),
-            relationshipType ?? edge.Label,
+            relationshipType ?? string.Empty,
             edge.StartId.Value.ToString(CultureInfo.InvariantCulture),
             edge.EndId.Value.ToString(CultureInfo.InvariantCulture),
             properties);
@@ -238,7 +250,13 @@ internal sealed class AgeRecordAdapter
     private GraphValue AdaptJsonVertex(JsonElement value)
     {
         var propertiesElement = value.GetProperty("properties");
-        var labels = new List<string> { value.GetProperty("label").GetString()! };
+        var physicalLabel = value.GetProperty("label").GetString()!;
+        var labels = string.Equals(
+            physicalLabel,
+            SerializationBridge.PhysicalNodeLabel,
+            StringComparison.Ordinal)
+                ? []
+                : new List<string> { physicalLabel };
         if (propertiesElement.TryGetProperty("inheritance_labels", out var hierarchy))
         {
             labels.AddRange(ReadStrings(hierarchy));
@@ -252,12 +270,24 @@ internal sealed class AgeRecordAdapter
 
     private GraphValue AdaptJsonEdge(JsonElement value)
     {
-        var properties = value.GetProperty("properties").EnumerateObject()
+        var propertiesElement = value.GetProperty("properties");
+        var physicalType = value.GetProperty("label").GetString()!;
+        var relationshipType = !string.Equals(
+            physicalType,
+            SerializationBridge.PhysicalRelationshipType,
+            StringComparison.Ordinal)
+                ? physicalType
+                : propertiesElement.TryGetProperty(nameof(IRelationship.Type), out var logicalType)
+                    ? logicalType.GetString()
+                    : propertiesElement.TryGetProperty("inheritance_labels", out var hierarchy)
+                        ? ReadStrings(hierarchy).FirstOrDefault()
+                        : null;
+        var properties = propertiesElement.EnumerateObject()
             .Where(property => property.Name != "inheritance_labels")
             .ToDictionary(property => property.Name, property => AdaptJson(property.Value), StringComparer.Ordinal);
         return GraphValue.Relationship(
             JsonId(value.GetProperty("id")),
-            value.GetProperty("label").GetString()!,
+            relationshipType ?? string.Empty,
             JsonId(value.GetProperty("start_id")),
             JsonId(value.GetProperty("end_id")),
             properties);

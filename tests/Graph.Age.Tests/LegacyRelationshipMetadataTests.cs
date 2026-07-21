@@ -6,6 +6,7 @@ namespace Cvoya.Graph.Age.Tests;
 using Cvoya.Graph.Age;
 using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
+using Cvoya.Graph.Age.Serialization;
 using Cvoya.Graph.CompatibilityTests;
 
 public sealed class LegacyRelationshipMetadataTests(AgeHarness harness) : AgeTest(harness)
@@ -31,16 +32,18 @@ public sealed class LegacyRelationshipMetadataTests(AgeHarness harness) : AgeTes
             Since = DateTime.UtcNow.AddDays(-2)
         };
 
-        await Graph.CreateRelationshipAsync(typed, null, cancellationToken);
-        await Graph.CreateRelationshipAsync(dynamic, null, cancellationToken);
-        await Graph.CreateRelationshipAsync(customType, null, cancellationToken);
-
         var expected = new[]
         {
             new ExpectedIdentity(typed.Id, "KNOWS", "KNOWS", typeof(Knows)),
             new ExpectedIdentity(dynamic.Id, dynamic.Type, nameof(DynamicRelationship), typeof(DynamicRelationship)),
             new ExpectedIdentity(customType.Id, customType.Type, "KNOWS", typeof(Knows))
         };
+        await CreateLegacyRelationshipAsync(
+            source.Id, target.Id, expected[0], typed.Since, status: null, cancellationToken);
+        await CreateLegacyRelationshipAsync(
+            source.Id, target.Id, expected[1], since: null, status: "before", cancellationToken);
+        await CreateLegacyRelationshipAsync(
+            source.Id, target.Id, expected[2], customType.Since, status: null, cancellationToken);
         await RemoveMetadataAndAssertLegacyShapeAsync(expected, cancellationToken);
 
         typed.Since = DateTime.UtcNow.AddDays(-1);
@@ -77,7 +80,13 @@ public sealed class LegacyRelationshipMetadataTests(AgeHarness harness) : AgeTes
         await Graph.CreateNodeAsync(target, null, cancellationToken);
 
         var relationship = new Knows(source, target) { Since = DateTime.UtcNow.AddDays(-1) };
-        await Graph.CreateRelationshipAsync(relationship, null, cancellationToken);
+        await CreateLegacyRelationshipAsync(
+            source.Id,
+            target.Id,
+            new ExpectedIdentity(relationship.Id, "KNOWS", "KNOWS", typeof(Knows)),
+            relationship.Since,
+            status: null,
+            cancellationToken);
 
         await using (var transaction = await Graph.GetTransactionAsync(cancellationToken))
         {
@@ -166,6 +175,46 @@ public sealed class LegacyRelationshipMetadataTests(AgeHarness harness) : AgeTes
             Assert.DoesNotContain(", Version=", metadata, StringComparison.Ordinal);
             Assert.Equal(identity.ClrType, Type.GetType(metadata));
         }
+    }
+
+    private async Task CreateLegacyRelationshipAsync(
+        string sourceId,
+        string targetId,
+        ExpectedIdentity identity,
+        DateTime? since,
+        string? status,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await Graph.GetTransactionAsync(cancellationToken);
+        var runner = ((AgeGraphTransaction)transaction).Runner;
+        await using var result = await runner.RunAsync(
+            """
+            MATCH (source {Id: $sourceId})
+            MATCH (target {Id: $targetId})
+            CREATE (source)-[relationship:CvoyaRelationship]->(target)
+            SET relationship.Id = $id,
+                relationship.Type = $type,
+                relationship.Direction = 'Outgoing',
+                relationship.inheritance_labels = [$canonicalLabel],
+                relationship.__metadata__ = $metadata,
+                relationship.Since = $since,
+                relationship.status = $status
+            RETURN true AS created
+            """,
+            new
+            {
+                sourceId,
+                targetId,
+                id = identity.Id,
+                type = identity.StorageType,
+                canonicalLabel = identity.CanonicalLabel,
+                metadata = SerializationBridge.CreateScalarMetadata(identity.ClrType),
+                since = since?.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                status,
+            },
+            cancellationToken);
+        _ = await result.SingleAsync(cancellationToken);
+        await transaction.CommitAsync();
     }
 
     private sealed record ExpectedIdentity(string Id, string StorageType, string CanonicalLabel, Type ClrType);

@@ -5,6 +5,8 @@ namespace Cvoya.Graph.Age.Tests;
 
 using Cvoya.Graph.Age.Querying.Cypher;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
+using Cvoya.Graph.Age.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.CompatibilityTests;
 
 public sealed class AgeDialectTests
 {
@@ -19,13 +21,35 @@ public sealed class AgeDialectTests
                 GraphCapability.ComplexPropertyCascade,
                 GraphCapability.MultiLabelMatch,
                 GraphCapability.LabelFiltering,
-                GraphCapability.OrderByEntity,
                 GraphCapability.OptionalTraversal,
-                GraphCapability.FullTextSearch,
                 GraphCapability.CallSubqueries,
                 GraphCapability.PatternSizeProjection,
                 GraphCapability.GroupByAggregation),
             capabilities);
+    }
+
+    [Fact]
+    public async Task RejectsBareEntityOrderingWhileAllowingScalarProjectedOrdering()
+    {
+        await using var store = new AgeGraphStore(
+            "Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres",
+            "translation");
+        var entityQuery = store.Graph.Nodes<Person>().OrderBy(person => person);
+        var entityVisitor = new CypherQueryVisitor(entityQuery.ElementType);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            entityVisitor.Visit(entityQuery.Expression));
+
+        Assert.Contains("OrderByEntity", exception.Message, StringComparison.Ordinal);
+
+        var scalarQuery = store.Graph.Nodes<Person>()
+            .Select(person => person.FirstName)
+            .Distinct()
+            .OrderBy(name => name)
+            .Take(2);
+        var scalarVisitor = new CypherQueryVisitor(scalarQuery.ElementType);
+        scalarVisitor.Visit(scalarQuery.Expression);
+        Assert.Contains("ORDER BY", scalarVisitor.Query.Text, StringComparison.Ordinal);
     }
 
     [Fact]

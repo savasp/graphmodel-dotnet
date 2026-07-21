@@ -5,6 +5,7 @@ namespace Cvoya.Graph.Age.Tests.GraphTests;
 
 using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Entities;
+using Cvoya.Graph.Age.Querying;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.CompatibilityTests;
 
@@ -345,6 +346,17 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
     public async Task ConcurrentSubgraphCreates_WithTheSameUniqueEndpointValue_LetExactlyOneCommit()
     {
         var ct = TestContext.Current.CancellationToken;
+        // This test observes the uniqueness lock specifically. Commit first-use native labels up
+        // front so the loser's write cannot correctly wait on the separate catalog-provisioning
+        // lock before it reaches the uniqueness probe under test.
+        await using (var provisioning = await this.Graph.GetTransactionAsync(ct))
+        {
+            var runner = ((AgeGraphTransaction)provisioning).Runner;
+            await runner.EnsureLabelAsync("ConcurrentUniqueAccount", relationship: false, ct);
+            await runner.EnsureLabelAsync("CONCURRENT_UNIQUE_GRANT", relationship: true, ct);
+            await provisioning.CommitAsync();
+        }
+
         var failure = await StageContentionAsync(
             (transaction, suffix) =>
             {
@@ -443,6 +455,12 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         // over-broad lock (one per label, say) would show up here as a hang rather than as a
         // silently passing suite.
         var ct = TestContext.Current.CancellationToken;
+        await using (var provisioning = await this.Graph.GetTransactionAsync(ct))
+        {
+            await ((AgeGraphTransaction)provisioning).Runner
+                .EnsureLabelAsync("ConcurrentUniqueAccount", relationship: false, ct);
+            await provisioning.CommitAsync();
+        }
 
         await using var first = await this.Graph.GetTransactionAsync(ct);
         await this.Graph.CreateNodeAsync(
@@ -546,7 +564,7 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
     {
         await using var transaction = await this.Graph.GetTransactionAsync(cancellationToken);
         var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
-            "MATCH (n) WHERE $label IN coalesce(n.inheritance_labels, []) RETURN count(n) AS c",
+            $"MATCH (n) WHERE {AgeElementMatcher.NodePredicate("n", "$label")} RETURN count(n) AS c",
             new { label },
             cancellationToken);
         var count = (await result.SingleAsync(cancellationToken))["c"].As<int>();
@@ -562,7 +580,7 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
     {
         await using var transaction = await this.Graph.GetTransactionAsync(cancellationToken);
         var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
-            $"MATCH (n) WHERE $label IN coalesce(n.inheritance_labels, []) AND n.{property} = $value RETURN count(n) AS c",
+            $"MATCH (n) WHERE {AgeElementMatcher.NodePredicate("n", "$label")} AND n.{property} = $value RETURN count(n) AS c",
             new { label, value },
             cancellationToken);
         var count = (await result.SingleAsync(cancellationToken))["c"].As<int>();
@@ -574,7 +592,7 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
     {
         await using var transaction = await this.Graph.GetTransactionAsync(cancellationToken);
         var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
-            "MATCH ()-[r]->() WHERE $type IN coalesce(r.inheritance_labels, []) RETURN count(r) AS c",
+            $"MATCH ()-[r]->() WHERE {AgeElementMatcher.RelationshipPredicate("r", "$type")} RETURN count(r) AS c",
             new { type },
             cancellationToken);
         var count = (await result.SingleAsync(cancellationToken))["c"].As<int>();
@@ -590,7 +608,7 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
     {
         await using var transaction = await this.Graph.GetTransactionAsync(cancellationToken);
         var result = await ((AgeGraphTransaction)transaction).Runner.RunAsync(
-            $"MATCH ()-[r]->() WHERE $type IN coalesce(r.inheritance_labels, []) AND r.{property} = $value RETURN count(r) AS c",
+            $"MATCH ()-[r]->() WHERE {AgeElementMatcher.RelationshipPredicate("r", "$type")} AND r.{property} = $value RETURN count(r) AS c",
             new { type, value },
             cancellationToken);
         var count = (await result.SingleAsync(cancellationToken))["c"].As<int>();

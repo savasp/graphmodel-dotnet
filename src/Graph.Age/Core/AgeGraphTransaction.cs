@@ -107,7 +107,11 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
         connection = await context.Store.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await context.Store.EnsureGraphProvisionedAsync(connection, cancellationToken).ConfigureAwait(false);
+            if (!IsReadOnly)
+            {
+                await context.Store.EnsureGraphCreatedAsync(connection, cancellationToken).ConfigureAwait(false);
+            }
+
             transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             if (IsReadOnly)
             {
@@ -116,6 +120,9 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
                 readOnly.Transaction = transaction;
                 readOnly.CommandText = "SET TRANSACTION READ ONLY";
                 await readOnly.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                await context.Store
+                    .EnsureGraphExistsAsync(connection, transaction, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             runner = new AgeQueryRunner(
