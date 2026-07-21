@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Age.Core;
 
+using Cvoya.Graph.Age.Entities;
 using Cvoya.Graph.Age.Querying;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.Age.Querying.Linq.Providers;
@@ -284,10 +285,11 @@ internal class AgeGraph : IGraph
             // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
             await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
 
-            // New endpoints (including their complex-property subtrees) and the edge cross the
-            // Npgsql execution boundary in one batch. The transitional merge-by-Id option remains a
-            // compatibility path until the legacy API is removed; both paths share this transaction
-            // and savepoint boundary.
+            // Create-only sends the new endpoints (including their complex-property subtrees) and
+            // the edge across the Npgsql execution boundary in one batch, preceded by the legacy
+            // duplicate-id probes the batch no longer performs for itself. The transitional
+            // merge-by-Id option stays on the per-entity managers until the legacy API is removed.
+            // Both paths share this transaction and savepoint boundary, so either is atomic.
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
                 transaction,
@@ -306,6 +308,10 @@ internal class AgeGraph : IGraph
                     {
                         if (createMissingEndpoints)
                         {
+                            await EnsureLegacyRelationshipIdAvailableAsync(
+                                relationship.Id,
+                                tx.Runner,
+                                cancellationToken).ConfigureAwait(false);
                             await _graphContext.NodeManager
                                 .CreateNodeIfMissingAsync(source, tx, cancellationToken)
                                 .ConfigureAwait(false);
@@ -382,6 +388,12 @@ internal class AgeGraph : IGraph
         }
     }
 
+    /// <summary>
+    /// Reproduces the create-only duplicate-id errors the batch planner used to raise from its own
+    /// in-batch probes. The batch now correlates endpoints transiently and no longer reads domain
+    /// ids, so the legacy <c>CreateAsync</c> contract - the operation fails atomically if an
+    /// endpoint id already exists - is enforced here instead.
+    /// </summary>
     private static async Task EnsureLegacyCreateOnlyIdsAvailableAsync(
         string sourceId,
         string relationshipId,
@@ -389,36 +401,40 @@ internal class AgeGraph : IGraph
         AgeQueryRunner runner,
         CancellationToken cancellationToken)
     {
-        if (await CountLegacyNodesByIdAsync(sourceId, runner, cancellationToken).ConfigureAwait(false) > 0)
+        // Create-only creates both endpoints, so two endpoints sharing an id would leave two roots
+        // answering to it - the state the probes below exist to prevent. It needs no round-trip.
+        if (string.Equals(sourceId, targetId, StringComparison.Ordinal))
+        {
+            throw new GraphException("Create-only subgraph endpoints must have distinct IDs.");
+        }
+
+        if (await AgeNodeManager.NodeExistsByIdAsync(sourceId, runner, cancellationToken).ConfigureAwait(false))
         {
             throw new GraphException($"Node with ID '{sourceId}' already exists.");
         }
 
-        if (await CountLegacyNodesByIdAsync(targetId, runner, cancellationToken).ConfigureAwait(false) > 0)
+        if (await AgeNodeManager.NodeExistsByIdAsync(targetId, runner, cancellationToken).ConfigureAwait(false))
         {
             throw new GraphException($"Node with ID '{targetId}' already exists.");
         }
 
-        var relationshipResult = await runner.RunAsync(
-            $"MATCH ()-[relationship {{Id: $relationshipId}}]-() WHERE {Querying.AgeElementMatcher.UserRelationshipPredicate("relationship")} RETURN count(relationship) AS existingCount",
-            new { relationshipId },
-            cancellationToken).ConfigureAwait(false);
-        if ((await relationshipResult.SingleAsync(cancellationToken).ConfigureAwait(false))["existingCount"].As<long>() > 0)
-        {
-            throw new GraphException($"Relationship with ID '{relationshipId}' already exists.");
-        }
+        await EnsureLegacyRelationshipIdAvailableAsync(relationshipId, runner, cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    private static async Task<long> CountLegacyNodesByIdAsync(
-        string nodeId,
+    private static async Task EnsureLegacyRelationshipIdAvailableAsync(
+        string relationshipId,
         AgeQueryRunner runner,
         CancellationToken cancellationToken)
     {
         var result = await runner.RunAsync(
-            $"{Querying.AgeElementMatcher.UserRootMatch("node", " {Id: $nodeId}")} RETURN count(node) AS existingCount",
-            new { nodeId },
+            $"MATCH ()-[relationship {{Id: $relationshipId}}]-() WHERE {AgeElementMatcher.UserRelationshipPredicate("relationship")} RETURN count(relationship) AS existingCount",
+            new { relationshipId },
             cancellationToken).ConfigureAwait(false);
-        return (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["existingCount"].As<long>();
+        if ((await result.SingleAsync(cancellationToken).ConfigureAwait(false))["existingCount"].As<long>() > 0)
+        {
+            throw new GraphException($"Relationship with ID '{relationshipId}' already exists.");
+        }
     }
 
     /// <inheritdoc />

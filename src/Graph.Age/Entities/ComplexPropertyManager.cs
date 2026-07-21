@@ -33,11 +33,11 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
 
     /// <summary>
     /// A transiently-addressed value node used by subgraph batching. Correlation tokens are
-    /// operation-local plumbing and are kept separate from the serialized property maps.
+    /// operation-local plumbing and are kept separate from the serialized property maps. The parent
+    /// is addressed by its token plus its storage label so a batch command can only ever bind
+    /// within the label scope it planned for.
     /// </summary>
     internal sealed record SubgraphValueNode(
-        string RootCorrelationToken,
-        string RootStorageLabel,
         string ParentCorrelationToken,
         string ParentStorageLabel,
         string CorrelationToken,
@@ -72,8 +72,6 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         var levels = new List<IReadOnlyList<SubgraphValueNode>>();
         var currentLevel = roots
             .Select(root => (
-                RootCorrelationToken: root.CorrelationToken,
-                RootStorageLabel: root.StorageLabel,
                 ParentCorrelationToken: root.CorrelationToken,
                 ParentStorageLabel: root.StorageLabel,
                 root.Entity))
@@ -82,20 +80,13 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         for (var depth = 0; currentLevel.Count > 0; depth++)
         {
             var pending = new List<SubgraphValueNode>();
-            foreach (var (
-                         rootCorrelationToken,
-                         rootStorageLabel,
-                         parentCorrelationToken,
-                         parentStorageLabel,
-                         entity) in currentLevel)
+            foreach (var (parentCorrelationToken, parentStorageLabel, entity) in currentLevel)
             {
                 var children = CollectPendingValueNodes(
                     [(parentCorrelationToken, entity)],
                     depth,
                     assignSyntheticIds: false);
                 pending.AddRange(children.Select(child => new SubgraphValueNode(
-                    rootCorrelationToken,
-                    rootStorageLabel,
                     child.ParentElementId,
                     parentStorageLabel,
                     createCorrelationToken(),
@@ -110,9 +101,10 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             }
 
             levels.Add(pending);
+
+            // Every value node is created under the shared physical value-node label, so the next
+            // level's parent scope is that label rather than the root's storage label.
             currentLevel = pending.Select(child => (
-                child.RootCorrelationToken,
-                child.RootStorageLabel,
                 ParentCorrelationToken: child.CorrelationToken,
                 ParentStorageLabel: SerializationBridge.PhysicalNodeLabel,
                 child.Entity)).ToList();

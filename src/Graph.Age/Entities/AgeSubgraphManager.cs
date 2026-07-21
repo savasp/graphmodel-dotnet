@@ -54,16 +54,15 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             transaction,
             cancellationToken);
 
-    internal async Task CreateSubgraphAsync(
+    internal Task CreateSubgraphAsync(
         GraphCommandEndpoint source,
         Graph.IRelationship relationship,
         GraphCommandEndpoint target,
         RelationshipDirection direction,
         GraphRelationshipCreationMode mode,
         AgeGraphTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        await CreateSubgraphAsync(
+        CancellationToken cancellationToken) =>
+        CreateSubgraphAsync(
             source,
             relationship,
             target,
@@ -71,8 +70,7 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             mode,
             persistLegacyDirection: false,
             transaction,
-            cancellationToken).ConfigureAwait(false);
-    }
+            cancellationToken);
 
     private async Task CreateSubgraphAsync(
         GraphCommandEndpoint source,
@@ -102,10 +100,10 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         var relationshipEntity = SerializeRelationship(relationship);
         var relationshipStorageType = StorageName(relationshipEntity, relationship: true);
         var correlationPropertyName = CreateCorrelationPropertyName();
-        var sourcePlan = PlanEndpoint(source, "source", GraphEndpointRole.Source);
+        var sourcePlan = PlanEndpoint(source, GraphEndpointRole.Source);
         var targetPlan = mode == GraphRelationshipCreationMode.SelfLoop
             ? PlanSelfLoopTarget(source, target, sourcePlan)
-            : PlanEndpoint(target, "target", GraphEndpointRole.Target);
+            : PlanEndpoint(target, GraphEndpointRole.Target);
         var newEndpoints = mode == GraphRelationshipCreationMode.SelfLoop
             ? new[] { sourcePlan }
             : new[] { sourcePlan, targetPlan };
@@ -183,15 +181,18 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             targetChecks,
             relationshipChecks,
             valueNodeLevels,
-            newEndpoints.Length,
-            relationship.GetType().Name,
-            newEndpoints.Length + valueNodeLevels.Sum(level => level.Count));
+            newEndpoints,
+            relationship.GetType().Name);
     }
 
-    private EndpointPlan PlanEndpoint(
-        GraphCommandEndpoint endpoint,
-        string name,
-        GraphEndpointRole role) => endpoint switch
+    /// <summary>
+    /// Plans one endpoint operand. The role names the plan, and that name prefixes the endpoint's
+    /// batch command, so a plan can never be created under one role and validated as the other.
+    /// </summary>
+    private EndpointPlan PlanEndpoint(GraphCommandEndpoint endpoint, GraphEndpointRole role)
+    {
+        var name = role.ToString().ToLowerInvariant();
+        return endpoint switch
         {
             SelectedGraphCommandEndpoint
             {
@@ -199,11 +200,11 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
                 Element.NativeIdentity: long graphId,
             } => new EndpointPlan(name, graphId, Node: null, Entity: null, CorrelationToken: null, StorageLabel: null),
             SelectedGraphCommandEndpoint => throw new GraphException(
-                $"The selected {role.ToString().ToLowerInvariant()} endpoint is not an AGE node graphid."),
+                $"The selected {name} endpoint is not an AGE node graphid."),
             NewGraphCommandEndpoint { Node: { } node } => PlanNewEndpoint(name, node),
-            _ => throw new GraphException(
-                $"The {role.ToString().ToLowerInvariant()} endpoint operand is invalid."),
+            _ => throw new GraphException($"The {name} endpoint operand is invalid."),
         };
+    }
 
     private EndpointPlan PlanNewEndpoint(string name, Graph.INode node)
     {
@@ -387,8 +388,6 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             .ToList();
         var rows = level.Select(node => new Dictionary<string, object?>
         {
-            ["rootToken"] = node.RootCorrelationToken,
-            ["rootStorageLabel"] = node.RootStorageLabel,
             ["parentToken"] = node.ParentCorrelationToken,
             ["parentStorageLabel"] = node.ParentStorageLabel,
             ["token"] = node.CorrelationToken,
@@ -417,9 +416,6 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             $"complex_level_{depth}",
             $$"""
             UNWIND $rows AS row
-            MATCH (root)
-            WHERE root.{{correlationProperty}} = row.rootToken
-              AND size([rootLabel IN labels(root) WHERE rootLabel = row.rootStorageLabel]) > 0
             MATCH (parent)
             WHERE parent.{{correlationProperty}} = row.parentToken
               AND size([parentLabel IN labels(parent) WHERE parentLabel = row.parentStorageLabel]) > 0
@@ -569,21 +565,20 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         IReadOnlyList<AgeUniquenessCheck> targetChecks,
         IReadOnlyList<AgeUniquenessCheck> relationshipChecks,
         IReadOnlyList<IReadOnlyList<ComplexPropertyManager.SubgraphValueNode>> valueNodeLevels,
-        int expectedRootCount,
-        string relationshipTypeName,
-        int expectedCleanupCount)
+        IReadOnlyList<EndpointPlan> newEndpoints,
+        string relationshipTypeName)
     {
         var resultMap = results.ToDictionary(result => result.Name, StringComparer.Ordinal);
         ValidateUniqueness(resultMap, "source_unique", sourceChecks);
         ValidateUniqueness(resultMap, "target_unique", targetChecks);
         ValidateUniqueness(resultMap, "relationship_unique", relationshipChecks);
 
-        var actualRootCount = resultMap.Keys
-            .Where(name => name.EndsWith("_root", StringComparison.Ordinal))
-            .Sum(name => GetCount(resultMap, name, "createdCount"));
-        if (actualRootCount != expectedRootCount)
+        foreach (var endpoint in newEndpoints)
         {
-            throw new GraphException("Failed to create the expected subgraph endpoint nodes.");
+            if (GetCount(resultMap, $"{endpoint.Name}_root", "createdCount") != 1)
+            {
+                throw new GraphException("Failed to create the expected subgraph endpoint nodes.");
+            }
         }
 
         for (var depth = 0; depth < valueNodeLevels.Count; depth++)
@@ -600,6 +595,9 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
                 $"Failed to create relationship of type {relationshipTypeName}; one or both frozen endpoints may no longer exist.");
         }
 
+        // Every root and every value node carries exactly one token, so the cleanup must clear as
+        // many nodes as the plan created. A shortfall means a token survives the commit.
+        var expectedCleanupCount = newEndpoints.Count + valueNodeLevels.Sum(level => level.Count);
         if (GetCount(resultMap, "cleanup", "cleanedCount") != expectedCleanupCount)
         {
             throw new GraphException("Failed to remove every transient subgraph correlation token.");

@@ -117,7 +117,7 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
     }
 
     [Fact]
-    public async Task CreateAsync_CreateOnly_SameEndpointIds_CreatesDistinctEndpointNodes()
+    public async Task CreateAsync_CreateOnly_SameEndpointIds_ThrowsAndCreatesNothing()
     {
         await using var dataSource = CreateDataSource();
         await using var store = await graphCleanup.CreateStoreAsync(
@@ -127,21 +127,62 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
         var node = new Person { FirstName = "Self" };
         var relationship = new Knows(node, node);
 
-        await store.Graph.CreateAsync(
+        // Create-only creates both endpoints, so a shared id would leave two roots answering to it.
+        var exception = await Assert.ThrowsAsync<GraphException>(() => store.Graph.CreateAsync(
             node,
             relationship,
             node,
             null,
             null,
-            TestContext.Current.CancellationToken);
+            TestContext.Current.CancellationToken));
 
-        Assert.Equal(
-            2,
-            await store.Graph.Nodes<Person>()
-                .Where(person => person.Id == node.Id)
-                .CountAsync(TestContext.Current.CancellationToken));
-        Assert.Single(await store.Graph.Relationships<Knows>()
+        Assert.Equal("Create-only subgraph endpoints must have distinct IDs.", exception.Message);
+        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            store.Graph.GetNodeAsync<Person>(node.Id, null, TestContext.Current.CancellationToken));
+        Assert.Empty(await store.Graph.Nodes<Person>().ToListAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(await store.Graph.Relationships<Knows>()
             .ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateAsync_CreateMissingEndpoints_DuplicateRelationshipId_ThrowsAndCreatesNothing()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var dataSource = CreateDataSource();
+        await using var store = await graphCleanup.CreateStoreAsync(
+            dataSource,
+            "cvoya_subgraph_batch",
+            cancellationToken);
+        var graph = store.Graph;
+
+        var existingSource = new Person { FirstName = "Existing source" };
+        var existingTarget = new Person { FirstName = "Existing target" };
+        await graph.CreateNodeAsync(existingSource, null, cancellationToken);
+        await graph.CreateNodeAsync(existingTarget, null, cancellationToken);
+        var existingRelationship = new Knows(existingSource, existingTarget);
+        await graph.CreateRelationshipAsync(existingRelationship, null, cancellationToken);
+
+        var newSource = new Person { FirstName = "Merged source" };
+        var newTarget = new Person { FirstName = "Merged target" };
+        var duplicateRelationship = new Knows(newSource, newTarget)
+        {
+            Id = existingRelationship.Id,
+        };
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() => graph.CreateAsync(
+            newSource,
+            duplicateRelationship,
+            newTarget,
+            new GraphOperationOptions { CreateMissingEndpoints = true },
+            null,
+            cancellationToken));
+
+        Assert.Equal($"Relationship with ID '{existingRelationship.Id}' already exists.", exception.Message);
+        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            graph.GetNodeAsync<Person>(newSource.Id, null, cancellationToken));
+        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            graph.GetNodeAsync<Person>(newTarget.Id, null, cancellationToken));
+        Assert.Single(await graph.Relationships<Knows>().ToListAsync(cancellationToken));
     }
 
     [Fact]
@@ -176,7 +217,7 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
     }
 
     [Fact]
-    public async Task EndpointIntentBatches_LeaveNoCorrelationOrSyntheticComplexIds()
+    public async Task EndpointCommandBatches_LeaveNoCorrelationOrSyntheticComplexIds()
     {
         var batchExecutions = 0;
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -271,7 +312,7 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
     [InlineData("complex_level_1", true)]
     [InlineData("relationship", true)]
     [InlineData("cleanup", true)]
-    public async Task EndpointIntentBatch_ValidationFailure_RollsBackEveryLevel(
+    public async Task EndpointCommandBatch_ValidationFailure_RollsBackEveryLevel(
         string failedCommand,
         bool callerOwnsTransaction)
     {
@@ -332,7 +373,7 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
     }
 
     [Fact]
-    public async Task ConcurrentEndpointIntentBatches_DoNotCrossCorrelateEqualValues()
+    public async Task ConcurrentEndpointCommandBatches_DoNotCrossCorrelateEqualValues()
     {
         const int operationCount = 12;
         var cancellationToken = TestContext.Current.CancellationToken;

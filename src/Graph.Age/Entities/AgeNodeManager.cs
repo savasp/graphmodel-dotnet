@@ -317,7 +317,11 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         return record["nodeId"].As<long>();
     }
 
-    private static async Task<bool> NodeExistsByIdAsync(
+    /// <summary>
+    /// Reports whether a user root node already carries <paramref name="id"/>. Complex-property
+    /// value nodes are excluded, so this only ever observes ids the domain model owns.
+    /// </summary>
+    internal static async Task<bool> NodeExistsByIdAsync(
         string id,
         AgeQueryRunner transaction,
         CancellationToken cancellationToken)
