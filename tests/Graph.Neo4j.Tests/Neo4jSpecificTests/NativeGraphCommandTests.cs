@@ -260,6 +260,70 @@ public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(ha
     }
 
     [Fact]
+    public async Task Mutation_WithExplicitReadOnlyTransaction_ThrowsBeforeAnyWrite()
+    {
+        var person = new Person { FirstName = "read-only-guard" };
+        await Graph.CreateNodeAsync(person, cancellationToken: TestContext.Current.CancellationToken);
+        var neo4jGraph = Assert.IsType<Neo4jGraph>(Graph);
+
+        await using var readOnlyTransaction = new GraphTransaction(neo4jGraph.Context, isReadOnly: true);
+        await readOnlyTransaction.BeginTransactionAsync(TestContext.Current.CancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            Neo4jGraphCommand.UpdateAsync(
+                Graph.Nodes<Person>(readOnlyTransaction).Where(candidate => candidate.Id == person.Id),
+                setters => setters.SetProperty(candidate => candidate.FirstName, "after"),
+                TestContext.Current.CancellationToken));
+        Assert.Equal(
+            "A graph command cannot use a transaction opened with read-only access.",
+            exception.Message);
+
+        await readOnlyTransaction.RollbackAsync();
+        Assert.Equal(
+            "read-only-guard",
+            (await Graph.GetNodeAsync<Person>(
+                person.Id,
+                cancellationToken: TestContext.Current.CancellationToken)).FirstName);
+    }
+
+    [Fact]
+    public async Task CancelledRelationshipCreation_CreatesNothing()
+    {
+        var source = new Person { FirstName = "cancel-relationship-source" };
+        var target = new Person { FirstName = "cancel-relationship-target" };
+        await Graph.CreateNodeAsync(source, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(target, cancellationToken: TestContext.Current.CancellationToken);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Neo4jGraphCommand.CreateRelationshipAsync(
+            Graph,
+            Graph.Nodes<Person>().Where(person => person.FirstName == source.FirstName),
+            new Knows(),
+            Graph.Nodes<Person>().Where(person => person.FirstName == target.FirstName),
+            RelationshipDirection.Outgoing,
+            cancellation.Token));
+
+        Assert.Equal(0, await Graph.Relationships<Knows>().CountAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CancelledDelete_LeavesSelectedEntityUnchanged()
+    {
+        var person = new Person { FirstName = "cancel-delete" };
+        await Graph.CreateNodeAsync(person, cancellationToken: TestContext.Current.CancellationToken);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Neo4jGraphCommand.DeleteAsync(
+            Graph.Nodes<Person>().Where(candidate => candidate.Id == person.Id),
+            cascadeDelete: false,
+            cancellation.Token));
+
+        _ = await Graph.GetNodeAsync<Person>(person.Id, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task NewNativeSubgraph_DoesNotPersistLegacyOrReservedIdentityProtocol()
     {
         var marker = $"native-subgraph-{Guid.NewGuid():N}";

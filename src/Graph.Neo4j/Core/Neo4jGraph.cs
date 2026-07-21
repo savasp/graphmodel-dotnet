@@ -645,4 +645,11 @@ internal class Neo4jGraph : IGraph
     }
 
     internal global::Neo4j.Driver.IDriver Driver => _graphStore.Driver;
+
+    /// <summary>
+    /// Gets the graph context backing this graph instance. Exposed internally so tests can reach
+    /// provider-internal managers and construct transactions (e.g. an explicit read-only
+    /// <see cref="GraphTransaction"/>) that belong to this graph, without duplicating its wiring.
+    /// </summary>
+    internal GraphContext Context => _graphContext;
 }

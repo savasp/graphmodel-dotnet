@@ -466,7 +466,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 .Select(label => CypherIdentifier.Escape(label, "node label"))
                 .ToArray();
             var removeLabelsClause = escapedCurrentLabels.Length > 0
-                ? $"REMOVE n:{string.Join(":n:", escapedCurrentLabels)} "
+                ? $"REMOVE n:{string.Join(":", escapedCurrentLabels)} "
                 : string.Empty;
             var newLabels = CypherIdentifier.EscapeLabels(entity.ActualLabels);
             cypher = $"MATCH (n) WHERE elementId(n) = $elementId {removeLabelsClause}SET n = $props SET n:{newLabels} RETURN count(n) AS affectedCount";
