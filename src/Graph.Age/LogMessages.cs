@@ -88,15 +88,6 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Building dynamic relationships queryable")]
     internal static partial void LogDebugAgeGraph467(this ILogger logger);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Recreating indexes for Age graph")]
-    internal static partial void LogInformationAgeGraph539(this ILogger logger);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Index recreation completed successfully")]
-    internal static partial void LogInformationAgeGraph541(this ILogger logger);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to recreate indexes")]
-    internal static partial void LogErrorAgeGraph551(this ILogger logger, Exception exception);
-
     [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back an uncommitted AGE transaction during disposal")]
     internal static partial void LogWarningAgeGraphTransaction70(this ILogger logger, Exception exception);
 
@@ -270,8 +261,5 @@ internal static partial class LogMessages
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Initialized AGE schema metadata")]
     internal static partial void LogDebugAgeSchemaManager49(this ILogger logger);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "AGE property indexes are unavailable because entity properties are stored in agtype")]
-    internal static partial void LogInformationAgeSchemaManager60(this ILogger logger);
 
 }

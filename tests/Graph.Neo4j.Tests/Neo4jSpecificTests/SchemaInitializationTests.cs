@@ -41,27 +41,64 @@ public sealed class SchemaInitializationTests : Neo4jTest
     }
 
     [Fact]
-    public async Task RecreateIndexesAsync_DropsAndRecreatesConfiguredIndexes()
+    public async Task RecreateManagedIndexesAsync_RebuildsOwnedIndexesAndPreservesEverythingElse()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         await DropManagedIndexesAsync();
-        await Graph.CreateNodeAsync(new Class1(), null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(
+            new Class1 { Property1 = "managed rebuild token" },
+            null,
+            cancellationToken);
 
-        const string staleIndexName = "idx_recreate_indexes_stale";
+        const string staleIndexName = "idx_retiredmodel_value";
+        const string externalRangeIndexName = "external_range_index";
+        const string externalFullTextIndexName = "external_fulltext_index";
+        const string externalConstraintName = "external_unique_constraint";
         var configuredIndexes = await GetManagedIndexNamesAsync();
         Assert.Contains("idx_configtestperson_firstname", configuredIndexes);
         Assert.Contains("idx_configtestknows_since", configuredIndexes);
         Assert.Contains("node_fulltext_index", configuredIndexes);
         Assert.Contains("rel_fulltext_index", configuredIndexes);
 
+        // A fixed-name provider-owned full-text index stays owned when its model-derived
+        // definition becomes stale. RecreateManagedIndexesAsync must replace it.
+        await ExecuteSchemaCommandAsync("DROP INDEX node_fulltext_index");
         await ExecuteSchemaCommandAsync(
-            $"CREATE INDEX {staleIndexName} FOR (n:RecreateIndexesSentinel) ON (n.Value)");
-        Assert.Contains(staleIndexName, await GetManagedIndexNamesAsync());
+            "CREATE FULLTEXT INDEX node_fulltext_index FOR (n:StaleLabel) ON EACH [n.StaleProperty]");
 
-        await Graph.RecreateIndexesAsync(TestContext.Current.CancellationToken);
+        // A stale deterministic-looking range name is not proof of ownership once its defining
+        // model metadata is gone. Explicitly external RANGE/FULLTEXT indexes are equally outside
+        // the operation, and constraints are never managed by it.
+        await ExecuteSchemaCommandAsync(
+            $"CREATE INDEX {staleIndexName} FOR (n:RecreateManagedIndexesSentinel) ON (n.Value)");
+        await ExecuteSchemaCommandAsync(
+            $"CREATE INDEX {externalRangeIndexName} FOR (n:ExternalRange) ON (n.Value)");
+        await ExecuteSchemaCommandAsync(
+            $"CREATE FULLTEXT INDEX {externalFullTextIndexName} FOR (n:ExternalFullText) ON EACH [n.Value]");
+        await ExecuteSchemaCommandAsync(
+            $"CREATE CONSTRAINT {externalConstraintName} FOR (n:ExternalUnique) REQUIRE n.Value IS UNIQUE");
+
+        var beforeIndexIds = await GetIndexIdsAsync();
+        Assert.All(
+            configuredIndexes,
+            indexName => Assert.True(beforeIndexIds.ContainsKey(indexName), $"Missing configured index {indexName}"));
+
+        await Graph.RecreateManagedIndexesAsync(cancellationToken);
 
         var recreatedIndexes = await GetManagedIndexNamesAsync();
-        Assert.DoesNotContain(staleIndexName, recreatedIndexes);
-        Assert.Equal(configuredIndexes, recreatedIndexes);
+        var afterIndexIds = await GetIndexIdsAsync();
+        Assert.All(configuredIndexes, indexName => Assert.NotEqual(beforeIndexIds[indexName], afterIndexIds[indexName]));
+        Assert.Equal(beforeIndexIds[staleIndexName], afterIndexIds[staleIndexName]);
+        Assert.Equal(beforeIndexIds[externalRangeIndexName], afterIndexIds[externalRangeIndexName]);
+        Assert.Equal(beforeIndexIds[externalFullTextIndexName], afterIndexIds[externalFullTextIndexName]);
+        Assert.Contains(staleIndexName, recreatedIndexes);
+        Assert.Contains(externalRangeIndexName, recreatedIndexes);
+        Assert.Contains(externalFullTextIndexName, recreatedIndexes);
+        Assert.Contains(externalConstraintName, await GetManagedConstraintNamesAsync());
+
+        var fullTextLabels = await GetIndexLabelsOrTypesAsync("node_fulltext_index");
+        Assert.DoesNotContain("StaleLabel", fullTextLabels);
+        Assert.Contains("Class1", fullTextLabels);
     }
 
     [Fact]
@@ -101,7 +138,7 @@ public sealed class SchemaInitializationTests : Neo4jTest
     }
 
     [Fact]
-    public async Task IndependentStores_ConcurrentRecreateIndexes_LeavesRequestedSchemaInstalled()
+    public async Task IndependentStores_ConcurrentRecreateManagedIndexes_LeavesRequestedSchemaInstalled()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await DropManagedSchemaAsync();
@@ -123,14 +160,67 @@ public sealed class SchemaInitializationTests : Neo4jTest
             secondStore.Graph.SchemaRegistry.InitializeAsync(cancellationToken));
 
         await Task.WhenAll(
-            firstStore.Graph.RecreateIndexesAsync(cancellationToken),
-            secondStore.Graph.RecreateIndexesAsync(cancellationToken));
+            firstStore.Graph.RecreateManagedIndexesAsync(cancellationToken),
+            secondStore.Graph.RecreateManagedIndexesAsync(cancellationToken));
 
         var indexes = await GetManagedIndexNamesAsync();
         Assert.Contains("idx_configtestperson_firstname", indexes);
         Assert.Contains("idx_configtestknows_since", indexes);
         Assert.Contains("node_fulltext_index", indexes);
         Assert.Contains("rel_fulltext_index", indexes);
+    }
+
+    [Fact]
+    public async Task RecreateManagedIndexesAsync_FailurePreservesExternalIndexesAndAllowsRetry()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await DropManagedSchemaAsync();
+        await Graph.CreateNodeAsync(new Class1(), null, cancellationToken);
+        await ExecuteSchemaCommandAsync(
+            "CREATE INDEX external_failure_sentinel FOR (n:ExternalFailureSentinel) ON (n.Value)");
+        var externalIndexId = (await GetIndexIdsAsync())["external_failure_sentinel"];
+
+        var failNextCreate = 1;
+        using var unusedBarrier = new Barrier(1);
+        await using var driver = new SchemaCommandBarrierDriver(
+            Neo4jHarness.CreateIndependentDriver(),
+            unusedBarrier,
+            static _ => false,
+            cypher => cypher.StartsWith("CREATE INDEX ", StringComparison.Ordinal)
+                && Interlocked.Exchange(ref failNextCreate, 0) == 1
+                    ? new InvalidOperationException("Injected managed-index creation failure.")
+                    : null);
+        await using var store = new Neo4jGraphStore(driver, harness.CurrentDatabaseName);
+
+        await Assert.ThrowsAsync<GraphException>(
+            () => store.Graph.RecreateManagedIndexesAsync(cancellationToken));
+        Assert.Equal(externalIndexId, (await GetIndexIdsAsync())["external_failure_sentinel"]);
+
+        await store.Graph.RecreateManagedIndexesAsync(cancellationToken);
+
+        var indexes = await GetManagedIndexNamesAsync();
+        Assert.Contains("idx_configtestperson_firstname", indexes);
+        Assert.Contains("idx_configtestknows_since", indexes);
+        Assert.Contains("node_fulltext_index", indexes);
+        Assert.Contains("rel_fulltext_index", indexes);
+        Assert.Equal(externalIndexId, (await GetIndexIdsAsync())["external_failure_sentinel"]);
+    }
+
+    [Fact]
+    public async Task RecreateManagedIndexesAsync_PreCancelled_PreservesExternalIndex()
+    {
+        await DropManagedSchemaAsync();
+        await Graph.CreateNodeAsync(new Class1(), null, TestContext.Current.CancellationToken);
+        await ExecuteSchemaCommandAsync(
+            "CREATE INDEX external_cancellation_sentinel FOR (n:ExternalCancellationSentinel) ON (n.Value)");
+        var externalIndexId = (await GetIndexIdsAsync())["external_cancellation_sentinel"];
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => Graph.RecreateManagedIndexesAsync(cancellation.Token));
+
+        Assert.Equal(externalIndexId, (await GetIndexIdsAsync())["external_cancellation_sentinel"]);
     }
 
     [Fact]
@@ -231,6 +321,25 @@ public sealed class SchemaInitializationTests : Neo4jTest
         var records = await result.ToListAsync(TestContext.Current.CancellationToken);
 
         return records.Select(record => record["name"].As<string>()).ToArray();
+    }
+
+    private async Task<IReadOnlyDictionary<string, long>> GetIndexIdsAsync()
+    {
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
+        var neo4jTransaction = (GraphTransaction)transaction;
+
+        const string cypher = """
+            SHOW INDEXES YIELD id, name, type, owningConstraint
+            WHERE (type = 'RANGE' OR type = 'FULLTEXT') AND owningConstraint IS NULL
+            RETURN id, name
+            """;
+        var result = await neo4jTransaction.Transaction.RunAsync(cypher);
+        var records = await result.ToListAsync(TestContext.Current.CancellationToken);
+
+        return records.ToDictionary(
+            record => record["name"].As<string>(),
+            record => record["id"].As<long>(),
+            StringComparer.Ordinal);
     }
 
     private async Task<string[]> GetIndexLabelsOrTypesAsync(string indexName)

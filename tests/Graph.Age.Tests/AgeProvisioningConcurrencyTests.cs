@@ -28,6 +28,8 @@ public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graph
         ?? "Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres";
 
     private static readonly TimeSpan BlockedWaitTimeout = TimeSpan.FromSeconds(30);
+    private static readonly string[] RetiredManagedIndexNames =
+        ["cvoya_node_fulltext_gin", "cvoya_rel_fulltext_gin"];
 
     private const int ConcurrentFirstUseCount = 8;
     private const int IndependentStoreCount = 4;
@@ -325,7 +327,7 @@ public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graph
                     command.Parameters.AddWithValue("name", graphName);
                     command.Parameters.AddWithValue(
                         "indexes",
-                        new[] { AgeFullTextIndex.NodeIndexName, AgeFullTextIndex.RelationshipIndexName });
+                        RetiredManagedIndexNames);
                 },
                 cancellationToken));
     }

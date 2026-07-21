@@ -64,12 +64,24 @@ equivalent to the requested definition. An incompatible existing object still fa
 original Neo4j error.
 
 The provider-owned general full-text indexes (`node_fulltext_index` and `rel_fulltext_index`) are
-the exception: their definition is derived from the whole registered model, so it legitimately
-changes as the model evolves. When their installed definition no longer matches the current model,
-the provider drops and recreates them during initialization instead of failing.
+the exception: their exact names and matching node/relationship full-text kinds are reserved as
+the ownership marker. Their definition is derived from the whole registered model, so it
+legitimately changes as the model evolves. When their installed definition no longer matches the
+current model, the provider drops and recreates them during initialization instead of failing.
 
-`RecreateIndexesAsync` has the same concurrency guarantee. Concurrent callers may both complete
-when they request the same index definitions; incompatible definitions are not suppressed.
+`RecreateManagedIndexesAsync` rebuilds only positively owned indexes. A configured range index is
+owned only when its deterministic name, kind, entity type, label/type, and properties all match the
+current registered model. A stale range index that is no longer described by that model is
+preserved because its ownership can no longer be proved. The two exact reserved full-text indexes
+remain positively owned when their model-derived definition is stale; they are rebuilt when still
+configured and removed when the current model no longer requires them. External indexes,
+same-named incompatible range indexes, and every uniqueness-backed index are preserved.
+
+Calls on one graph instance are serialized. Independent equivalent callers converge on the same
+installed definitions through metadata-checked conflict handling. Callers using different models
+against the same database must coordinate their maintenance operations. Cancellation or failure
+can leave only a positively owned index absent; retrying the operation restores the configured
+managed set without expanding the ownership boundary.
 
 ## 📚 Documentation
 

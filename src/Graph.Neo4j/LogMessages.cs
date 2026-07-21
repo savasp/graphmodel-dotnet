@@ -115,13 +115,13 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Building full text search queryable for relationships of type {RelationshipType}; query length: {QueryLength}")]
     internal static partial void LogDebugNeo4jGraph547(this ILogger logger, global::System.String relationshipType, global::System.Int32 queryLength);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Recreating indexes for Neo4j graph")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Recreating managed indexes for Neo4j graph")]
     internal static partial void LogInformationNeo4jGraph562(this ILogger logger);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Index recreation completed successfully")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Managed index recreation completed successfully")]
     internal static partial void LogInformationNeo4jGraph564(this ILogger logger);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to recreate indexes")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to recreate managed indexes")]
     internal static partial void LogErrorNeo4jGraph572(this ILogger logger, Exception exception);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to roll back cancelled transaction")]
@@ -298,13 +298,13 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to initialize Neo4j schema")]
     internal static partial void LogErrorNeo4jSchemaManager98(this ILogger logger, Exception exception);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Recreating Neo4j indexes...")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Recreating managed Neo4j indexes...")]
     internal static partial void LogInformationNeo4jSchemaManager116(this ILogger logger);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Neo4j indexes recreated successfully")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Managed Neo4j indexes recreated successfully")]
     internal static partial void LogInformationNeo4jSchemaManager140(this ILogger logger);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to recreate Neo4j indexes")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to recreate managed Neo4j indexes")]
     internal static partial void LogErrorNeo4jSchemaManager148(this ILogger logger, Exception exception);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Node schema already processed for label: {Label}")]
@@ -418,7 +418,7 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Dropped index: {IndexName}")]
     internal static partial void LogDebugNeo4jSchemaManager690(this ILogger logger, global::System.String indexName);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Dropped {Count} indexes")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Dropped {Count} positively owned indexes")]
     internal static partial void LogInformationNeo4jSchemaManager695(this ILogger logger, global::System.Int32 count);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Cleared schema cache and reset initialization state")]

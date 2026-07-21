@@ -5,7 +5,6 @@ namespace Cvoya.Graph.Age;
 
 using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
-using Cvoya.Graph.Age.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -251,7 +250,7 @@ public sealed class AgeGraphStore : IAsyncDisposable
     /// <summary>
     /// The one idempotent opening sequence for writes: probe for the graph and create only the graph
     /// itself when absent. Logical label/type tables are created by the authorized write that first
-    /// needs them; managed full-text infrastructure is explicit through <c>RecreateIndexesAsync</c>.
+    /// needs them; the provider owns no managed index artifacts.
     /// </summary>
     /// <remarks>
     /// It runs in a single transaction holding <see cref="Schema.AgeProvisioningLock"/>, so peers racing
@@ -302,51 +301,6 @@ public sealed class AgeGraphStore : IAsyncDisposable
         command.Transaction = transaction;
         command.CommandText = "SELECT ag_catalog.create_graph(@name)";
         command.Parameters.AddWithValue("name", GraphName);
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Explicitly creates the legacy managed tables needed by the current full-text implementation.
-    /// Ordinary reads and writes never call this method.
-    /// </summary>
-    internal async Task EnsureManagedFullTextTablesAsync(
-        NpgsqlConnection connection,
-        CancellationToken cancellationToken)
-    {
-        await EnsureGraphCreatedAsync(connection, cancellationToken).ConfigureAwait(false);
-
-        var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-        await using var transactionLease = transaction.ConfigureAwait(false);
-        await Schema.AgeProvisioningLock
-            .AcquireAsync(connection, transaction, GraphName, cancellationToken)
-            .ConfigureAwait(false);
-        await EnsurePhysicalLabelsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    [System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Security",
-        "CA2100:Review SQL queries for security vulnerabilities",
-        Justification = "GraphName is validated by AgeSqlIdentifier.Validate at construction; the labels are compile-time constants.")]
-    private async Task EnsurePhysicalLabelsAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        var command = connection.CreateCommand();
-        await using var commandLease = command.ConfigureAwait(false);
-        command.Transaction = transaction;
-        command.CommandText = $"""
-            SELECT *
-            FROM ag_catalog.cypher(
-                '{GraphName}',
-                $$CREATE (source:{SerializationBridge.PhysicalNodeLabel})
-                  CREATE (target:{SerializationBridge.PhysicalNodeLabel})
-                  CREATE (source)-[relationship:{SerializationBridge.PhysicalRelationshipType}]->(target)
-                  DELETE relationship, source, target
-                  RETURN true AS provisioned$$)
-            AS (provisioned agtype)
-            """;
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
