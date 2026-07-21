@@ -38,7 +38,12 @@ Options:
   -v, --verbosity <level>       Build/test verbosity (default: normal)
   --lane <fast|neo4j|age|all>   Test lane (default: all)
   --fast                        Alias for --lane fast
+  --project <name-or-path>      Run one test project (repeatable)
+  --filter <xunit-query>        Apply an xUnit query filter (repeatable, OR)
   --coverage                    Collect Cobertura coverage per test project
+  --report-trx                  Write an xUnit TRX report per test project
+  --results-directory <path>   Root directory for coverage and test reports
+  --keep-going                  Run every selected project after a test failure
   --neo4j                       Start the local Neo4j container before tests
   --age                         Start the local Apache AGE container before tests
   --seq                         Start the local Seq container before tests
@@ -55,6 +60,9 @@ Examples:
   ./scripts/run-tests.sh --lane neo4j --neo4j
   ./scripts/run-tests.sh --lane age --age
   ./scripts/run-tests.sh --neo4j --age
+  ./scripts/run-tests.sh --fast --project Graph.Core.Tests
+  ./scripts/run-tests.sh --fast --project Graph.Core.Tests --filter '/*/*/GraphTests/*'
+  ./scripts/run-tests.sh --lane all --no-build --coverage --report-trx --results-directory TestResults --keep-going
   ./scripts/run-tests.sh --fast --disable-diff-engine
 EOF
 }
@@ -63,6 +71,9 @@ CONFIGURATION="Debug"
 VERBOSITY="normal"
 LANE="all"
 COLLECT_COVERAGE=false
+REPORT_TRX=false
+RESULTS_DIRECTORY_ROOT=""
+KEEP_GOING=false
 START_NEO4J=false
 START_AGE=false
 START_SEQ=false
@@ -72,6 +83,8 @@ RUN_AGE=true
 RUN_PERFORMANCE=false
 BUILD_SOLUTION=true
 DISABLE_DIFF_ENGINE=false
+PROJECT_SELECTORS=()
+TEST_FILTERS=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -91,8 +104,28 @@ while [[ $# -gt 0 ]]; do
             LANE="fast"
             shift
             ;;
+        --project)
+            PROJECT_SELECTORS+=("${2:?--project requires a value}")
+            shift 2
+            ;;
+        --filter)
+            TEST_FILTERS+=("${2:?--filter requires a value}")
+            shift 2
+            ;;
         --coverage)
             COLLECT_COVERAGE=true
+            shift
+            ;;
+        --report-trx)
+            REPORT_TRX=true
+            shift
+            ;;
+        --results-directory)
+            RESULTS_DIRECTORY_ROOT="${2:?--results-directory requires a value}"
+            shift 2
+            ;;
+        --keep-going)
+            KEEP_GOING=true
             shift
             ;;
         --neo4j)
@@ -165,6 +198,14 @@ print_header "CVOYA graph test runner"
 print_status "Configuration: $CONFIGURATION"
 print_status "Lane: $LANE"
 
+if [ "${#PROJECT_SELECTORS[@]}" -gt 0 ]; then
+    print_status "Projects: ${PROJECT_SELECTORS[*]}"
+fi
+
+if [ "${#TEST_FILTERS[@]}" -gt 0 ]; then
+    print_status "xUnit query filters: ${TEST_FILTERS[*]}"
+fi
+
 if [ ! -f "cvoya-graph.sln" ] || [ ! -d "tests" ]; then
     print_error "Run this script from the repository root."
     exit 1
@@ -177,38 +218,46 @@ fi
 
 print_status ".NET SDK: $(dotnet --version)"
 
-if [ "$START_NEO4J" = true ]; then
-    print_header "Starting Neo4j"
-    ./scripts/containers/start-neo4j.sh
-    export NEO4J_URI="${NEO4J_URI:-bolt://localhost:7687}"
-    export NEO4J_USER="${NEO4J_USER:-neo4j}"
-    export NEO4J_PASSWORD="${NEO4J_PASSWORD:-password}"
-fi
+project_matches_selector() {
+    local project="${1#./}"
+    local selector="${2#./}"
+    local project_name
+    local project_stem
 
-if [ "$START_AGE" = true ]; then
-    print_header "Starting Apache AGE"
-    ./scripts/containers/start-age.sh
-    export AGE_CONNECTION_STRING="${AGE_CONNECTION_STRING:-Host=localhost;Port=${AGE_PORT:-5455};Username=postgres;Password=postgres;Database=postgres}"
-fi
+    project_name=$(basename "$project")
+    project_stem="${project_name%.csproj}"
 
-if [ "$START_SEQ" = true ]; then
-    print_header "Starting Seq"
-    ./scripts/containers/start-seq.sh
-fi
+    case "$selector" in
+        "$project"|"${project%.csproj}"|"$project_name"|"$project_stem")
+            return 0
+            ;;
+    esac
 
-if [ "$DISABLE_DIFF_ENGINE" = true ]; then
-    export DiffEngine_Disabled=true
-fi
+    return 1
+}
 
-if [ "$BUILD_SOLUTION" = true ]; then
-    print_header "Building solution"
-    dotnet build cvoya-graph.sln \
-        --configuration "$CONFIGURATION" \
-        --verbosity "$VERBOSITY"
-fi
+matches_project_selector() {
+    local project="$1"
+    local selector
+
+    if [ "${#PROJECT_SELECTORS[@]}" -eq 0 ]; then
+        return 0
+    fi
+
+    for selector in "${PROJECT_SELECTORS[@]}"; do
+        project_matches_selector "$project" "$selector" && return 0
+    done
+
+    return 1
+}
 
 should_run_project() {
-    local project_name="$1"
+    local project="$1"
+    local project_name
+
+    project_name=$(basename "$project")
+
+    matches_project_selector "$project" || return 1
 
     case "$project_name" in
         Graph.Performance.Tests.csproj)
@@ -239,11 +288,82 @@ should_run_project() {
     esac
 }
 
+SELECTED_PROJECTS=()
+
+while IFS= read -r project; do
+    if should_run_project "$project"; then
+        SELECTED_PROJECTS+=("$project")
+    fi
+done < <(find tests -name '*.csproj' -print | LC_ALL=C sort)
+
+if [ "${#PROJECT_SELECTORS[@]}" -gt 0 ]; then
+    for selector in "${PROJECT_SELECTORS[@]}"; do
+        selector_matched=false
+
+        for project in "${SELECTED_PROJECTS[@]}"; do
+            if project_matches_selector "$project" "$selector"; then
+                selector_matched=true
+                break
+            fi
+        done
+
+        if [ "$selector_matched" = false ]; then
+            print_error "Project selector '$selector' did not match a project in the selected lane."
+            exit 1
+        fi
+    done
+fi
+
+if [ "${#SELECTED_PROJECTS[@]}" -eq 0 ]; then
+    print_error "The selected lane and project filters did not contain any test projects."
+    exit 1
+fi
+
+if [ "$START_NEO4J" = true ]; then
+    print_header "Starting Neo4j"
+    ./scripts/containers/start-neo4j.sh
+    export NEO4J_URI="${NEO4J_URI:-bolt://localhost:7687}"
+    export NEO4J_USER="${NEO4J_USER:-neo4j}"
+    export NEO4J_PASSWORD="${NEO4J_PASSWORD:-password}"
+fi
+
+if [ "$START_AGE" = true ]; then
+    print_header "Starting Apache AGE"
+    ./scripts/containers/start-age.sh
+    export AGE_CONNECTION_STRING="${AGE_CONNECTION_STRING:-Host=localhost;Port=${AGE_PORT:-5455};Username=postgres;Password=postgres;Database=postgres}"
+fi
+
+if [ "$START_SEQ" = true ]; then
+    print_header "Starting Seq"
+    ./scripts/containers/start-seq.sh
+fi
+
+if [ "$DISABLE_DIFF_ENGINE" = true ]; then
+    export DiffEngine_Disabled=true
+fi
+
+if [ "$BUILD_SOLUTION" = true ]; then
+    if [ "${#PROJECT_SELECTORS[@]}" -gt 0 ]; then
+        print_header "Building selected test projects"
+        for project in "${SELECTED_PROJECTS[@]}"; do
+            dotnet build "$project" \
+                --configuration "$CONFIGURATION" \
+                --verbosity "$VERBOSITY"
+        done
+    else
+        print_header "Building solution"
+        dotnet build cvoya-graph.sln \
+            --configuration "$CONFIGURATION" \
+            --verbosity "$VERBOSITY"
+    fi
+fi
+
 run_test_project() {
     local project="$1"
     local project_name
     local slug
     local log_file
+    local results_root
     local test_count
     local -a command
 
@@ -258,13 +378,34 @@ run_test_project() {
         --verbosity "$VERBOSITY"
     )
 
+    results_root="$RESULTS_DIRECTORY_ROOT"
+    if [ -z "$results_root" ] && [ "$COLLECT_COVERAGE" = true ]; then
+        results_root="coverage"
+    elif [ -z "$results_root" ] && [ "$REPORT_TRX" = true ]; then
+        results_root="TestResults"
+    fi
+
+    if [ -n "$results_root" ]; then
+        command+=(--results-directory "$results_root/$slug")
+    fi
+
     if [ "$COLLECT_COVERAGE" = true ]; then
         command+=(
-            --results-directory "coverage/$slug"
             --coverage
             --coverage-output "$slug.cobertura.xml"
             --coverage-output-format cobertura
         )
+    fi
+
+    if [ "$REPORT_TRX" = true ]; then
+        command+=(
+            --report-xunit-trx
+            --report-xunit-trx-filename "$slug.trx"
+        )
+    fi
+
+    if [ "${#TEST_FILTERS[@]}" -gt 0 ]; then
+        command+=(--filter-query "${TEST_FILTERS[@]}")
     fi
 
     print_header "Testing $project_name"
@@ -273,7 +414,11 @@ run_test_project() {
         return 1
     fi
 
-    test_count=$(sed -nE 's/^[[:space:]]*total:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$log_file" | tail -n 1)
+    test_count=$(
+        sed $'s/\033\[[0-9;]*m//g' "$log_file" \
+            | sed -nE 's/^[[:space:]]*total:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' \
+            | tail -n 1
+    )
     rm -f "$log_file"
 
     if [ -z "$test_count" ] || [ "$test_count" -eq 0 ]; then
@@ -287,16 +432,19 @@ run_test_project() {
 
 SELECTED_PROJECT_COUNT=0
 SELECTED_TEST_COUNT=0
+TEST_FAILURE=false
 
-while IFS= read -r project; do
-    project_name=$(basename "$project")
-    if should_run_project "$project_name"; then
-        run_test_project "$project"
+for project in "${SELECTED_PROJECTS[@]}"; do
+    if ! run_test_project "$project"; then
+        TEST_FAILURE=true
+        if [ "$KEEP_GOING" = false ]; then
+            exit 1
+        fi
     fi
-done < <(find tests -name '*.csproj' -print | LC_ALL=C sort)
+done
 
-if [ "$SELECTED_PROJECT_COUNT" -eq 0 ]; then
-    print_error "The selected lane did not contain any test projects."
+if [ "$TEST_FAILURE" = true ]; then
+    print_error "One or more selected test projects failed."
     exit 1
 fi
 
@@ -309,5 +457,9 @@ print_header "Test lane completed"
 print_status "$SELECTED_PROJECT_COUNT project(s), $SELECTED_TEST_COUNT test(s)"
 
 if [ "$COLLECT_COVERAGE" = true ]; then
-    print_status "Coverage reports: coverage/"
+    print_status "Coverage reports: ${RESULTS_DIRECTORY_ROOT:-coverage}/"
+fi
+
+if [ "$REPORT_TRX" = true ]; then
+    print_status "TRX reports: ${RESULTS_DIRECTORY_ROOT:-TestResults}/"
 fi

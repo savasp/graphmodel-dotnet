@@ -625,12 +625,12 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task RecreateIndexesAsync(CancellationToken cancellationToken = default)
+    public async Task RecreateManagedIndexesAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             _logger.LogInformationNeo4jGraph562();
-            await _graphContext.SchemaManager.RecreateIndexesAsync(cancellationToken).ConfigureAwait(false);
+            await _graphContext.SchemaManager.RecreateManagedIndexesAsync(cancellationToken).ConfigureAwait(false);
             _logger.LogInformationNeo4jGraph564();
         }
         catch (OperationCanceledException)
@@ -640,7 +640,7 @@ internal class Neo4jGraph : IGraph
         catch (Exception ex)
         {
             _logger.LogErrorNeo4jGraph572(ex);
-            throw new GraphException("Failed to recreate indexes", ex);
+            throw new GraphException("Failed to recreate managed indexes", ex);
         }
     }
 

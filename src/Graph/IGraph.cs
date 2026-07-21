@@ -316,11 +316,19 @@ public interface IGraph
     IGraphQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : class, IRelationship;
 
     /// <summary>
-    /// Recreates all indexes in the graph database.
-    /// This method will drop existing indexes and recreate them based on the current schema.
+    /// Recreates the index artifacts that the active provider can positively identify as managed
+    /// by CVOYA Graph. Indexes whose ownership cannot be proven and indexes owned by database
+    /// constraints are preserved.
     /// </summary>
+    /// <remarks>
+    /// Managed-index ownership is provider-specific. A provider with no managed index artifacts
+    /// completes successfully without issuing schema DDL. Successful completion means every
+    /// configured managed index is usable. Cancellation or a provider failure may leave a managed
+    /// artifact absent or not yet usable until this method is retried, but must never broaden the
+    /// operation to an index whose ownership is unproven.
+    /// </remarks>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
-    /// <exception cref="GraphException">Thrown when index recreation fails.</exception>
-    Task RecreateIndexesAsync(CancellationToken cancellationToken = default);
+    /// <exception cref="GraphException">Thrown when managed index recreation fails.</exception>
+    Task RecreateManagedIndexesAsync(CancellationToken cancellationToken = default);
 }

@@ -35,6 +35,7 @@ never mutates the store.
 
 - Data lives in process memory; nothing is persisted.
 - Queries are unindexed scans; there is no query optimization.
+- `RecreateManagedIndexesAsync` is a successful no-op because the provider owns no index artifacts.
 - Concurrency model: transactions buffer their writes and commit atomically under a single
   store-wide lock (single-writer serialized commits; reads take lock-free snapshots). This is
   simple and correct for a test double, not a throughput design.

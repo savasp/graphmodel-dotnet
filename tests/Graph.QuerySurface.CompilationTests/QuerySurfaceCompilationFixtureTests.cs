@@ -315,7 +315,37 @@ public class QuerySurfaceCompilationFixtureTests
         Assert.False(result.HasErrors, result.DescribeErrors());
     }
 
+    [Fact]
+    public void RecreateManagedIndexesAsync_Compiles()
+    {
+        var source = WithDomainModel("""
+            public static class SchemaMaintenance
+            {
+                public static Task Run(IGraph graph) => graph.RecreateManagedIndexesAsync();
+            }
+            """);
+
+        var result = CompilationFixture.Compile(source);
+
+        Assert.False(result.HasErrors, result.DescribeErrors());
+    }
+
     // ---- Must NOT compile ----
+
+    [Fact]
+    public void RemovedRecreateIndexesAsync_DoesNotCompile()
+    {
+        var source = WithDomainModel("""
+            public static class SchemaMaintenance
+            {
+                public static Task Run(IGraph graph) => graph.RecreateIndexesAsync();
+            }
+            """);
+
+        var result = CompilationFixture.Compile(source);
+
+        Assert.True(result.HasErrors, "Expected the removed RecreateIndexesAsync method to fail to compile.");
+    }
 
     [Fact]
     public void AverageAsync_UnsupportedNumericType_DoesNotCompile()

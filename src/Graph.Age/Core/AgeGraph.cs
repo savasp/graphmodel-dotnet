@@ -737,27 +737,10 @@ internal class AgeGraph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task RecreateIndexesAsync(CancellationToken cancellationToken = default)
+    public Task RecreateManagedIndexesAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        try
-        {
-            _logger.LogInformationAgeGraph539();
-            await _graphContext.SchemaManager.RecreateIndexesAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogInformationAgeGraph541();
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex) when (ex is GraphException or Npgsql.NpgsqlException)
-        {
-            // Recreating indexes provisions the graph and issues DDL over Npgsql, so a failure can be a
-            // label-collision GraphException from initialization or an NpgsqlException from the index
-            // DDL; wrap either into the public contract.
-            _logger.LogErrorAgeGraph551(ex);
-            throw new GraphException("Failed to recreate indexes", ex);
-        }
+        return Task.CompletedTask;
     }
 
 }
