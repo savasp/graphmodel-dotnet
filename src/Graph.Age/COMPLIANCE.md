@@ -5,13 +5,13 @@
 | Provider | `Cvoya.Graph.Age` (issue #86 implementation) |
 | Compliance suite | Repository build (`Cvoya.Graph.CompatibilityTests` 0.0.0-dev) |
 | Backing store | Apache AGE 1.7.0 / PostgreSQL 18 |
-| Date / run | 2026-07-20 / local strict certifying run; CI uses the same lane |
+| Date / run | 2026-07-21 / local strict certifying run; CI uses the same lane |
 
 ## Declared capabilities
 
 | Capability | Declared | Note |
 |---|---|---|
-| FullTextSearch | Yes | PostgreSQL discovers native/legacy/external tables; residual Cypher correlates private graphids. |
+| FullTextSearch | Yes | PostgreSQL discovers native/external tables; residual Cypher correlates private graphids. |
 | Transactions | Yes | One PostgreSQL connection and transaction per graph transaction. |
 | NestedTransactions | No | |
 | ComplexPropertyCascade | Yes | Owned value nodes are deleted transactionally. |
@@ -39,7 +39,8 @@ and `COUNT { }` but silently matches nothing, so nothing is left for the rendere
 Two correlated shapes have no equivalent staging and are rejected at translation time: a filtered
 nested grouping and multiple ordered collections in one projection. `AgeLabelPatternPass` then removes node labels and
 relationship types from those and other match patterns and adds native `labels()` / `type()` predicates
-with a legacy `inheritance_labels` alternative, while excluding provider-owned complex values;
+with a provider-reserved `inheritance_labels` alternative for mapped names outside AGE's native
+grammar, while excluding provider-owned complex values;
 `AgeClauseOrderPass` moves ordering and paging without parsing rendered Cypher (including the
 path-decomposition and aggregate exceptions), while
 `AgeTemporalParameterArithmeticPass` unwraps AGE-unsupported temporal constructors and folds
@@ -74,12 +75,15 @@ execution-boundary counter asserting one batch round-trip.
 ## Native storage and commands
 
 New user roots use their mapped AGE label/type. The label-lowering pass matches either native
-`labels()` / `type()` or legacy `inheritance_labels`, so concrete external rows need no CVOYA
-metadata and old `CvoyaNode` / `CvoyaRelationship` data remains usable without migration. Graph
-creation provisions only the graph; an authorized write discovers or creates only the native label
-table it needs under the graph-scoped advisory lock. Read transactions verify graph existence and
-perform no DDL. Managed full-text infrastructure is explicit; ordinary searches use a function-free
-fallback and correlate native graphids without exposing them as model data.
+`labels()` / `type()` or the provider-reserved representation for mapped names outside AGE's native
+grammar, while concrete external rows need no CVOYA metadata. Graph creation provisions only the
+graph; an authorized write discovers or creates only the native label table it needs under the
+graph-scoped advisory lock. Read transactions verify graph existence and perform no DDL.
+
+Full-text discovery covers native logical and genuinely external tables and excludes the reserved
+`CvoyaNode` / `CvoyaRelationship` tables from root search. Registered labels use their declared
+included properties; the global all-string fallback applies only to unregistered external labels.
+Search uses function-free SQL and correlates native graphids without exposing them as model data.
 
 Set mutations select, deduplicate, and freeze native graphids before writes. Node/relationship
 updates and deletes, uniqueness self-exclusion, and exact endpoint-intent creation use those graphids

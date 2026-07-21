@@ -11,8 +11,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// <remarks>
 /// AGE stores entity properties inside <c>agtype</c>, so PostgreSQL property constraints and
 /// per-property indexes cannot express the CVOYA schema rules. The CRUD layer enforces those rules
-/// before writes; this manager owns metadata discovery and the explicit recreation path for optional
-/// coarse, blob-level full-text GIN indexes (<see cref="AgeFullTextIndex"/>).
+/// before writes; this manager owns metadata discovery and creates the coarse, blob-level full-text
+/// GIN indexes (<see cref="AgeFullTextIndex"/>) that accelerate search.
 /// </remarks>
 internal sealed class AgeSchemaManager
 {

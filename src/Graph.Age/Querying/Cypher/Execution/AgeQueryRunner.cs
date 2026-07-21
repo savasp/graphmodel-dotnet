@@ -133,8 +133,8 @@ internal sealed partial class AgeQueryRunner
     }
 
     /// <summary>
-    /// Discovers concrete label tables for one entity kind from AGE's catalog. A matching managed
-    /// index is reported as optional acceleration; callers must retain a function-free fallback.
+    /// Discovers concrete native and externally managed label tables for one entity kind from AGE's
+    /// catalog. Provider-reserved universal tables are excluded from root discovery.
     /// </summary>
     internal async Task<List<AgeFullTextSearch.GraphLabelTable>> DiscoverFullTextTablesAsync(
         bool relationship,
@@ -142,34 +142,24 @@ internal sealed partial class AgeQueryRunner
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var legacyTable = relationship
-            ? SerializationBridge.PhysicalRelationshipType
-            : SerializationBridge.PhysicalNodeLabel;
-        var managedIndex = relationship
-            ? AgeFullTextIndex.RelationshipIndexName
-            : AgeFullTextIndex.NodeIndexName;
         var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            SELECT label.name,
-                   CASE WHEN label.name = @legacyTable THEN EXISTS (
-                       SELECT 1
-                       FROM pg_catalog.pg_index AS managed_index
-                       JOIN pg_catalog.pg_class AS index_relation
-                         ON index_relation.oid = managed_index.indexrelid
-                       WHERE managed_index.indrelid = label.relation
-                         AND index_relation.relname = @managedIndex)
-                   ELSE false END AS has_managed_index
+            SELECT label.name
             FROM ag_catalog.ag_label AS label
             JOIN ag_catalog.ag_graph AS graph ON graph.graphid = label.graph
             WHERE graph.name = @graphName
               AND label.kind = @labelKind
+              AND label.name <> @reservedNodeTable
+              AND label.name <> @reservedRelationshipTable
             ORDER BY label.name
             """;
-        command.Parameters.AddWithValue("legacyTable", legacyTable);
-        command.Parameters.AddWithValue("managedIndex", managedIndex);
         command.Parameters.AddWithValue("graphName", graphName);
         command.Parameters.AddWithValue("labelKind", relationship ? "e" : "v");
+        command.Parameters.AddWithValue("reservedNodeTable", SerializationBridge.PhysicalNodeLabel);
+        command.Parameters.AddWithValue(
+            "reservedRelationshipTable",
+            SerializationBridge.PhysicalRelationshipType);
         await using var commandLease = command.ConfigureAwait(false);
 
         try
@@ -179,7 +169,7 @@ internal sealed partial class AgeQueryRunner
             await using var readerLease = reader.ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                tables.Add(new AgeFullTextSearch.GraphLabelTable(reader.GetString(0), reader.GetBoolean(1)));
+                tables.Add(new AgeFullTextSearch.GraphLabelTable(reader.GetString(0)));
             }
 
             return tables;

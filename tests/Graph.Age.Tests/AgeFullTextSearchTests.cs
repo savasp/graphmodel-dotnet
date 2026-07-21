@@ -9,50 +9,21 @@ using Cvoya.Graph.Age.Querying;
 public sealed class AgeFullTextSearchTests
 {
     [Fact]
-    public void BuildTypedSql_LegacyTable_ReturnsGraphidContextAndUsesIncludedProperties()
-    {
-        var sql = AgeFullTextSearch.BuildTypedSql(
-            "cvoya_g1",
-            "CvoyaNode",
-            [new AgeFullTextSearch.FullTextCandidate("Person", ["Id", "FirstName", "Bio"])]);
-
-        Assert.Contains("SELECT id::text::bigint AS graph_id", sql, StringComparison.Ordinal);
-        Assert.Contains("'Node' AS entity_kind", sql, StringComparison.Ordinal);
-        Assert.Contains("FROM ONLY \"cvoya_g1\".\"CvoyaNode\"", sql, StringComparison.Ordinal);
-        Assert.Contains("(properties::text::jsonb) ->> 'Id'", sql, StringComparison.Ordinal);
-        Assert.Contains("(properties::text::jsonb) ->> 'FirstName'", sql, StringComparison.Ordinal);
-        Assert.Contains("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'Person')", sql, StringComparison.Ordinal);
-        Assert.DoesNotContain("->> 'Id' AS id", sql, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void BuildTypedSql_NativeTable_DoesNotRequireLegacyMetadata()
+    public void BuildTypedSql_NativeNodeTable_ReturnsGraphidContextAndUsesIncludedProperties()
     {
         var sql = AgeFullTextSearch.BuildTypedSql(
             "cvoya_g1",
             "Person",
-            [new AgeFullTextSearch.FullTextCandidate("Person", ["Bio"])]);
+            [new AgeFullTextSearch.FullTextCandidate("Person", ["Id", "FirstName", "Bio"])]);
 
+        Assert.Contains("SELECT id::text::bigint AS graph_id", sql, StringComparison.Ordinal);
+        Assert.Contains("'Node' AS entity_kind", sql, StringComparison.Ordinal);
         Assert.Contains("FROM ONLY \"cvoya_g1\".\"Person\"", sql, StringComparison.Ordinal);
-        Assert.Contains("(properties::text::jsonb) ->> 'Bio'", sql, StringComparison.Ordinal);
+        Assert.Contains("(properties::text::jsonb) ->> 'Id'", sql, StringComparison.Ordinal);
+        Assert.Contains("(properties::text::jsonb) ->> 'FirstName'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("->> 'Id' AS id", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels'", sql, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void BuildTypedSql_MultipleLegacyCandidates_OrsPerTypePredicates()
-    {
-        var sql = AgeFullTextSearch.BuildTypedSql(
-            "cvoya_g1",
-            "CvoyaNode",
-            [
-                new AgeFullTextSearch.FullTextCandidate("Person", ["Bio"]),
-                new AgeFullTextSearch.FullTextCandidate("Manager", ["Bio", "Department"]),
-            ]);
-
-        Assert.Contains("'Person'", sql, StringComparison.Ordinal);
-        Assert.Contains("'Manager'", sql, StringComparison.Ordinal);
-        Assert.Contains("->> 'Department'", sql, StringComparison.Ordinal);
-        Assert.Contains("OR", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("age_fulltext_blob", sql, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -60,13 +31,14 @@ public sealed class AgeFullTextSearchTests
     {
         var sql = AgeFullTextSearch.BuildTypedSql(
             "cvoya_g1",
-            "CvoyaRelationship",
+            "WORKS_REALLY_WELL_WITH",
             [new AgeFullTextSearch.FullTextCandidate("KnowsWell", ["HowWell"])],
             relationship: true);
 
         Assert.Contains("'Relationship' AS entity_kind", sql, StringComparison.Ordinal);
-        Assert.Contains("FROM ONLY \"cvoya_g1\".\"CvoyaRelationship\"", sql, StringComparison.Ordinal);
-        Assert.Contains("'__graphModelComplexProperty'", sql, StringComparison.Ordinal);
+        Assert.Contains("FROM ONLY \"cvoya_g1\".\"WORKS_REALLY_WELL_WITH\"", sql, StringComparison.Ordinal);
+        Assert.Contains("->> 'HowWell'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("__graphModelComplexProperty", sql, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -81,33 +53,25 @@ public sealed class AgeFullTextSearchTests
     }
 
     [Fact]
-    public void BuildTypedSql_UsesManagedCoarsePredicateOnlyWhenIndexIsKnownPresent()
+    public void SearchablePhysicalTable_RejectsAgeBaseAndProviderReservedTables()
     {
-        var fallback = AgeFullTextSearch.BuildTypedSql(
-            "cvoya_g1",
-            "CvoyaNode",
-            [new AgeFullTextSearch.FullTextCandidate("Person", ["Bio"])]);
-        var accelerated = AgeFullTextSearch.BuildTypedSql(
-            "cvoya_g1",
-            "CvoyaNode",
-            [new AgeFullTextSearch.FullTextCandidate("Person", ["Bio"])],
-            hasManagedIndex: true);
-
-        Assert.DoesNotContain("age_fulltext_blob", fallback, StringComparison.Ordinal);
-        Assert.Contains("\"cvoya_g1\".age_fulltext_blob(properties)", accelerated, StringComparison.Ordinal);
-        Assert.Contains("->> 'Bio'", accelerated, StringComparison.Ordinal);
+        Assert.False(AgeFullTextSearch.IsSearchablePhysicalTable("_ag_label_vertex"));
+        Assert.False(AgeFullTextSearch.IsSearchablePhysicalTable("_ag_label_edge"));
+        Assert.False(AgeFullTextSearch.IsSearchablePhysicalTable("CvoyaNode"));
+        Assert.False(AgeFullTextSearch.IsSearchablePhysicalTable("CvoyaRelationship"));
+        Assert.True(AgeFullTextSearch.IsSearchablePhysicalTable("Person"));
+        Assert.True(AgeFullTextSearch.IsSearchablePhysicalTable("EXTERNAL_SEARCH_EDGE"));
     }
 
     [Fact]
-    public void BuildTypedSql_EscapesSingleQuotesInLabelsAndProperties()
+    public void BuildTypedSql_EscapesSingleQuotesInProperties()
     {
         var sql = AgeFullTextSearch.BuildTypedSql(
             "cvoya_g1",
-            "CvoyaNode",
+            "Person",
             [new AgeFullTextSearch.FullTextCandidate("O'Brien", ["Ap'os"])]);
 
         Assert.Contains("->> 'Ap''os'", sql, StringComparison.Ordinal);
-        Assert.Contains("'O''Brien'", sql, StringComparison.Ordinal);
     }
 
     [Fact]
