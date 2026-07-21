@@ -3,91 +3,158 @@
 
 namespace Cvoya.Graph.Age.Entities;
 
+using System.Security.Cryptography;
 using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Querying;
 using Cvoya.Graph.Age.Querying.Cypher;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.Age.Serialization;
+using Cvoya.Graph.Querying;
+using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Serialization;
 
 /// <summary>
-/// Creates an endpoint–relationship–endpoint subgraph through one Npgsql batch execution. All
-/// domain IDs, including complex-property value-node IDs, are assigned before execution so later
-/// commands never depend on client-side reads from earlier result sets.
+/// Creates new-endpoint and hybrid endpoint–relationship–endpoint subgraphs through one Npgsql
+/// batch execution. Later commands bind nodes through operation-local transient correlation rather
+/// than through public domain properties.
 /// </summary>
 internal sealed class AgeSubgraphManager(AgeGraphContext context)
 {
-    private const string TransientCreatedMarkerPrefix = "__graphModelSubgraphCreated";
+    private const string TransientCorrelationPrefix = "__graphModelSubgraphCorrelation";
 
     private readonly ComplexPropertyManager complexPropertyManager = new(context);
 
-    public async Task CreateSubgraphAsync<TSource, TRelationship, TTarget>(
+    private sealed record EndpointPlan(
+        string Name,
+        long? GraphId,
+        Graph.INode? Node,
+        EntityInfo? Entity,
+        string? CorrelationToken,
+        string? StorageLabel)
+    {
+        public bool IsNew => Entity is not null;
+    }
+
+    public Task CreateSubgraphAsync<TSource, TRelationship, TTarget>(
         TSource source,
         TRelationship relationship,
         TTarget target,
-        bool createMissingEndpoints,
         AgeGraphTransaction transaction,
         CancellationToken cancellationToken)
         where TSource : class, Graph.INode
         where TRelationship : class, Graph.IRelationship
-        where TTarget : class, Graph.INode
-    {
-        var sourceEntity = SerializeNode(source);
-        var targetEntity = SerializeNode(target);
-        var relationshipEntity = SerializeRelationship(relationship);
-        var sourceStorageLabel = StorageName(sourceEntity, relationship: false);
-        var targetStorageLabel = StorageName(targetEntity, relationship: false);
-        var relationshipStorageType = StorageName(relationshipEntity, relationship: true);
-        var sourceChecks = context.NodeManager.BuildNodeUniquenessChecks(source, excludeGraphId: null);
-        var targetChecks = context.NodeManager.BuildNodeUniquenessChecks(target, excludeGraphId: null);
-        var relationshipChecks = context.RelationshipManager.BuildRelationshipUniquenessChecks(
+        where TTarget : class, Graph.INode =>
+        CreateSubgraphAsync(
+            new NewGraphCommandEndpoint(source),
             relationship,
-            excludeGraphId: null);
+            new NewGraphCommandEndpoint(target),
+            LegacyRelationshipEndpoints.LegacyDirection(relationship),
+            GraphRelationshipCreationMode.Standard,
+            persistLegacyDirection: true,
+            transaction,
+            cancellationToken);
 
-        var marker = $"{TransientCreatedMarkerPrefix}_{Guid.NewGuid():N}";
-        var sameEndpoint = string.Equals(source.Id, target.Id, StringComparison.Ordinal);
-        if (!createMissingEndpoints && sameEndpoint)
-        {
-            throw new GraphException("Create-only subgraph endpoints must have distinct IDs.");
-        }
-
-        var valueNodeLevels = createMissingEndpoints && sameEndpoint
-            ? complexPropertyManager.PlanSubgraphValueNodes((source.Id, sourceEntity))
-            : complexPropertyManager.PlanSubgraphValueNodes(
-                (source.Id, sourceEntity),
-                (target.Id, targetEntity));
-        var commands = BuildCommands(
+    internal Task CreateSubgraphAsync(
+        GraphCommandEndpoint source,
+        Graph.IRelationship relationship,
+        GraphCommandEndpoint target,
+        RelationshipDirection direction,
+        GraphRelationshipCreationMode mode,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken) =>
+        CreateSubgraphAsync(
             source,
             relationship,
             target,
-            sourceEntity,
-            targetEntity,
+            direction,
+            mode,
+            persistLegacyDirection: false,
+            transaction,
+            cancellationToken);
+
+    private async Task CreateSubgraphAsync(
+        GraphCommandEndpoint source,
+        Graph.IRelationship relationship,
+        GraphCommandEndpoint target,
+        RelationshipDirection direction,
+        GraphRelationshipCreationMode mode,
+        bool persistLegacyDirection,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(relationship);
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(transaction);
+        if (!Enum.IsDefined(direction))
+        {
+            throw new ArgumentOutOfRangeException(nameof(direction));
+        }
+
+        if (!Enum.IsDefined(mode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mode));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var relationshipEntity = SerializeRelationship(relationship);
+        var relationshipStorageType = StorageName(relationshipEntity, relationship: true);
+        var correlationPropertyName = CreateCorrelationPropertyName();
+        var sourcePlan = PlanEndpoint(source, GraphEndpointRole.Source);
+        var targetPlan = mode == GraphRelationshipCreationMode.SelfLoop
+            ? PlanSelfLoopTarget(source, target, sourcePlan)
+            : PlanEndpoint(target, GraphEndpointRole.Target);
+        var newEndpoints = mode == GraphRelationshipCreationMode.SelfLoop
+            ? new[] { sourcePlan }
+            : new[] { sourcePlan, targetPlan };
+        newEndpoints = newEndpoints.Where(endpoint => endpoint.IsNew).ToArray();
+        if (newEndpoints.Length == 0)
+        {
+            throw new GraphException("A batched AGE subgraph command requires at least one new endpoint.");
+        }
+
+        var sourceChecks = BuildNodeUniquenessChecks(sourcePlan);
+        var targetChecks = mode == GraphRelationshipCreationMode.SelfLoop
+            ? []
+            : BuildNodeUniquenessChecks(targetPlan);
+        var relationshipChecks = context.RelationshipManager.BuildRelationshipUniquenessChecks(
+            relationship,
+            excludeGraphId: null);
+        ValidateNewEndpointConstraintCollisions(sourceChecks, targetChecks);
+
+        var valueNodeLevels = complexPropertyManager.PlanSubgraphValueNodes(
+            newEndpoints.Select(endpoint => (
+                endpoint.CorrelationToken!,
+                endpoint.StorageLabel!,
+                endpoint.Entity!)).ToArray(),
+            CreateCorrelationToken);
+        var commands = BuildCommands(
+            sourcePlan,
+            relationship,
+            targetPlan,
+            direction,
+            mode,
+            persistLegacyDirection,
             relationshipEntity,
+            relationshipStorageType,
             sourceChecks,
             targetChecks,
             relationshipChecks,
             valueNodeLevels,
-            marker,
-            createMissingEndpoints,
-            sameEndpoint,
-            sourceStorageLabel,
-            targetStorageLabel,
-            relationshipStorageType);
+            correlationPropertyName,
+            newEndpoints);
 
-        // The batch interleaves the uniqueness probes with the writes they guard, so the locks have
-        // to be held before the batch is sent - not as commands inside it - for the whole subgraph
-        // create to be atomic against a competing transaction claiming the same values.
+        // Every write path takes uniqueness locks before label provisioning. Keep the same ordering
+        // here so first-use label DDL cannot deadlock against another constrained writer.
         await transaction.Runner.AcquireUniquenessLocksAsync(
             sourceChecks.Concat(targetChecks).Concat(relationshipChecks)
                 .Select(check => check.LockKey)
                 .ToArray(),
             cancellationToken).ConfigureAwait(false);
 
-        // Uniqueness locks first, then label provisioning: every write path acquires in that order
-        // (see EnsureLabelAsync), so a first-use label creation - which holds the graph-wide
-        // provisioning lock until commit - can never deadlock against a peer holding a uniqueness
-        // lock while waiting to create its own label.
-        foreach (var nodeLabel in new[] { sourceStorageLabel, targetStorageLabel }.Distinct(StringComparer.Ordinal))
+        foreach (var nodeLabel in newEndpoints
+                     .Select(endpoint => endpoint.StorageLabel!)
+                     .Distinct(StringComparer.Ordinal))
         {
             await transaction.Runner
                 .EnsureLabelAsync(nodeLabel, relationship: false, cancellationToken)
@@ -110,19 +177,65 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         var results = await transaction.Runner.RunBatchAsync(commands, cancellationToken).ConfigureAwait(false);
         ValidateResults(
             results,
-            source,
-            relationship,
-            target,
             sourceChecks,
             targetChecks,
             relationshipChecks,
             valueNodeLevels,
-            createMissingEndpoints,
-            sameEndpoint);
+            newEndpoints,
+            relationship.GetType().Name);
     }
 
-    private EntityInfo SerializeNode<TNode>(TNode node)
-        where TNode : class, Graph.INode
+    /// <summary>
+    /// Plans one endpoint operand. The role names the plan, and that name prefixes the endpoint's
+    /// batch command, so a plan can never be created under one role and validated as the other.
+    /// </summary>
+    private EndpointPlan PlanEndpoint(GraphCommandEndpoint endpoint, GraphEndpointRole role)
+    {
+        var name = role.ToString().ToLowerInvariant();
+        return endpoint switch
+        {
+            SelectedGraphCommandEndpoint
+            {
+                Element.Kind: GraphElementKind.Node,
+                Element.NativeIdentity: long graphId,
+            } => new EndpointPlan(name, graphId, Node: null, Entity: null, CorrelationToken: null, StorageLabel: null),
+            SelectedGraphCommandEndpoint => throw new GraphException(
+                $"The selected {name} endpoint is not an AGE node graphid."),
+            NewGraphCommandEndpoint { Node: { } node } => PlanNewEndpoint(name, node),
+            _ => throw new GraphException($"The {name} endpoint operand is invalid."),
+        };
+    }
+
+    private EndpointPlan PlanNewEndpoint(string name, Graph.INode node)
+    {
+        var entity = SerializeNode(node);
+        return new EndpointPlan(
+            name,
+            GraphId: null,
+            node,
+            entity,
+            CreateCorrelationToken(),
+            StorageName(entity, relationship: false));
+    }
+
+    private static EndpointPlan PlanSelfLoopTarget(
+        GraphCommandEndpoint source,
+        GraphCommandEndpoint target,
+        EndpointPlan sourcePlan)
+    {
+        if (source is not NewGraphCommandEndpoint sourceEndpoint ||
+            target is not NewGraphCommandEndpoint targetEndpoint ||
+            !ReferenceEquals(sourceEndpoint.Node, targetEndpoint.Node) ||
+            !sourcePlan.IsNew)
+        {
+            throw new GraphException(
+                "Explicit self-loop creation requires the same new node as both endpoint operands.");
+        }
+
+        return sourcePlan;
+    }
+
+    private EntityInfo SerializeNode(Graph.INode node)
     {
         GraphDataModel.EnsureNoReferenceCycle(node);
         GraphDataModel.EnsureComplexPropertyDepth(node);
@@ -130,8 +243,7 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         return context.EntityFactory.Serialize(node);
     }
 
-    private EntityInfo SerializeRelationship<TRelationship>(TRelationship relationship)
-        where TRelationship : class, Graph.IRelationship
+    private EntityInfo SerializeRelationship(Graph.IRelationship relationship)
     {
         GraphDataModel.EnsureNoReferenceCycle(relationship);
         GraphDataModel.EnsureComplexPropertyDepth(relationship);
@@ -141,100 +253,78 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         if (entity.ComplexProperties.Count > 0)
         {
             throw new GraphException(
-                $"Relationships cannot have complex properties. Found {entity.ComplexProperties.Count} complex properties on {typeof(TRelationship).Name}");
+                $"Relationships cannot have complex properties. Found {entity.ComplexProperties.Count} complex properties on {relationship.GetType().Name}");
         }
 
         return entity;
     }
 
-    private static List<AgeBatchCommand> BuildCommands<TSource, TRelationship, TTarget>(
-        TSource source,
-        TRelationship relationship,
-        TTarget target,
-        EntityInfo sourceEntity,
-        EntityInfo targetEntity,
+    private IReadOnlyList<AgeUniquenessCheck> BuildNodeUniquenessChecks(EndpointPlan endpoint) =>
+        endpoint.Node is null
+            ? []
+            : context.NodeManager.BuildNodeUniquenessChecks(endpoint.Node, excludeGraphId: null);
+
+    private static void ValidateNewEndpointConstraintCollisions(
+        IReadOnlyList<AgeUniquenessCheck> sourceChecks,
+        IReadOnlyList<AgeUniquenessCheck> targetChecks)
+    {
+        var conflictingCheck = sourceChecks.FirstOrDefault(sourceCheck =>
+            targetChecks.Any(targetCheck => targetCheck.ConstraintKey == sourceCheck.ConstraintKey));
+        if (conflictingCheck is not null)
+        {
+            throw new GraphException(conflictingCheck.ErrorMessage);
+        }
+    }
+
+    private static List<AgeBatchCommand> BuildCommands(
+        EndpointPlan source,
+        Graph.IRelationship relationship,
+        EndpointPlan target,
+        RelationshipDirection direction,
+        GraphRelationshipCreationMode mode,
+        bool persistLegacyDirection,
         EntityInfo relationshipEntity,
+        string relationshipStorageType,
         IReadOnlyList<AgeUniquenessCheck> sourceChecks,
         IReadOnlyList<AgeUniquenessCheck> targetChecks,
         IReadOnlyList<AgeUniquenessCheck> relationshipChecks,
         IReadOnlyList<IReadOnlyList<ComplexPropertyManager.SubgraphValueNode>> valueNodeLevels,
-        string marker,
-        bool createMissingEndpoints,
-        bool sameEndpoint,
-        string sourceStorageLabel,
-        string targetStorageLabel,
-        string relationshipStorageType)
-        where TSource : class, Graph.INode
-        where TRelationship : class, Graph.IRelationship
-        where TTarget : class, Graph.INode
+        string correlationPropertyName,
+        IReadOnlyList<EndpointPlan> newEndpoints)
     {
-        var commands = new List<AgeBatchCommand>
-        {
-            CountCommand(
-                "source_exists",
-                "MATCH (n {Id: $id}) RETURN count(n) AS existingCount",
-                new Dictionary<string, object?> { ["id"] = source.Id },
-                "existingCount"),
-            CountCommand(
-                "target_exists",
-                "MATCH (n {Id: $id}) RETURN count(n) AS existingCount",
-                new Dictionary<string, object?> { ["id"] = target.Id },
-                "existingCount"),
-            CountCommand(
-                "relationship_exists",
-                "MATCH ()-[r {Id: $id}]-() RETURN count(r) AS existingCount",
-                new Dictionary<string, object?> { ["id"] = relationship.Id },
-                "existingCount"),
-        };
-
+        var commands = new List<AgeBatchCommand>();
         AddUniquenessCommands(commands, "source_unique", sourceChecks);
         AddUniquenessCommands(commands, "target_unique", targetChecks);
         AddUniquenessCommands(commands, "relationship_unique", relationshipChecks);
 
-        if (createMissingEndpoints)
+        foreach (var endpoint in newEndpoints)
         {
-            commands.Add(BuildMergeRootCommand(
-                "source_root", source.Id, sourceEntity, marker, sourceStorageLabel));
-            if (!sameEndpoint)
-            {
-                commands.Add(BuildMergeRootCommand(
-                    "target_root", target.Id, targetEntity, marker, targetStorageLabel));
-            }
-        }
-        else
-        {
-            commands.Add(BuildCreateOnlyRootsCommand(
-                sourceEntity,
-                targetEntity,
-                source.Id,
-                target.Id,
-                marker,
-                sourceStorageLabel,
-                targetStorageLabel));
+            commands.Add(BuildRootCommand(endpoint, correlationPropertyName));
         }
 
         for (var depth = 0; depth < valueNodeLevels.Count; depth++)
         {
-            commands.Add(BuildValueNodeLevelCommand(depth, valueNodeLevels[depth], marker));
+            commands.Add(BuildValueNodeLevelCommand(
+                depth,
+                valueNodeLevels[depth],
+                correlationPropertyName));
         }
 
         commands.Add(BuildRelationshipCommand(
+            source,
             relationship,
+            target,
+            direction,
+            mode,
+            persistLegacyDirection,
             relationshipEntity,
-            marker,
-            createMissingEndpoints,
-            relationshipStorageType));
-        commands.Add(CountCommand(
-            "cleanup",
-            $"""
-            MATCH (n)
-            WHERE n.{marker} = true
-            REMOVE n.{marker}
-            RETURN count(n) AS cleanedCount
-            """,
-            new Dictionary<string, object?>(),
-            "cleanedCount"));
-
+            relationshipStorageType,
+            correlationPropertyName));
+        commands.Add(BuildCleanupCommand(
+            correlationPropertyName,
+            newEndpoints.Select(endpoint => endpoint.CorrelationToken!)
+                .Concat(valueNodeLevels.SelectMany(level => level.Select(node => node.CorrelationToken)))
+                .ToArray()));
         return commands;
     }
 
@@ -253,83 +343,30 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         }
     }
 
-    private static AgeBatchCommand BuildCreateOnlyRootsCommand(
-        EntityInfo sourceEntity,
-        EntityInfo targetEntity,
-        string sourceId,
-        string targetId,
-        string marker,
-        string sourceStorageLabel,
-        string targetStorageLabel)
+    private static AgeBatchCommand BuildRootCommand(
+        EndpointPlan endpoint,
+        string correlationPropertyName)
     {
         var parameters = new Dictionary<string, object?>
         {
-            ["sourceId"] = sourceId,
-            ["targetId"] = targetId,
+            ["correlationToken"] = endpoint.CorrelationToken,
         };
-        var sourceProperties = AgeNodeManager.BuildNodeProperties(sourceEntity);
-        AddLegacyNodeIdentity(sourceEntity, sourceStorageLabel, sourceProperties);
-        sourceProperties[marker] = true;
-        var targetProperties = AgeNodeManager.BuildNodeProperties(targetEntity);
-        AddLegacyNodeIdentity(targetEntity, targetStorageLabel, targetProperties);
-        targetProperties[marker] = true;
-        var sourceSet = AgeCypherProperties.BuildSetClause(
-            "source",
-            sourceProperties,
-            parameters,
-            "sourceProperty");
-        var targetSet = AgeCypherProperties.BuildSetClause(
-            "target",
-            targetProperties,
-            parameters,
-            "targetProperty");
-        var sourceLabel = CypherIdentifier.Escape(sourceStorageLabel, "source node label");
-        var targetLabel = CypherIdentifier.Escape(targetStorageLabel, "target node label");
-
-        return CountCommand(
-            "roots",
-            $$"""
-            OPTIONAL MATCH (existingSource {Id: $sourceId})
-            WITH count(existingSource) AS sourceCount
-            OPTIONAL MATCH (existingTarget {Id: $targetId})
-            WITH sourceCount, count(existingTarget) AS targetCount
-            UNWIND CASE WHEN sourceCount = 0 AND targetCount = 0 THEN [1] ELSE [] END AS createRow
-            CREATE (source:{{sourceLabel}})
-            {{sourceSet}}
-            CREATE (target:{{targetLabel}})
-            {{targetSet}}
-            RETURN count(source) + count(target) AS createdCount
-            """,
-            parameters,
-            "createdCount");
-    }
-
-    private static AgeBatchCommand BuildMergeRootCommand(
-        string name,
-        string id,
-        EntityInfo entity,
-        string marker,
-        string storageLabel)
-    {
-        var parameters = new Dictionary<string, object?> { ["id"] = id };
-        var properties = AgeNodeManager.BuildNodeProperties(entity);
-        AddLegacyNodeIdentity(entity, storageLabel, properties);
-        properties[marker] = true;
+        var properties = AgeNodeManager.BuildNodeProperties(endpoint.Entity!);
+        AddLegacyNodeIdentity(endpoint.Entity!, endpoint.StorageLabel!, properties);
         var setClause = AgeCypherProperties.BuildSetClause(
             "node",
             properties,
             parameters,
             "nodeProperty");
-        var physicalLabel = CypherIdentifier.Escape(storageLabel, "node label");
+        var storageLabel = CypherIdentifier.Escape(endpoint.StorageLabel, "node label");
+        var correlationProperty = CypherIdentifier.Escape(correlationPropertyName, "correlation property name");
 
         return CountCommand(
-            name,
+            $"{endpoint.Name}_root",
             $$"""
-            OPTIONAL MATCH (existing {Id: $id})
-            WITH count(existing) AS existingCount
-            UNWIND CASE WHEN existingCount = 0 THEN [1] ELSE [] END AS createRow
-            CREATE (node:{{physicalLabel}})
+            CREATE (node:{{storageLabel}})
             {{setClause}}
+            SET node.{{correlationProperty}} = $correlationToken
             RETURN count(node) AS createdCount
             """,
             parameters,
@@ -339,32 +376,27 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
     private static AgeBatchCommand BuildValueNodeLevelCommand(
         int depth,
         IReadOnlyList<ComplexPropertyManager.SubgraphValueNode> level,
-        string marker)
+        string correlationPropertyName)
     {
         var nodePropertyNames = level
             .SelectMany(node => node.NodeProperties.Keys)
-            .Append(marker)
             .Distinct(StringComparer.Ordinal)
             .ToList();
         var relationshipPropertyNames = level
             .SelectMany(node => node.RelationshipProperties.Keys)
             .Distinct(StringComparer.Ordinal)
             .ToList();
-        var rows = level.Select(node =>
+        var rows = level.Select(node => new Dictionary<string, object?>
         {
-            var nodeProperties = new Dictionary<string, object?>(node.NodeProperties, StringComparer.Ordinal)
-            {
-                [marker] = true,
-            };
-            return new Dictionary<string, object?>
-            {
-                ["rootId"] = node.RootId,
-                ["parentId"] = node.ParentId,
-                ["nodeProperties"] = ComplexPropertyManager.ExpandProperties(nodeProperties, nodePropertyNames),
-                ["relationshipProperties"] = ComplexPropertyManager.ExpandProperties(
-                    node.RelationshipProperties,
-                    relationshipPropertyNames),
-            };
+            ["parentToken"] = node.ParentCorrelationToken,
+            ["parentStorageLabel"] = node.ParentStorageLabel,
+            ["token"] = node.CorrelationToken,
+            ["nodeProperties"] = ComplexPropertyManager.ExpandProperties(
+                node.NodeProperties,
+                nodePropertyNames),
+            ["relationshipProperties"] = ComplexPropertyManager.ExpandProperties(
+                node.RelationshipProperties,
+                relationshipPropertyNames),
         }).ToList();
         var nodeSet = ComplexPropertyManager.BuildSetClauseFromRowMap(
             "complex",
@@ -374,47 +406,69 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             "propertyRelationship",
             "row.relationshipProperties",
             relationshipPropertyNames);
+        var correlationProperty = CypherIdentifier.Escape(correlationPropertyName, "correlation property name");
+        var complexLabel = CypherIdentifier.Escape(SerializationBridge.PhysicalNodeLabel, "complex value label");
+        var complexRelationship = CypherIdentifier.Escape(
+            SerializationBridge.PhysicalRelationshipType,
+            "complex property relationship type");
 
         return CountCommand(
             $"complex_level_{depth}",
-            $"""
+            $$"""
             UNWIND $rows AS row
-            MATCH (root)
-            WHERE root.Id = row.rootId AND root.{marker} = true
             MATCH (parent)
-            WHERE parent.Id = row.parentId AND parent.{marker} = true
-            CREATE (parent)-[propertyRelationship:{SerializationBridge.PhysicalRelationshipType}]->(complex:{SerializationBridge.PhysicalNodeLabel})
-            {relationshipSet}
-            {nodeSet}
+            WHERE parent.{{correlationProperty}} = row.parentToken
+              AND size([parentLabel IN labels(parent) WHERE parentLabel = row.parentStorageLabel]) > 0
+            CREATE (parent)-[propertyRelationship:{{complexRelationship}}]->(complex:{{complexLabel}})
+            {{relationshipSet}}
+            {{nodeSet}}
+            SET complex.{{correlationProperty}} = row.token
             RETURN count(complex) AS createdCount
             """,
             new Dictionary<string, object?> { ["rows"] = rows },
             "createdCount");
     }
 
-    private static AgeBatchCommand BuildRelationshipCommand<TRelationship>(
-        TRelationship relationship,
+    private static AgeBatchCommand BuildRelationshipCommand(
+        EndpointPlan source,
+        Graph.IRelationship relationship,
+        EndpointPlan target,
+        RelationshipDirection direction,
+        GraphRelationshipCreationMode mode,
+        bool persistLegacyDirection,
         EntityInfo entity,
-        string marker,
-        bool createMissingEndpoints,
-        string storageType)
-        where TRelationship : class, Graph.IRelationship
+        string storageType,
+        string correlationPropertyName)
     {
-        var direction = LegacyRelationshipEndpoints.LegacyDirection(relationship);
-        var (sourceNodeId, targetNodeId) = direction switch
+        var effectiveDirection = mode == GraphRelationshipCreationMode.SelfLoop
+            ? RelationshipDirection.Outgoing
+            : direction;
+        var (physicalSource, physicalTarget) = effectiveDirection switch
         {
-            RelationshipDirection.Outgoing => (relationship.StartNodeId, relationship.EndNodeId),
-            RelationshipDirection.Incoming => (relationship.EndNodeId, relationship.StartNodeId),
-            _ => throw new GraphException($"Unsupported relationship direction '{direction}'."),
+            RelationshipDirection.Outgoing => (source, target),
+            RelationshipDirection.Incoming => (target, source),
+            _ => throw new GraphException($"Unsupported relationship direction '{effectiveDirection}'."),
         };
-        var parameters = new Dictionary<string, object?>
-        {
-            ["relationshipId"] = relationship.Id,
-            ["sourceNodeId"] = sourceNodeId,
-            ["targetNodeId"] = targetNodeId,
-        };
+        var parameters = new Dictionary<string, object?>();
+        var sourceMatch = BuildEndpointMatch(
+            "source",
+            physicalSource,
+            correlationPropertyName,
+            parameters);
+        var targetAlias = mode == GraphRelationshipCreationMode.SelfLoop ? "source" : "target";
+        var targetMatch = mode == GraphRelationshipCreationMode.SelfLoop
+            ? string.Empty
+            : BuildEndpointMatch(
+                targetAlias,
+                physicalTarget,
+                correlationPropertyName,
+                parameters);
         var properties = AgeRelationshipManager.BuildRelationshipProperties(entity);
-        properties[nameof(Graph.DynamicRelationship.Direction)] = direction.ToString();
+        if (persistLegacyDirection)
+        {
+            properties[nameof(Graph.DynamicRelationship.Direction)] = effectiveDirection.ToString();
+        }
+
         if (string.Equals(storageType, SerializationBridge.PhysicalRelationshipType, StringComparison.Ordinal))
         {
             properties[nameof(Graph.IRelationship.Type)] = entity.Label;
@@ -431,33 +485,54 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             "relationshipProperty");
         var physicalType = CypherIdentifier.Escape(storageType, "relationship type");
 
-        // In create-only mode both endpoints must carry this batch's transient marker: the roots
-        // command creates either both endpoints or neither, so the gate keeps the edge from
-        // attaching to pre-existing nodes. Merge mode attaches to matched endpoints by design.
-        var createdEndpointsGate = createMissingEndpoints
-            ? string.Empty
-            : $"""
-
-              WITH source, target
-              WHERE source.{marker} = true AND target.{marker} = true
-              """;
-
         return CountCommand(
             "relationship",
             $$"""
-            OPTIONAL MATCH ()-[existing {Id: $relationshipId}]-()
-            WITH count(existing) AS existingCount
-            UNWIND CASE WHEN existingCount = 0 THEN [1] ELSE [] END AS createRow
-            MATCH (source)
-            WHERE source.Id = $sourceNodeId
-            MATCH (target)
-            WHERE target.Id = $targetNodeId{{createdEndpointsGate}}
-            CREATE (source)-[relationship:{{physicalType}}]->(target)
+            {{sourceMatch}}
+            {{targetMatch}}
+            CREATE (source)-[relationship:{{physicalType}}]->({{targetAlias}})
             {{setClause}}
             RETURN count(relationship) AS createdCount
             """,
             parameters,
             "createdCount");
+    }
+
+    private static string BuildEndpointMatch(
+        string alias,
+        EndpointPlan endpoint,
+        string correlationPropertyName,
+        Dictionary<string, object?> parameters)
+    {
+        if (endpoint.GraphId is { } graphId)
+        {
+            var parameterName = $"{alias}GraphId";
+            parameters.Add(parameterName, graphId);
+            return $"MATCH ({alias}) WHERE id({alias}) = ${parameterName}";
+        }
+
+        var tokenParameterName = $"{alias}CorrelationToken";
+        parameters.Add(tokenParameterName, endpoint.CorrelationToken);
+        var storageLabel = CypherIdentifier.Escape(endpoint.StorageLabel, $"{alias} node label");
+        var correlationProperty = CypherIdentifier.Escape(correlationPropertyName, "correlation property name");
+        return $"MATCH ({alias}:{storageLabel}) WHERE {alias}.{correlationProperty} = ${tokenParameterName}";
+    }
+
+    private static AgeBatchCommand BuildCleanupCommand(
+        string correlationPropertyName,
+        IReadOnlyList<string> correlationTokens)
+    {
+        var correlationProperty = CypherIdentifier.Escape(correlationPropertyName, "correlation property name");
+        return CountCommand(
+            "cleanup",
+            $$"""
+            MATCH (node)
+            WHERE node.{{correlationProperty}} IN $correlationTokens
+            REMOVE node.{{correlationProperty}}
+            RETURN count(node) AS cleanedCount
+            """,
+            new Dictionary<string, object?> { ["correlationTokens"] = correlationTokens },
+            "cleanedCount");
     }
 
     private static string StorageName(EntityInfo entity, bool relationship) =>
@@ -484,108 +559,56 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         IReadOnlyDictionary<string, object?> parameters,
         string column) => new(name, cypher, parameters, [column]);
 
-    private static void ValidateResults<TSource, TRelationship, TTarget>(
+    private static void ValidateResults(
         IReadOnlyList<AgeBatchResult> results,
-        TSource source,
-        TRelationship relationship,
-        TTarget target,
         IReadOnlyList<AgeUniquenessCheck> sourceChecks,
         IReadOnlyList<AgeUniquenessCheck> targetChecks,
         IReadOnlyList<AgeUniquenessCheck> relationshipChecks,
         IReadOnlyList<IReadOnlyList<ComplexPropertyManager.SubgraphValueNode>> valueNodeLevels,
-        bool createMissingEndpoints,
-        bool sameEndpoint)
-        where TSource : class, Graph.INode
-        where TRelationship : class, Graph.IRelationship
-        where TTarget : class, Graph.INode
+        IReadOnlyList<EndpointPlan> newEndpoints,
+        string relationshipTypeName)
     {
         var resultMap = results.ToDictionary(result => result.Name, StringComparer.Ordinal);
-        var sourceExists = GetCount(resultMap, "source_exists", "existingCount") > 0;
-        var targetExists = GetCount(resultMap, "target_exists", "existingCount") > 0;
-        var relationshipExists = GetCount(resultMap, "relationship_exists", "existingCount") > 0;
+        ValidateUniqueness(resultMap, "source_unique", sourceChecks);
+        ValidateUniqueness(resultMap, "target_unique", targetChecks);
+        ValidateUniqueness(resultMap, "relationship_unique", relationshipChecks);
 
-        ValidateUniqueness(resultMap, "source_unique", sourceChecks, ignore: createMissingEndpoints && sourceExists);
-        if (!createMissingEndpoints && sourceExists)
+        foreach (var endpoint in newEndpoints)
         {
-            throw new GraphException($"Node with ID '{source.Id}' already exists.");
-        }
-
-        ValidateUniqueness(
-            resultMap,
-            "target_unique",
-            targetChecks,
-            ignore: createMissingEndpoints && (targetExists || sameEndpoint));
-        if (!createMissingEndpoints && targetExists)
-        {
-            throw new GraphException($"Node with ID '{target.Id}' already exists.");
-        }
-
-        if (!sourceExists && !targetExists && !sameEndpoint)
-        {
-            var conflictingCheck = sourceChecks.FirstOrDefault(sourceCheck =>
-                targetChecks.Any(targetCheck => targetCheck.ConstraintKey == sourceCheck.ConstraintKey));
-            if (conflictingCheck is not null)
+            if (GetCount(resultMap, $"{endpoint.Name}_root", "createdCount") != 1)
             {
-                throw new GraphException(conflictingCheck.ErrorMessage);
+                throw new GraphException("Failed to create the expected subgraph endpoint nodes.");
             }
         }
 
-        ValidateUniqueness(resultMap, "relationship_unique", relationshipChecks, ignore: false);
-        if (relationshipExists)
-        {
-            throw new GraphException($"Relationship with ID '{relationship.Id}' already exists.");
-        }
-
-        var expectedRootCount = createMissingEndpoints && sameEndpoint
-            ? sourceExists ? 0 : 1
-            : (sourceExists ? 0 : 1) + (targetExists ? 0 : 1);
-        var actualRootCount = createMissingEndpoints
-            ? GetCount(resultMap, "source_root", "createdCount") +
-                (sameEndpoint ? 0 : GetCount(resultMap, "target_root", "createdCount"))
-            : GetCount(resultMap, "roots", "createdCount");
-        if (actualRootCount != expectedRootCount)
-        {
-            throw new GraphException("Failed to create the expected subgraph endpoint nodes.");
-        }
-
-        var expectedValueNodeCount = 0L;
         for (var depth = 0; depth < valueNodeLevels.Count; depth++)
         {
-            var expectedAtDepth = valueNodeLevels[depth].LongCount(node =>
-                node.RootId == source.Id ? !sourceExists : !targetExists);
-            var actualAtDepth = GetCount(resultMap, $"complex_level_{depth}", "createdCount");
-            if (actualAtDepth != expectedAtDepth)
+            if (GetCount(resultMap, $"complex_level_{depth}", "createdCount") != valueNodeLevels[depth].Count)
             {
                 throw new GraphException("Failed to create the expected complex-property subtree.");
             }
-
-            expectedValueNodeCount += expectedAtDepth;
         }
 
         if (GetCount(resultMap, "relationship", "createdCount") != 1)
         {
             throw new GraphException(
-                $"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}. " +
-                "One or both nodes may not exist.");
+                $"Failed to create relationship of type {relationshipTypeName}; one or both frozen endpoints may no longer exist.");
         }
 
-        if (GetCount(resultMap, "cleanup", "cleanedCount") != expectedRootCount + expectedValueNodeCount)
+        // Every root and every value node carries exactly one token, so the cleanup must clear as
+        // many nodes as the plan created. A shortfall means a token survives the commit.
+        var expectedCleanupCount = newEndpoints.Count + valueNodeLevels.Sum(level => level.Count);
+        if (GetCount(resultMap, "cleanup", "cleanedCount") != expectedCleanupCount)
         {
-            throw new GraphException("Failed to remove transient subgraph creation markers.");
+            throw new GraphException("Failed to remove every transient subgraph correlation token.");
         }
     }
 
     private static void ValidateUniqueness(
         IReadOnlyDictionary<string, AgeBatchResult> results,
         string namePrefix,
-        IReadOnlyList<AgeUniquenessCheck> checks,
-        bool ignore)
+        IReadOnlyList<AgeUniquenessCheck> checks)
     {
-        if (ignore)
-        {
-            return;
-        }
-
         for (var index = 0; index < checks.Count; index++)
         {
             if (GetCount(results, $"{namePrefix}_{index}", "duplicateCount") > 0)
@@ -607,4 +630,10 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
 
         return result.Records[0][column].As<long>();
     }
+
+    private static string CreateCorrelationPropertyName() =>
+        $"{TransientCorrelationPrefix}_{CreateCorrelationToken()}";
+
+    private static string CreateCorrelationToken() =>
+        Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
 }

@@ -324,13 +324,13 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
             await Assert.ThrowsAsync<GraphException>(() => provider.InWriteTransactionAsync(
                 async (context, token) =>
                 {
-                    await Assert.IsAssignableFrom<IGraphRelationshipCommandExecutionContext>(context)
-                        .CreateRelationshipAsync(
-                            new NewGraphEndpoint(createdBeforeFailure),
-                            new Knows(string.Empty, string.Empty),
-                            new NewGraphEndpoint(invalidTarget),
-                            RelationshipDirection.Outgoing,
-                            token).ConfigureAwait(false);
+                    await context.CreateRelationshipAsync(
+                        new NewGraphCommandEndpoint(createdBeforeFailure),
+                        new Knows(string.Empty, string.Empty),
+                        new NewGraphCommandEndpoint(invalidTarget),
+                        RelationshipDirection.Outgoing,
+                        GraphRelationshipCreationMode.Standard,
+                        token).ConfigureAwait(false);
                     return true;
                 },
                 cancellationToken));
@@ -383,13 +383,13 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
                     context, source, GraphEndpointRole.Source, token).ConfigureAwait(false);
                 var selectedTarget = await SelectAsync(
                     context, target, GraphEndpointRole.Target, token).ConfigureAwait(false);
-                await Assert.IsAssignableFrom<IGraphRelationshipCommandExecutionContext>(context)
-                    .CreateRelationshipAsync(
-                        new SelectedGraphEndpoint(selectedSource),
-                        relationship,
-                        new SelectedGraphEndpoint(selectedTarget),
-                        direction,
-                        token).ConfigureAwait(false);
+                await context.CreateRelationshipAsync(
+                    new SelectedGraphCommandEndpoint(selectedSource),
+                    relationship,
+                    new SelectedGraphCommandEndpoint(selectedTarget),
+                    direction,
+                    GraphRelationshipCreationMode.Standard,
+                    token).ConfigureAwait(false);
                 return true;
             },
             cancellationToken);
@@ -408,14 +408,19 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
             {
                 var role = newEndpointIsTarget ? GraphEndpointRole.Source : GraphEndpointRole.Target;
                 var selectedElement = await SelectAsync(context, selected, role, token).ConfigureAwait(false);
-                GraphEndpointIntent source = newEndpointIsTarget
-                    ? new SelectedGraphEndpoint(selectedElement)
-                    : new NewGraphEndpoint(newEndpoint);
-                GraphEndpointIntent target = newEndpointIsTarget
-                    ? new NewGraphEndpoint(newEndpoint)
-                    : new SelectedGraphEndpoint(selectedElement);
-                await Assert.IsAssignableFrom<IGraphRelationshipCommandExecutionContext>(context)
-                    .CreateRelationshipAsync(source, relationship, target, RelationshipDirection.Outgoing, token)
+                GraphCommandEndpoint source = newEndpointIsTarget
+                    ? new SelectedGraphCommandEndpoint(selectedElement)
+                    : new NewGraphCommandEndpoint(newEndpoint);
+                GraphCommandEndpoint target = newEndpointIsTarget
+                    ? new NewGraphCommandEndpoint(newEndpoint)
+                    : new SelectedGraphCommandEndpoint(selectedElement);
+                await context.CreateRelationshipAsync(
+                        source,
+                        relationship,
+                        target,
+                        RelationshipDirection.Outgoing,
+                        GraphRelationshipCreationMode.Standard,
+                        token)
                     .ConfigureAwait(false);
                 return true;
             },
@@ -433,13 +438,14 @@ public sealed class AgeNativeInteropTests(AgeHarness harness)
         await provider.InWriteTransactionAsync(
             async (context, token) =>
             {
-                var relationshipContext = Assert.IsAssignableFrom<IGraphRelationshipCommandExecutionContext>(context);
-                var sourceIntent = new NewGraphEndpoint(source);
-                await relationshipContext.CreateRelationshipAsync(
-                    sourceIntent,
+                await context.CreateRelationshipAsync(
+                    new NewGraphCommandEndpoint(source),
                     relationship,
-                    selfLoop ? sourceIntent : new NewGraphEndpoint(target),
+                    new NewGraphCommandEndpoint(target),
                     RelationshipDirection.Outgoing,
+                    selfLoop
+                        ? GraphRelationshipCreationMode.SelfLoop
+                        : GraphRelationshipCreationMode.Standard,
                     token).ConfigureAwait(false);
                 return true;
             },

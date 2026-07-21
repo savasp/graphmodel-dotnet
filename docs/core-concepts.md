@@ -415,10 +415,13 @@ public enum EmploymentType
 ### Creating a subgraph atomically
 
 `CreateAsync(source, relationship, target, options)` creates a node–relationship–node subgraph —
-both endpoint nodes and the relationship that connects them — as a single atomic operation. The
-Neo4j provider composes one Cypher statement; the Apache AGE provider sends one Npgsql batch whose
-commands share the operation transaction. In both cases the whole subgraph (both nodes, all of their
-complex-property value-node subtrees, and the edge) is created in a single database round-trip.
+both endpoint nodes and the relationship that connects them — as a single atomic operation. Every
+provider applies the whole subgraph (both nodes, all of their complex-property value-node subtrees,
+and the edge) inside one transaction, so it either lands completely or not at all. Under the default
+create-only semantics the Neo4j provider composes one Cypher statement and the Apache AGE provider
+sends one Npgsql batch; with `CreateMissingEndpoints = true` the AGE provider merges each endpoint
+through the same per-entity path `CreateNodeAsync` uses, which takes more than one round-trip but
+shares the operation's transaction and rolls back with it.
 
 ```csharp
 var alice = new Person { FirstName = "Alice" };
