@@ -227,6 +227,92 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         }
     }
 
+    internal async Task<bool> UpdateByElementIdAsync(
+        Graph.INode node,
+        string elementId,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentException.ThrowIfNullOrWhiteSpace(elementId);
+        ArgumentNullException.ThrowIfNull(transaction);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        GraphDataModel.EnsureNoReferenceCycle(node);
+        GraphDataModel.EnsureComplexPropertyDepth(node);
+        ValidateNodeProperties(node);
+        var entity = _serializer.Serialize(node);
+        var updated = await UpdateMainNodeByElementIdAsync(
+            elementId,
+            entity,
+            transaction.Transaction,
+            cancellationToken).ConfigureAwait(false);
+        if (!updated)
+        {
+            return false;
+        }
+
+        await _complexPropertyManager.UpdateElementBoundComplexPropertiesAsync(
+            transaction.Transaction,
+            elementId,
+            entity,
+            cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    internal static async Task<int> DeleteByElementIdsAsync(
+        IReadOnlyList<string> elementIds,
+        bool cascadeDelete,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(elementIds);
+        ArgumentNullException.ThrowIfNull(transaction);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (elementIds.Count == 0)
+        {
+            return 0;
+        }
+
+        if (!cascadeDelete)
+        {
+            var preflight = $"""
+                MATCH (target)
+                WHERE elementId(target) IN $targetIds
+                OPTIONAL MATCH (target)-[relationship]-()
+                WHERE coalesce(relationship.{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = false
+                RETURN count(DISTINCT relationship) AS relationshipCount
+                """;
+            var cursor = await transaction.Transaction.RunAsync(
+                preflight,
+                new { targetIds = elementIds }).WaitAsync(cancellationToken).ConfigureAwait(false);
+            var relationshipCount = (await cursor.SingleAsync(cancellationToken).ConfigureAwait(false))["relationshipCount"]
+                .As<long>();
+            if (relationshipCount > 0)
+            {
+                throw new GraphException(
+                    $"Cannot delete the selected nodes because they have {relationshipCount} incident user relationship(s). " +
+                    "Delete those relationships first or use cascade delete.");
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var delete = $"""
+            MATCH (target)
+            WHERE elementId(target) IN $targetIds
+            OPTIONAL MATCH propertyPath = (target)-[propertyRelationships*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
+            WHERE ALL(relationship IN propertyRelationships WHERE relationship.{ComplexPropertyStorage.RelationshipMarkerProperty} = true)
+            WITH target, [node IN collect(DISTINCT propertyNode) WHERE node IS NOT NULL] AS propertyNodes
+            FOREACH (propertyNode IN propertyNodes | DETACH DELETE propertyNode)
+            DETACH DELETE target
+            RETURN count(*) AS affectedCount
+            """;
+        var result = await transaction.Transaction.RunAsync(
+            delete,
+            new { targetIds = elementIds }).WaitAsync(cancellationToken).ConfigureAwait(false);
+        return (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["affectedCount"].As<int>();
+    }
+
     private static async Task<int> GetRootCountAsync(
         string nodeId,
         string[] registeredNodeLabels,
@@ -355,6 +441,69 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         var result = await transaction.RunAsync(cypher, new { nodeId, props = simpleProperties }).ConfigureAwait(false);
         var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
         return records.Count > 0 ? records[0]["elementId"].As<string>() : null;
+    }
+
+    private static async Task<bool> UpdateMainNodeByElementIdAsync(
+        string elementId,
+        EntityInfo entity,
+        IAsyncTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var simpleProperties = BuildElementBoundNodeProperties(entity);
+
+        // Stored legacy Ids must survive the full-replace SET (#469 keeps legacy Id APIs working
+        // until the coordinated removal), unless the entity defines an Id of its own. A SET back
+        // to null is a no-op for nodes that never had one.
+        var preservesLegacyId = !simpleProperties.ContainsKey(nameof(Graph.IEntity.Id));
+        var captureLegacyIdClause = preservesLegacyId ? "WITH n, n.Id AS legacyId " : string.Empty;
+        var restoreLegacyIdClause = preservesLegacyId ? "SET n.Id = legacyId " : string.Empty;
+
+        string cypher;
+        if (entity.ActualType == typeof(Graph.DynamicNode) && entity.ActualLabels.Count > 0)
+        {
+            var labelsResult = await transaction.RunAsync(
+                "MATCH (n) WHERE elementId(n) = $elementId RETURN labels(n) AS currentLabels",
+                new { elementId }).WaitAsync(cancellationToken).ConfigureAwait(false);
+            var labelsRecord = await labelsResult.SingleOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+            if (labelsRecord is null)
+            {
+                return false;
+            }
+
+            var currentLabels = labelsRecord["currentLabels"].As<List<string>>() ?? [];
+            var escapedCurrentLabels = currentLabels
+                .Select(label => CypherIdentifier.Escape(label, "node label"))
+                .ToArray();
+            var removeLabelsClause = escapedCurrentLabels.Length > 0
+                ? $"REMOVE n:{string.Join(":", escapedCurrentLabels)} "
+                : string.Empty;
+            var newLabels = CypherIdentifier.EscapeLabels(entity.ActualLabels);
+            cypher = $"MATCH (n) WHERE elementId(n) = $elementId {captureLegacyIdClause}{removeLabelsClause}SET n = $props {restoreLegacyIdClause}SET n:{newLabels} RETURN count(n) AS affectedCount";
+        }
+        else
+        {
+            cypher = $"MATCH (n) WHERE elementId(n) = $elementId {captureLegacyIdClause}SET n = $props {restoreLegacyIdClause}RETURN count(n) AS affectedCount";
+        }
+
+        var result = await transaction.RunAsync(
+            cypher,
+            new { elementId, props = simpleProperties }).WaitAsync(cancellationToken).ConfigureAwait(false);
+        var record = await result.SingleOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        return record is not null && record["affectedCount"].As<int>() == 1;
+    }
+
+    internal static Dictionary<string, object?> BuildElementBoundNodeProperties(EntityInfo entity)
+    {
+        var properties = SerializationHelpers.SerializeSimpleProperties(entity);
+        if (SerializationHelpers.IsLegacyStructuralProperty(entity, nameof(Graph.IEntity.Id)))
+        {
+            properties.Remove(nameof(Graph.IEntity.Id));
+        }
+
+        properties[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
+        properties[nameof(Graph.INode.Labels)] =
+            entity.ActualLabels.Count == 0 ? [entity.Label] : entity.ActualLabels;
+        return properties;
     }
 
     internal void ValidateNodeProperties<TNode>(TNode node) where TNode : class, Graph.INode

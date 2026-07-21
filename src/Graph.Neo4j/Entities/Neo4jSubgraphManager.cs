@@ -8,6 +8,7 @@ using Cvoya.Graph.Neo4j.Core;
 using Cvoya.Graph.Neo4j.Querying.Cypher;
 using Cvoya.Graph.Neo4j.Serialization;
 using Cvoya.Graph.Serialization;
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -35,6 +36,13 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
     /// <summary>The composed single statement plus its parameters.</summary>
     internal sealed record SubgraphStatement(string Cypher, IDictionary<string, object> Parameters);
 
+    private sealed record EndpointBinding(EntityInfo? Entity, string? ElementId)
+    {
+        public static EndpointBinding New(EntityInfo entity) => new(entity, ElementId: null);
+
+        public static EndpointBinding Selected(string elementId) => new(Entity: null, elementId);
+    }
+
     public async Task CreateSubgraphAsync<TSource, TRelationship, TTarget>(
         TSource source,
         TRelationship relationship,
@@ -59,6 +67,106 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
         await result.ConsumeAsync().ConfigureAwait(false);
 
         _logger.LogInformationNeo4jSubgraphManager54(relationship.Id);
+    }
+
+    internal Task CreateRelationshipAsync(
+        string sourceElementId,
+        Graph.IRelationship relationship,
+        string targetElementId,
+        RelationshipDirection direction,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default) =>
+        ExecuteElementBoundStatementAsync(
+            BuildElementBoundStatement(
+                EndpointBinding.Selected(sourceElementId),
+                relationship,
+                EndpointBinding.Selected(targetElementId),
+                direction,
+                selfLoop: false),
+            transaction,
+            cancellationToken);
+
+    internal Task CreateAsync(
+        string sourceElementId,
+        Graph.IRelationship relationship,
+        Graph.INode newTarget,
+        RelationshipDirection direction,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default) =>
+        ExecuteElementBoundStatementAsync(
+            BuildElementBoundStatement(
+                EndpointBinding.Selected(sourceElementId),
+                relationship,
+                EndpointBinding.New(SerializeNode(newTarget)),
+                direction,
+                selfLoop: false),
+            transaction,
+            cancellationToken);
+
+    internal Task CreateAsync(
+        Graph.INode newSource,
+        Graph.IRelationship relationship,
+        string targetElementId,
+        RelationshipDirection direction,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default) =>
+        ExecuteElementBoundStatementAsync(
+            BuildElementBoundStatement(
+                EndpointBinding.New(SerializeNode(newSource)),
+                relationship,
+                EndpointBinding.Selected(targetElementId),
+                direction,
+                selfLoop: false),
+            transaction,
+            cancellationToken);
+
+    internal Task CreateAsync(
+        Graph.INode newSource,
+        Graph.IRelationship relationship,
+        Graph.INode newTarget,
+        RelationshipDirection direction,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default) =>
+        ExecuteElementBoundStatementAsync(
+            BuildElementBoundStatement(
+                EndpointBinding.New(SerializeNode(newSource)),
+                relationship,
+                EndpointBinding.New(SerializeNode(newTarget)),
+                direction,
+                selfLoop: false),
+            transaction,
+            cancellationToken);
+
+    internal Task CreateSelfLoopAsync(
+        Graph.INode node,
+        Graph.IRelationship relationship,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default) =>
+        ExecuteElementBoundStatementAsync(
+            BuildElementBoundStatement(
+                EndpointBinding.New(SerializeNode(node)),
+                relationship,
+                target: null,
+                RelationshipDirection.Outgoing,
+                selfLoop: true),
+            transaction,
+            cancellationToken);
+
+    private static async Task ExecuteElementBoundStatementAsync(
+        SubgraphStatement statement,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = await transaction.Transaction
+            .RunAsync(statement.Cypher, statement.Parameters)
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (records.Count != 1 || !records[0]["created"].As<bool>())
+        {
+            throw new GraphException("The native-bound Neo4j subgraph command did not create one relationship.");
+        }
     }
 
     /// <summary>
@@ -116,6 +224,106 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
         }
 
         return entity;
+    }
+
+    private SubgraphStatement BuildElementBoundStatement(
+        EndpointBinding source,
+        Graph.IRelationship relationship,
+        EndpointBinding? target,
+        RelationshipDirection direction,
+        bool selfLoop)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(relationship);
+        if (!selfLoop)
+        {
+            ArgumentNullException.ThrowIfNull(target);
+        }
+
+        if (!Enum.IsDefined(direction))
+        {
+            throw new ArgumentOutOfRangeException(nameof(direction));
+        }
+
+        var relationshipEntity = SerializeRelationship(relationship);
+        var parameters = new Dictionary<string, object>();
+        var builder = new StringBuilder();
+
+        // Cypher requires all endpoint MATCH clauses before any CREATE clause. Emit the selected
+        // endpoints first, then create whichever endpoints are new.
+        if (source.ElementId is not null)
+        {
+            AppendElementBoundEndpoint(builder, parameters, "s", source);
+        }
+
+        if (!selfLoop && target!.ElementId is not null)
+        {
+            AppendElementBoundEndpoint(builder, parameters, "t", target);
+        }
+
+        if (source.ElementId is null)
+        {
+            AppendElementBoundEndpoint(builder, parameters, "s", source);
+        }
+
+        if (!selfLoop && target!.ElementId is null)
+        {
+            AppendElementBoundEndpoint(builder, parameters, "t", target);
+        }
+
+        AppendElementBoundEdge(
+            builder,
+            parameters,
+            relationshipEntity,
+            direction,
+            selfLoop ? "s" : "t");
+        builder.Append("RETURN r IS NOT NULL AS created\n");
+        return new SubgraphStatement(builder.ToString(), parameters);
+    }
+
+    private static void AppendElementBoundEndpoint(
+        StringBuilder builder,
+        Dictionary<string, object> parameters,
+        string variable,
+        EndpointBinding endpoint)
+    {
+        if (endpoint.ElementId is { } elementId)
+        {
+            parameters[$"{variable}_elementId"] = elementId;
+            builder.Append("MATCH (").Append(variable).Append(") WHERE elementId(")
+                .Append(variable).Append(") = $").Append(variable).Append("_elementId\n");
+            return;
+        }
+
+        var entity = endpoint.Entity ?? throw new GraphException("A new Neo4j endpoint requires a serialized entity.");
+        var labelClause = BuildNodeLabelClause(entity);
+        var labels = labelClause is null ? string.Empty : $":{labelClause}";
+        parameters[$"{variable}_props"] = Neo4jNodeManager.BuildElementBoundNodeProperties(entity);
+        builder.Append("CREATE (").Append(variable).Append(labels)
+            .Append(" $").Append(variable).Append("_props)\n");
+        AppendValueNodes(
+            builder,
+            parameters,
+            ComplexPropertyManager.CollectElementBoundValueNodeSpecs(variable, entity));
+    }
+
+    private static void AppendElementBoundEdge(
+        StringBuilder builder,
+        Dictionary<string, object> parameters,
+        EntityInfo entity,
+        RelationshipDirection direction,
+        string targetVariable)
+    {
+        var relationshipType = CypherIdentifier.Escape(entity.Label, "relationship type");
+        var (sourceVariable, endVariable) = direction switch
+        {
+            RelationshipDirection.Outgoing => ("s", targetVariable),
+            RelationshipDirection.Incoming => (targetVariable, "s"),
+            _ => throw new GraphException($"Unsupported relationship direction '{direction}'.")
+        };
+        parameters["rel_props"] = Neo4jRelationshipManager.BuildElementBoundRelationshipProperties(entity);
+        builder.Append("CREATE (").Append(sourceVariable).Append(")-[r:").Append(relationshipType)
+            .Append(" $rel_props]->(").Append(endVariable).Append(")\n");
     }
 
     private static void AppendEndpoint(

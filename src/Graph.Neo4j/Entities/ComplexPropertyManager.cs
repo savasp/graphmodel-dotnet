@@ -56,7 +56,20 @@ internal sealed class ComplexPropertyManager(GraphContext context)
     /// used by the per-node create path, so both paths persist complex properties identically, but
     /// binds nodes by variable so the whole subtree can be composed into a single statement.
     /// </summary>
-    internal static IReadOnlyList<ValueNodeSpec> CollectValueNodeSpecs(string rootVariable, EntityInfo rootEntity)
+    internal static IReadOnlyList<ValueNodeSpec> CollectValueNodeSpecs(
+        string rootVariable,
+        EntityInfo rootEntity) =>
+        CollectValueNodeSpecs(rootVariable, rootEntity, includeLegacyIdentity: true);
+
+    internal static IReadOnlyList<ValueNodeSpec> CollectElementBoundValueNodeSpecs(
+        string rootVariable,
+        EntityInfo rootEntity) =>
+        CollectValueNodeSpecs(rootVariable, rootEntity, includeLegacyIdentity: false);
+
+    private static List<ValueNodeSpec> CollectValueNodeSpecs(
+        string rootVariable,
+        EntityInfo rootEntity,
+        bool includeLegacyIdentity)
     {
         var specs = new List<ValueNodeSpec>();
         var queue = new Queue<(string Variable, EntityInfo Entity, int Depth)>();
@@ -82,7 +95,8 @@ internal sealed class ComplexPropertyManager(GraphContext context)
                 {
                     case EntityInfo childEntity:
                         specs.Add(BuildValueNodeSpec(
-                            parentVariable, rootVariable, ref counter, propertyName, complexProperty, childEntity, sequenceNumber: 0, queue, depth));
+                            parentVariable, rootVariable, ref counter, propertyName, complexProperty, childEntity,
+                            sequenceNumber: 0, queue, depth, includeLegacyIdentity));
                         break;
 
                     case EntityCollection collection:
@@ -90,7 +104,8 @@ internal sealed class ComplexPropertyManager(GraphContext context)
                         foreach (var item in collection.Entities)
                         {
                             specs.Add(BuildValueNodeSpec(
-                                parentVariable, rootVariable, ref counter, propertyName, complexProperty, item, index++, queue, depth));
+                                parentVariable, rootVariable, ref counter, propertyName, complexProperty, item,
+                                index++, queue, depth, includeLegacyIdentity));
                         }
                         break;
 
@@ -116,9 +131,15 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         EntityInfo entity,
         int sequenceNumber,
         Queue<(string Variable, EntityInfo Entity, int Depth)> queue,
-        int depth)
+        int depth,
+        bool includeLegacyIdentity)
     {
-        var (relationshipType, nodeProps, relProps) = BuildValueNodeContent(propertyName, property, entity, sequenceNumber);
+        var (relationshipType, nodeProps, relProps) = BuildValueNodeContent(
+            propertyName,
+            property,
+            entity,
+            sequenceNumber,
+            includeLegacyIdentity);
         var variable = $"{rootVariable}_v{counter++}";
         queue.Enqueue((variable, entity, depth + 1));
         return new ValueNodeSpec(parentVariable, variable, relationshipType, entity.Label, nodeProps, relProps);
@@ -128,22 +149,48 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         IAsyncTransaction transaction,
         string parentId,
         EntityInfo entity,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await CreateComplexPropertiesCoreAsync(
+            transaction,
+            parentId,
+            entity,
+            includeLegacyIdentity: true,
+            cancellationToken).ConfigureAwait(false);
+
+    internal async Task CreateElementBoundComplexPropertiesAsync(
+        IAsyncTransaction transaction,
+        string parentElementId,
+        EntityInfo entity,
+        CancellationToken cancellationToken = default) =>
+        await CreateComplexPropertiesCoreAsync(
+            transaction,
+            parentElementId,
+            entity,
+            includeLegacyIdentity: false,
+            cancellationToken).ConfigureAwait(false);
+
+    private async Task CreateComplexPropertiesCoreAsync(
+        IAsyncTransaction transaction,
+        string parentElementId,
+        EntityInfo entity,
+        bool includeLegacyIdentity,
+        CancellationToken cancellationToken)
     {
         // Breadth-first: create all value nodes of one nesting level with a single UNWIND
         // statement per (relationship type, label) group, instead of one statement per node.
-        var currentLevel = new List<(string ParentElementId, EntityInfo Entity)> { (parentId, entity) };
+        var currentLevel = new List<(string ParentElementId, EntityInfo Entity)> { (parentElementId, entity) };
 
         for (var depth = 0; currentLevel.Count > 0; depth++)
         {
-            var pending = CollectPendingValueNodes(currentLevel, depth);
+            var pending = CollectPendingValueNodes(currentLevel, depth, includeLegacyIdentity);
             currentLevel = await CreateLevelAsync(transaction, pending, cancellationToken).ConfigureAwait(false);
         }
     }
 
     private List<PendingValueNode> CollectPendingValueNodes(
         List<(string ParentElementId, EntityInfo Entity)> level,
-        int depth)
+        int depth,
+        bool includeLegacyIdentity)
     {
         var pending = new List<PendingValueNode>();
 
@@ -165,7 +212,8 @@ internal sealed class ComplexPropertyManager(GraphContext context)
                 {
                     case EntityInfo childEntity:
                         pending.Add(CreatePendingValueNode(
-                            parentElementId, propertyName, complexProperty, childEntity, sequenceNumber: 0));
+                            parentElementId, propertyName, complexProperty, childEntity,
+                            sequenceNumber: 0, includeLegacyIdentity));
                         break;
 
                     case EntityCollection collection:
@@ -173,7 +221,8 @@ internal sealed class ComplexPropertyManager(GraphContext context)
                         foreach (var item in collection.Entities)
                         {
                             pending.Add(CreatePendingValueNode(
-                                parentElementId, propertyName, complexProperty, item, index++));
+                                parentElementId, propertyName, complexProperty, item,
+                                index++, includeLegacyIdentity));
                         }
                         break;
 
@@ -197,9 +246,15 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         string propertyName,
         Property property,
         EntityInfo entity,
-        int sequenceNumber)
+        int sequenceNumber,
+        bool includeLegacyIdentity)
     {
-        var (relationshipType, nodeProps, relProps) = BuildValueNodeContent(propertyName, property, entity, sequenceNumber);
+        var (relationshipType, nodeProps, relProps) = BuildValueNodeContent(
+            propertyName,
+            property,
+            entity,
+            sequenceNumber,
+            includeLegacyIdentity);
         return new PendingValueNode(parentElementId, relationshipType, entity, nodeProps, relProps);
     }
 
@@ -210,21 +265,33 @@ internal sealed class ComplexPropertyManager(GraphContext context)
     /// variable), so both persist complex properties identically.
     /// </summary>
     private static (string RelationshipType, Dictionary<string, object?> NodeProperties, Dictionary<string, object> RelationshipProperties)
-        BuildValueNodeContent(string propertyName, Property property, EntityInfo entity, int sequenceNumber)
+        BuildValueNodeContent(
+            string propertyName,
+            Property property,
+            EntityInfo entity,
+            int sequenceNumber,
+            bool includeLegacyIdentity)
     {
         var relationshipType = property.RelationshipType ?? (property.PropertyInfo is null
             ? GraphDataModel.PropertyNameToRelationshipTypeName(propertyName)
             : GraphDataModel.GetComplexPropertyRelationshipType(property.PropertyInfo));
 
         var nodeProps = SerializationHelpers.SerializeSimpleProperties(entity);
-        nodeProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
+        if (includeLegacyIdentity)
+        {
+            nodeProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
+        }
+
         nodeProps[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
         var relProps = new Dictionary<string, object>
         {
-            [nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D"),
             ["SequenceNumber"] = sequenceNumber,
             [ComplexPropertyStorage.RelationshipMarkerProperty] = true
         };
+        if (includeLegacyIdentity)
+        {
+            relProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
+        }
 
         return (relationshipType, nodeProps, relProps);
     }
@@ -299,6 +366,23 @@ internal sealed class ComplexPropertyManager(GraphContext context)
 
         // Then create the new ones
         await CreateComplexPropertiesAsync(transaction, parentId, entity, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task UpdateElementBoundComplexPropertiesAsync(
+        IAsyncTransaction transaction,
+        string parentElementId,
+        EntityInfo entity,
+        CancellationToken cancellationToken = default)
+    {
+        await DeleteExistingComplexPropertiesAsync(
+            transaction,
+            parentElementId,
+            cancellationToken).ConfigureAwait(false);
+        await CreateElementBoundComplexPropertiesAsync(
+            transaction,
+            parentElementId,
+            entity,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task DeleteExistingComplexPropertiesAsync(

@@ -96,9 +96,16 @@ internal sealed class CypherEngine
         if (mutation.Kind == GraphMutationKind.Delete &&
             mutation.Selection.ElementKind == GraphElementKind.Node)
         {
-            await DeleteNodesAsync(
+            _ = await Neo4jNodeManager.DeleteByElementIdsAsync(
                 nativeIdentities.Cast<string>().ToArray(),
                 mutation.CascadeDelete,
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+        }
+        else if (mutation.Kind == GraphMutationKind.Delete)
+        {
+            _ = await Neo4jRelationshipManager.DeleteByElementIdsAsync(
+                nativeIdentities.Cast<string>().ToArray(),
                 transaction,
                 cancellationToken).ConfigureAwait(false);
         }
@@ -110,57 +117,6 @@ internal sealed class CypherEngine
         }
 
         return selected.Count;
-    }
-
-    private async Task DeleteNodesAsync(
-        IReadOnlyList<string> nativeIdentities,
-        bool cascadeDelete,
-        GraphTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        var parameters = new Dictionary<string, object?>
-        {
-            ["targetIds"] = nativeIdentities,
-        };
-        if (!cascadeDelete)
-        {
-            var preflight = $"""
-                MATCH (target)
-                WHERE elementId(target) IN $targetIds
-                OPTIONAL MATCH (target)-[relationship]-()
-                WHERE coalesce(relationship.{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = false
-                RETURN count(DISTINCT relationship) AS relationshipCount
-                """;
-            var records = await _executor.ExecuteAsync(
-                preflight,
-                parameters,
-                transaction,
-                cancellationToken).ConfigureAwait(false);
-            var relationshipCount = records.Single()["relationshipCount"].As<long>();
-            if (relationshipCount > 0)
-            {
-                throw new GraphException(
-                    $"Cannot delete the selected nodes because they have {relationshipCount} incident user relationship(s). " +
-                    "Delete those relationships first or use cascade delete.");
-            }
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        var delete = $"""
-            MATCH (target)
-            WHERE elementId(target) IN $targetIds
-            OPTIONAL MATCH propertyPath = (target)-[propertyRelationships*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
-            WHERE ALL(relationship IN propertyRelationships WHERE relationship.{ComplexPropertyStorage.RelationshipMarkerProperty} = true)
-            WITH target, [node IN collect(DISTINCT propertyNode) WHERE node IS NOT NULL] AS propertyNodes
-            FOREACH (propertyNode IN propertyNodes | DETACH DELETE propertyNode)
-            DETACH DELETE target
-            RETURN count(*) AS affectedCount
-            """;
-        _ = await _executor.ExecuteAsync(
-            delete,
-            parameters,
-            transaction,
-            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<List<global::Neo4j.Driver.IRecord>> ExecuteStatementAsync(
