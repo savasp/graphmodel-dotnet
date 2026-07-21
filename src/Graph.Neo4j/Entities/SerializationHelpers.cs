@@ -26,4 +26,20 @@ internal static class SerializationHelpers
 
         return properties;
     }
+
+    public static bool IsLegacyStructuralProperty(EntityInfo entity, string propertyName)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        return entity.SimpleProperties.TryGetValue(propertyName, out var property) &&
+            property.PropertyInfo.Name == propertyName &&
+            property.PropertyInfo.DeclaringType is { } declaringType &&
+            (declaringType == typeof(Graph.IEntity) ||
+             declaringType == typeof(Graph.INode) ||
+             declaringType == typeof(Graph.IRelationship) ||
+             declaringType == typeof(Graph.Node) ||
+             declaringType == typeof(Graph.Relationship) ||
+             declaringType == typeof(Graph.DynamicNode) ||
+             declaringType == typeof(Graph.DynamicRelationship));
+    }
 }

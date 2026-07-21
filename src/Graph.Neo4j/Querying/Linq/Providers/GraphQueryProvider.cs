@@ -77,12 +77,15 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
         return TransactionHelpers.ExecuteInTransactionAsync(
             context,
             transaction,
-            tx => command(new Neo4jGraphCommandExecutionContext(tx, cypherEngine), cancellationToken),
+            tx => command(new Neo4jGraphCommandExecutionContext(context, tx, cypherEngine), cancellationToken),
             "Error executing graph command",
             logger,
             isReadOnly: false,
             cancellationToken);
     }
+
+    internal Task PrepareRelationshipCreationAsync(CancellationToken cancellationToken) =>
+        context.SchemaManager.InitializeSchemaAsync(cancellationToken);
 
     protected override Task<GraphTransaction> GetOrCreateTransactionAsync(CancellationToken cancellationToken) =>
         TransactionHelpers.GetOrCreateTransactionAsync(context, transaction, isReadOnly, cancellationToken);

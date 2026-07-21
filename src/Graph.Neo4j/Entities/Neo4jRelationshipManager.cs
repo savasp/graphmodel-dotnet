@@ -199,6 +199,88 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         }
     }
 
+    internal async Task<bool> UpdateByElementIdAsync(
+        Graph.IRelationship relationship,
+        string elementId,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(relationship);
+        ArgumentException.ThrowIfNullOrWhiteSpace(elementId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        GraphDataModel.EnsureNoReferenceCycle(relationship);
+        GraphDataModel.EnsureComplexPropertyDepth(relationship);
+        ValidateRelationshipProperties(relationship);
+        var entity = _serializer.Serialize(relationship);
+        if (entity.ComplexProperties.Count > 0)
+        {
+            throw new GraphException(
+                $"Relationships cannot have complex properties. Found {entity.ComplexProperties.Count} complex properties on {relationship.GetType().Name}");
+        }
+
+        var cypher = $"""
+            OPTIONAL MATCH ()-[r]->()
+            WHERE elementId(r) = $elementId
+            WITH r,
+                 type(r) = $incomingStorageType AS physicalTypeMatches,
+                 r.{SerializationBridge.MetadataPropertyName} = $incomingClrType AS clrTypeMatches
+            FOREACH (_ IN CASE WHEN r IS NOT NULL AND physicalTypeMatches AND clrTypeMatches THEN [1] ELSE [] END |
+                SET r = $props)
+            RETURN r IS NOT NULL AS exists,
+                   physicalTypeMatches AS physicalTypeMatches,
+                   clrTypeMatches AS clrTypeMatches,
+                   type(r) AS storedPhysicalType,
+                   r.{SerializationBridge.MetadataPropertyName} AS storedClrMetadata
+            """;
+        var result = await transaction.Transaction.RunAsync(
+            cypher,
+            new
+            {
+                elementId,
+                incomingStorageType = entity.Label,
+                incomingClrType = SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType),
+                props = BuildElementBoundRelationshipProperties(entity)
+            }).WaitAsync(cancellationToken).ConfigureAwait(false);
+        var record = await result.SingleAsync(cancellationToken).ConfigureAwait(false);
+        if (!record["exists"].As<bool>())
+        {
+            return false;
+        }
+
+        if (!record["physicalTypeMatches"].As<bool>() || !record["clrTypeMatches"].As<bool>())
+        {
+            throw new GraphException(RelationshipIdentityChangeMessage);
+        }
+
+        return true;
+    }
+
+    internal static async Task<int> DeleteByElementIdsAsync(
+        IReadOnlyList<string> elementIds,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(elementIds);
+        ArgumentNullException.ThrowIfNull(transaction);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (elementIds.Count == 0)
+        {
+            return 0;
+        }
+
+        const string cypher = """
+            MATCH ()-[relationship]->()
+            WHERE elementId(relationship) IN $targetIds
+            DELETE relationship
+            RETURN count(*) AS affectedCount
+            """;
+        var result = await transaction.Transaction.RunAsync(
+            cypher,
+            new { targetIds = elementIds }).WaitAsync(cancellationToken).ConfigureAwait(false);
+        return (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["affectedCount"].As<int>();
+    }
+
     private static async Task<bool> CreateRelationshipInGraphAsync(
         EntityInfo entity,
         string startNodeId,
@@ -347,6 +429,29 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         var properties = SerializationHelpers.SerializeSimpleProperties(entity)
             .Where(kv => !_ignoredProperties.Contains(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        properties[nameof(Graph.IRelationship.Type)] = entity.Label;
+        properties[SerializationBridge.MetadataPropertyName] =
+            SerializationBridge.GetAssemblyQualifiedTypeName(entity.ActualType);
+        return properties;
+    }
+
+    internal static Dictionary<string, object?> BuildElementBoundRelationshipProperties(EntityInfo entity)
+    {
+        var properties = SerializationHelpers.SerializeSimpleProperties(entity);
+        foreach (var propertyName in new[]
+        {
+            nameof(Graph.IEntity.Id),
+            nameof(Graph.IRelationship.StartNodeId),
+            nameof(Graph.IRelationship.EndNodeId),
+            nameof(Graph.Relationship.Direction)
+        })
+        {
+            if (SerializationHelpers.IsLegacyStructuralProperty(entity, propertyName))
+            {
+                properties.Remove(propertyName);
+            }
+        }
 
         properties[nameof(Graph.IRelationship.Type)] = entity.Label;
         properties[SerializationBridge.MetadataPropertyName] =
