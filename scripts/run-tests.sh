@@ -414,7 +414,11 @@ run_test_project() {
         return 1
     fi
 
-    test_count=$(sed -nE 's/^[[:space:]]*total:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$log_file" | tail -n 1)
+    test_count=$(
+        sed $'s/\033\[[0-9;]*m//g' "$log_file" \
+            | sed -nE 's/^[[:space:]]*total:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' \
+            | tail -n 1
+    )
     rm -f "$log_file"
 
     if [ -z "$test_count" ] || [ "$test_count" -eq 0 ]; then

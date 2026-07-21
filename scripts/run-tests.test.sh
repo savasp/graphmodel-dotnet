@@ -41,7 +41,7 @@ printf '\n' >> "$CALLS_FILE"
 if [ "${1:-}" = "--version" ]; then
     echo "10.0.100"
 elif [ "${1:-}" = "test" ]; then
-    echo "total: 3"
+    printf '\033[32mTest run summary: Passed!\033[0m\n\033[0m  total: 3\n'
 
     if [ -n "${FAKE_FAIL_PROJECT:-}" ]; then
         for argument in "$@"; do
