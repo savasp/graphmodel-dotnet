@@ -10,6 +10,226 @@ using Cvoya.Graph.Querying.Commands;
 public interface IGraphCommandTests : IGraphTest
 {
     [Fact]
+    public async Task KeyAndUniqueUpdate_CommitsCompleteFinalStateAndExactCount()
+    {
+        var marker = $"command-constraint-single-{Guid.NewGuid():N}";
+        var node = new AtomicMutationNode
+        {
+            KeyGroup = marker,
+            KeyCode = "old-key",
+            Email = $"old-{marker}@example.com",
+            Marker = marker,
+        };
+        await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+
+        var affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<AtomicMutationNode>().Where(candidate => candidate.Marker == marker),
+            setters => setters
+                .SetProperty(candidate => candidate.KeyCode, "new-key")
+                .SetProperty(candidate => candidate.Email, $"new-{marker}@example.com"),
+            TestContext.Current.CancellationToken);
+
+        var stored = await Graph.Nodes<AtomicMutationNode>()
+            .SingleAsync(candidate => candidate.Marker == marker, TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal("new-key", stored.KeyCode);
+        Assert.Equal($"new-{marker}@example.com", stored.Email);
+    }
+
+    [Fact]
+    public async Task KeyAndUniqueUpdate_AllowsValidSelectedSetSwap()
+    {
+        var marker = $"command-constraint-swap-{Guid.NewGuid():N}";
+        var firstKey = $"first-{Guid.NewGuid():N}";
+        var secondKey = $"second-{Guid.NewGuid():N}";
+        var firstEmail = $"first-{Guid.NewGuid():N}@example.com";
+        var secondEmail = $"second-{Guid.NewGuid():N}@example.com";
+        await Graph.CreateNodeAsync(new AtomicMutationNode
+        {
+            KeyGroup = marker,
+            KeyCode = firstKey,
+            Email = firstEmail,
+            Marker = marker,
+        }, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(new AtomicMutationNode
+        {
+            KeyGroup = marker,
+            KeyCode = secondKey,
+            Email = secondEmail,
+            Marker = marker,
+        }, cancellationToken: TestContext.Current.CancellationToken);
+
+        var affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<AtomicMutationNode>().Where(candidate => candidate.Marker == marker),
+            setters => setters
+                .SetProperty(
+                    candidate => candidate.KeyCode,
+                    candidate => candidate.KeyCode == firstKey ? secondKey : firstKey)
+                .SetProperty(
+                    candidate => candidate.Email,
+                    candidate => candidate.Email == firstEmail ? secondEmail : firstEmail),
+            TestContext.Current.CancellationToken);
+
+        var stored = await Graph.Nodes<AtomicMutationNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(2, affected);
+        Assert.Equal([firstKey, secondKey], stored.Select(candidate => candidate.KeyCode).Order());
+        Assert.Equal([firstEmail, secondEmail], stored.Select(candidate => candidate.Email).Order());
+    }
+
+    [Fact]
+    public async Task KeyUpdate_SelectedSetDuplicateRollsBackEverySetter()
+    {
+        var marker = $"command-key-duplicate-{Guid.NewGuid():N}";
+        for (var index = 0; index < 2; index++)
+        {
+            await Graph.CreateNodeAsync(new AtomicMutationNode
+            {
+                KeyGroup = marker,
+                KeyCode = $"key-{index}",
+                Email = $"key-{index}-{Guid.NewGuid():N}@example.com",
+                Marker = marker,
+            }, cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        await Assert.ThrowsAsync<GraphException>(() => GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<AtomicMutationNode>().Where(candidate => candidate.Marker == marker),
+            setters => setters
+                .SetProperty(candidate => candidate.Marker, marker + "-changed")
+                .SetProperty(candidate => candidate.KeyCode, "duplicate-key"),
+            TestContext.Current.CancellationToken));
+
+        var stored = await Graph.Nodes<AtomicMutationNode>()
+            .Where(candidate => candidate.Marker == marker || candidate.Marker == marker + "-changed")
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(2, stored.Count);
+        Assert.All(stored, candidate => Assert.Equal(marker, candidate.Marker));
+        Assert.Equal(["key-0", "key-1"], stored.Select(candidate => candidate.KeyCode).Order());
+    }
+
+    [Fact]
+    public async Task UniqueUpdate_SelectedSetDuplicateRollsBackEverySetter()
+    {
+        var marker = $"command-constraint-duplicate-{Guid.NewGuid():N}";
+        var duplicateEmail = $"duplicate-{Guid.NewGuid():N}@example.com";
+        for (var index = 0; index < 2; index++)
+        {
+            await Graph.CreateNodeAsync(new AtomicMutationNode
+            {
+                KeyGroup = marker,
+                KeyCode = $"key-{index}",
+                Email = $"before-{index}-{Guid.NewGuid():N}@example.com",
+                Marker = marker,
+            }, cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        await Assert.ThrowsAsync<GraphException>(() => GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<AtomicMutationNode>().Where(candidate => candidate.Marker == marker),
+            setters => setters
+                .SetProperty(candidate => candidate.Marker, marker + "-changed")
+                .SetProperty(candidate => candidate.Email, duplicateEmail),
+            TestContext.Current.CancellationToken));
+
+        var stored = await Graph.Nodes<AtomicMutationNode>()
+            .Where(candidate => candidate.Marker == marker || candidate.Marker == marker + "-changed")
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(2, stored.Count);
+        Assert.All(stored, candidate => Assert.Equal(marker, candidate.Marker));
+        Assert.DoesNotContain(stored, candidate => candidate.Email == duplicateEmail);
+    }
+
+    [Fact]
+    public async Task UniqueUpdate_UnselectedCollisionRollsBackEverySetter()
+    {
+        var marker = $"command-constraint-unselected-{Guid.NewGuid():N}";
+        var occupiedEmail = $"occupied-{Guid.NewGuid():N}@example.com";
+        await Graph.CreateNodeAsync(new AtomicMutationNode
+        {
+            KeyGroup = marker,
+            KeyCode = "selected",
+            Email = $"selected-{Guid.NewGuid():N}@example.com",
+            Marker = marker,
+        }, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(new AtomicMutationNode
+        {
+            KeyGroup = marker,
+            KeyCode = "unselected",
+            Email = occupiedEmail,
+            Marker = marker + "-other",
+        }, cancellationToken: TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<GraphException>(() => GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<AtomicMutationNode>().Where(candidate => candidate.Marker == marker),
+            setters => setters
+                .SetProperty(candidate => candidate.Marker, marker + "-changed")
+                .SetProperty(candidate => candidate.Email, occupiedEmail),
+            TestContext.Current.CancellationToken));
+
+        var selected = await Graph.Nodes<AtomicMutationNode>()
+            .SingleAsync(candidate => candidate.KeyCode == "selected" && candidate.KeyGroup == marker,
+                TestContext.Current.CancellationToken);
+        Assert.Equal(marker, selected.Marker);
+        Assert.NotEqual(occupiedEmail, selected.Email);
+    }
+
+    [Fact]
+    public async Task RelationshipUniqueUpdate_AllowsValidSelectedSetSwap()
+    {
+        var marker = $"command-relationship-constraint-{Guid.NewGuid():N}";
+        var first = new Person { FirstName = marker + "-first" };
+        var second = new Person { FirstName = marker + "-second" };
+        await Graph.CreateNodeAsync(first, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(second, cancellationToken: TestContext.Current.CancellationToken);
+        var firstCode = $"first-{Guid.NewGuid():N}";
+        var secondCode = $"second-{Guid.NewGuid():N}";
+        await Graph.CreateRelationshipAsync(
+            new AtomicMutationRelationship(first.Id, second.Id) { Code = firstCode, Marker = marker },
+            cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new AtomicMutationRelationship(second.Id, first.Id) { Code = secondCode, Marker = marker },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.Relationships<AtomicMutationRelationship>().Where(candidate => candidate.Marker == marker),
+            setters => setters.SetProperty(
+                candidate => candidate.Code,
+                candidate => candidate.Code == firstCode ? secondCode : firstCode),
+            TestContext.Current.CancellationToken);
+
+        var stored = await Graph.Relationships<AtomicMutationRelationship>()
+            .Where(candidate => candidate.Marker == marker)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(2, affected);
+        Assert.Equal([firstCode, secondCode], stored.Select(candidate => candidate.Code).Order());
+    }
+
+    [Fact]
+    public async Task OrdinaryIdUpdate_AllowsDuplicateFinalValuesOnKeylessModel()
+    {
+        var marker = $"command-ordinary-id-{Guid.NewGuid():N}";
+        await Graph.CreateNodeAsync(
+            new AtomicOrdinaryIdNode { Marker = marker },
+            cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(
+            new AtomicOrdinaryIdNode { Marker = marker },
+            cancellationToken: TestContext.Current.CancellationToken);
+        var duplicatedId = $"ordinary-{Guid.NewGuid():N}";
+
+        var affected = await GraphCommandExtensions.UpdateAsync(
+            Graph.Nodes<AtomicOrdinaryIdNode>().Where(candidate => candidate.Marker == marker),
+            setters => setters.SetProperty(candidate => candidate.Id, duplicatedId),
+            TestContext.Current.CancellationToken);
+
+        var storedIds = await Graph.Nodes<AtomicOrdinaryIdNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .Select(candidate => candidate.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(2, affected);
+        Assert.Equal([duplicatedId, duplicatedId], storedIds);
+    }
+
+    [Fact]
     public async Task ZeroTargetMutations_ReturnZero()
     {
         var missing = $"missing-{Guid.NewGuid():N}";

@@ -75,6 +75,32 @@ public sealed class GraphCommandCypherTests
         Assert.Equal(["affectedCount"], rendered.ProjectionColumns);
     }
 
+    [Fact]
+    public void ConstraintPreflightAndStagedMutation_ComputeBeforeClearing()
+    {
+        Expression<Func<Person, string>> name = person => person.Name;
+        Expression<Func<Person, string>> swap = person => person.Name == "first" ? "second" : "first";
+        var mutation = new GraphMutationModel(
+            GraphMutationKind.Update,
+            new GraphElementSelectionModel(Model(new NodeRoot(typeof(Person))), GraphElementSelectionMode.Set),
+            [new GraphComputedPropertyAssignment(name, typeof(Person).GetProperty(nameof(Person.Name)), nameof(Person.Name), false, swap)],
+            cascadeDelete: false);
+        var planner = new CypherMutationPlanner(dialect);
+
+        var preflight = new CypherRenderer(dialect).Render(
+            planner.PlanConstraintValues(mutation, ["native-1", "native-2"], [nameof(Person.Name)]));
+        var staged = new CypherRenderer(dialect).Render(
+            planner.Plan(mutation, ["native-1", "native-2"], [nameof(Person.Name)]));
+
+        Assert.Contains("RETURN nativeId(target) AS __nativeId", preflight.Text, StringComparison.Ordinal);
+        Assert.Contains("AS __constraintValue0", preflight.Text, StringComparison.Ordinal);
+        Assert.Contains("WITH target AS target", staged.Text, StringComparison.Ordinal);
+        Assert.Contains("AS __finalValue0", staged.Text, StringComparison.Ordinal);
+        Assert.Contains("SET target.Name = null", staged.Text, StringComparison.Ordinal);
+        Assert.Contains("WITH collect({ target: target, __finalValue0: __finalValue0 }) AS __rows", staged.Text, StringComparison.Ordinal);
+        Assert.Contains("SET target.Name = __finalValue0", staged.Text, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(GraphElementKind.Node, true)]
     [InlineData(GraphElementKind.Node, false)]

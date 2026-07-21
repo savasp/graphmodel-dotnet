@@ -217,8 +217,6 @@ public sealed class GraphMutationModelBuilderTests
 
     [Theory]
     [InlineData(nameof(Person.Ignored))]
-    [InlineData(nameof(Person.DomainKey))]
-    [InlineData(nameof(Person.UniqueName))]
     [InlineData(nameof(Person.Home))]
     public void BuildUpdate_RejectsStructuralOrUnsupportedMappedProperties(string propertyName)
     {
@@ -238,6 +236,20 @@ public sealed class GraphMutationModelBuilderTests
 
         Assert.Throws<GraphQueryTranslationException>(() =>
             GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), chain)));
+    }
+
+    [Fact]
+    public void BuildUpdate_AcceptsExplicitKeyAndUniqueProperties()
+    {
+        Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> setters = builder => builder
+            .SetProperty(person => person.DomainKey, "new-key")
+            .SetProperty(person => person.UniqueName, "new-name");
+
+        var mutation = GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), setters));
+
+        Assert.Equal(
+            [nameof(Person.DomainKey), nameof(Person.UniqueName)],
+            mutation.Assignments.Select(assignment => assignment.StorageName));
     }
 
     [Fact]

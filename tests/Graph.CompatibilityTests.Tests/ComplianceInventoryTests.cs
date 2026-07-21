@@ -76,7 +76,9 @@ public sealed class ComplianceInventoryTests
     // ordered-window updates, relationship mutation, atomic/cascading node deletion,
     // dynamic-property mutation without exposing provider-native identities, and role-specific
     // exact-one endpoint cardinality failures.
-    private const int ExpectedTotalTestMethods = 465;
+    // +7 for #475: key/unique updates, selected-set swaps and duplicate rollback, unselected
+    // collision rollback, relationship uniqueness, and ordinary domain properties named Id.
+    private const int ExpectedTotalTestMethods = 472;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

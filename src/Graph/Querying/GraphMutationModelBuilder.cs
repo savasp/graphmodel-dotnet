@@ -214,12 +214,6 @@ internal static class GraphMutationModelBuilder
                 $"Property '{property.Name}' is ignored and has no mapped storage property.");
         }
 
-        if (attribute?.IsKey == true || attribute?.IsUnique == true)
-        {
-            throw new GraphQueryTranslationException(
-                $"Key or unique property '{property.Name}' cannot be updated by the first-wave setter contract.");
-        }
-
         if (!GraphDataModel.IsSimple(property.PropertyType) &&
             !GraphDataModel.IsCollectionOfSimple(property.PropertyType))
         {
