@@ -74,6 +74,19 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             targetStorageLabel,
             relationshipStorageType);
 
+        // The batch interleaves the uniqueness probes with the writes they guard, so the locks have
+        // to be held before the batch is sent - not as commands inside it - for the whole subgraph
+        // create to be atomic against a competing transaction claiming the same values.
+        await transaction.Runner.AcquireUniquenessLocksAsync(
+            sourceChecks.Concat(targetChecks).Concat(relationshipChecks)
+                .Select(check => check.LockKey)
+                .ToArray(),
+            cancellationToken).ConfigureAwait(false);
+
+        // Uniqueness locks first, then label provisioning: every write path acquires in that order
+        // (see EnsureLabelAsync), so a first-use label creation - which holds the graph-wide
+        // provisioning lock until commit - can never deadlock against a peer holding a uniqueness
+        // lock while waiting to create its own label.
         foreach (var nodeLabel in new[] { sourceStorageLabel, targetStorageLabel }.Distinct(StringComparer.Ordinal))
         {
             await transaction.Runner
@@ -93,15 +106,6 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
                 .EnsureLabelAsync(SerializationBridge.PhysicalRelationshipType, relationship: true, cancellationToken)
                 .ConfigureAwait(false);
         }
-
-        // The batch interleaves the uniqueness probes with the writes they guard, so the locks have
-        // to be held before the batch is sent - not as commands inside it - for the whole subgraph
-        // create to be atomic against a competing transaction claiming the same values.
-        await transaction.Runner.AcquireUniquenessLocksAsync(
-            sourceChecks.Concat(targetChecks).Concat(relationshipChecks)
-                .Select(check => check.LockKey)
-                .ToArray(),
-            cancellationToken).ConfigureAwait(false);
 
         var results = await transaction.Runner.RunBatchAsync(commands, cancellationToken).ConfigureAwait(false);
         ValidateResults(

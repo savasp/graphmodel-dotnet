@@ -174,15 +174,29 @@ public sealed class AgeGraphStore : IAsyncDisposable
             : ProvisionAsync(connection, skipWhenProvisioned: true, cancellationToken);
 
     /// <summary>Verifies that the configured graph exists without mutating database state.</summary>
+    /// <remarks>
+    /// A successful probe publishes <see cref="graphReady"/>, so only a store's first read-only
+    /// transaction pays the catalog round-trip; later reads - and the write path's graph-creation
+    /// check - trust the verified graph. An explicit
+    /// <see cref="CreateGraphIfNotExistsAsync(CancellationToken)"/> still clears the flag and
+    /// re-verifies the database.
+    /// </remarks>
     internal async Task EnsureGraphExistsAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
     {
+        if (graphReady)
+        {
+            return;
+        }
+
         if (!await GraphExistsAsync(connection, transaction, cancellationToken).ConfigureAwait(false))
         {
             throw new GraphException($"Apache AGE graph '{GraphName}' does not exist.");
         }
+
+        graphReady = true;
     }
 
     /// <summary>

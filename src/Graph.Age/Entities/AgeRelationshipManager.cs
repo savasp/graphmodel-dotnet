@@ -287,8 +287,8 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 SerializationBridge.CreateScalarMetadata(entity.ActualType);
         }
 
-        await transaction.EnsureLabelAsync(storageType, relationship: true, cancellationToken).ConfigureAwait(false);
         SerializationBridge.ValidateRootStorageName(entity.Label, "relationship type");
+        await transaction.EnsureLabelAsync(storageType, relationship: true, cancellationToken).ConfigureAwait(false);
         var physicalType = CypherIdentifier.Escape(storageType, "relationship type");
         var parameters = new Dictionary<string, object?>
         {
@@ -359,8 +359,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
         if (records.Count != 1)
         {
-            throw new GraphException(
-                $"{RelationshipIdentityChangeMessage} The selected relationship disappeared before the update could be applied.");
+            throw new GraphException("The selected relationship disappeared before the update could be applied.");
         }
     }
 
@@ -396,8 +395,8 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         if (lookupRecords.Count > 1)
         {
             throw new GraphException(
-                $"Cannot update relationship {relationshipId} because the ID and type match {lookupRecords.Count} graph relationships. " +
-                "UpdateRelationshipAsync requires them to identify exactly one relationship.");
+                $"Cannot update relationship {relationshipId} because the ID matches {lookupRecords.Count} graph relationships. " +
+                "UpdateRelationshipAsync requires the ID to identify exactly one relationship.");
         }
 
         var lookupRecord = lookupRecords[0];

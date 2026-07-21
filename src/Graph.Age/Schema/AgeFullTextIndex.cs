@@ -25,36 +25,6 @@ internal static class AgeFullTextIndex
     /// <summary>The GIN index over the relationship label table.</summary>
     internal const string RelationshipIndexName = "cvoya_rel_fulltext_gin";
 
-    /// <summary>
-    /// Idempotently creates the extraction function and both GIN indexes on the supplied connection,
-    /// enlisting in <paramref name="transaction"/> when one is given. Both physical entity tables must
-    /// already exist (graph provisioning creates them via a throwaway subgraph), so this runs as the last
-    /// step of the provisioning sequence and inside its transaction. <c>CREATE INDEX IF NOT EXISTS</c>
-    /// without <c>CONCURRENTLY</c> is correct here: it runs at provisioning time on an empty or small
-    /// store, so the brief table lock is harmless and keeps the operation transactional.
-    /// </summary>
-    internal static async Task EnsureAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction? transaction,
-        string graphName,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(connection);
-        AgeSqlIdentifier.Validate(graphName, "graph name");
-
-        await ExecuteAsync(connection, transaction, CreateBlobFunctionSql(graphName), cancellationToken).ConfigureAwait(false);
-        await ExecuteAsync(
-            connection,
-            transaction,
-            CreateIndexSql(graphName, SerializationBridge.PhysicalNodeLabel, NodeIndexName),
-            cancellationToken).ConfigureAwait(false);
-        await ExecuteAsync(
-            connection,
-            transaction,
-            CreateIndexSql(graphName, SerializationBridge.PhysicalRelationshipType, RelationshipIndexName),
-            cancellationToken).ConfigureAwait(false);
-    }
-
     /// <summary>Drops and rebuilds both indexes, refreshing the extraction function between them.</summary>
     internal static async Task RecreateAsync(
         NpgsqlConnection connection,
@@ -64,17 +34,15 @@ internal static class AgeFullTextIndex
         ArgumentNullException.ThrowIfNull(connection);
         AgeSqlIdentifier.Validate(graphName, "graph name");
 
-        await ExecuteAsync(connection, null, DropIndexSql(graphName, NodeIndexName), cancellationToken).ConfigureAwait(false);
-        await ExecuteAsync(connection, null, DropIndexSql(graphName, RelationshipIndexName), cancellationToken).ConfigureAwait(false);
-        await ExecuteAsync(connection, null, CreateBlobFunctionSql(graphName), cancellationToken).ConfigureAwait(false);
+        await ExecuteAsync(connection, DropIndexSql(graphName, NodeIndexName), cancellationToken).ConfigureAwait(false);
+        await ExecuteAsync(connection, DropIndexSql(graphName, RelationshipIndexName), cancellationToken).ConfigureAwait(false);
+        await ExecuteAsync(connection, CreateBlobFunctionSql(graphName), cancellationToken).ConfigureAwait(false);
         await ExecuteAsync(
             connection,
-            null,
             CreateIndexSql(graphName, SerializationBridge.PhysicalNodeLabel, NodeIndexName),
             cancellationToken).ConfigureAwait(false);
         await ExecuteAsync(
             connection,
-            null,
             CreateIndexSql(graphName, SerializationBridge.PhysicalRelationshipType, RelationshipIndexName),
             cancellationToken).ConfigureAwait(false);
     }
@@ -116,13 +84,11 @@ internal static class AgeFullTextIndex
             "no user input reaches this statement.")]
     private static async Task ExecuteAsync(
         NpgsqlConnection connection,
-        NpgsqlTransaction? transaction,
         string sql,
         CancellationToken cancellationToken)
     {
         var command = connection.CreateCommand();
         await using var commandLease = command.ConfigureAwait(false);
-        command.Transaction = transaction;
         command.CommandText = sql;
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }

@@ -54,6 +54,12 @@ internal sealed partial class AgeQueryRunner
     /// Discovers or creates one native AGE vertex/edge label inside the current write transaction.
     /// The graph-scoped advisory lock serializes the catalog check-and-create sequence across stores.
     /// </summary>
+    /// <remarks>
+    /// Lock ordering: a write path that also takes uniqueness locks must acquire them <em>before</em>
+    /// calling this method. Creating a missing label holds the graph-wide provisioning lock until the
+    /// transaction ends, so acquiring the two lock kinds in opposite orders on two paths would let a
+    /// first-use label creation deadlock against a peer already holding a uniqueness lock.
+    /// </remarks>
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
         "Security",
         "CA2100:Review SQL queries for security vulnerabilities",

@@ -27,9 +27,9 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
     // front - a plain, label-agnostic MATCH on Id resolves the candidate node(s) directly.
     // labels(n) here is the cheap per-node function (labels already bound by the MATCH), not the
     // database-wide db.labels() catalog procedure that used to be queried separately - as a
-    // pre-existing round trip - before this MATCH could even be built (see #135). This is a
-    // compile-time constant (not built from a database query result) specifically so its shape
-    // is directly testable without a live Age instance.
+    // pre-existing round trip - before this MATCH could even be built (see #135). It is composed
+    // statically from AgeElementMatcher (never from a database query result) specifically so its
+    // shape is directly testable without a live Age instance.
     internal static readonly string RootMatchPrelude =
         AgeElementMatcher.UserRootMatch("n", " {Id: $nodeId}");
 
@@ -304,10 +304,10 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             simpleProperties[AgeElementMatcher.InheritanceLabelsProperty] = LegacyLogicalLabels(entity);
         }
 
+        SerializationBridge.ValidateRootStorageName(entity.Label, "node label");
         await transaction.EnsureLabelAsync(storageLabel, relationship: false, cancellationToken).ConfigureAwait(false);
         var parameters = new Dictionary<string, object?>();
         var setClause = AgeCypherProperties.BuildSetClause("n", simpleProperties, parameters, "nodeProperty");
-        SerializationBridge.ValidateRootStorageName(entity.Label, "node label");
         var physicalLabel = CypherIdentifier.Escape(storageLabel, "node label");
         var cypher = $"CREATE (n:{physicalLabel}) {setClause} RETURN id(n) AS nodeId";
 
