@@ -311,6 +311,65 @@ public class CollectionShapeRoundTripTests
         AssertGeneratorProducesNoSources(source);
     }
 
+    [Theory]
+    [InlineData("System.Threading.Tasks.Task")]
+    [InlineData("System.Threading.Tasks.ValueTask")]
+    [InlineData("System.Action")]
+    [InlineData("System.Collections.Generic.Dictionary<string, string>")]
+    [InlineData("System.Collections.IDictionary")]
+    [InlineData("System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, string>>")]
+    [InlineData("System.Collections.Generic.List<System.Collections.Generic.List<System.Threading.Tasks.Task>>")]
+    [InlineData("System.IO.Stream")]
+    [InlineData("System.Net.IPAddress")]
+    [InlineData("System.Reflection.MemberInfo")]
+    [InlineData("System.Runtime.InteropServices.GCHandle")]
+    public void NestedUnsupportedShapes_DoNotEmitSerializers(string propertyType)
+    {
+        var source = $$"""
+            using Cvoya.Graph;
+
+            public sealed class UnsupportedHolder
+            {
+                public {{propertyType}} Unsupported { get; set; }
+            }
+
+            [Node("Invalid")]
+            public sealed record InvalidNode : Node
+            {
+                public UnsupportedHolder Holder { get; set; } = new();
+            }
+            """;
+
+        AssertGeneratorProducesNoSources(source);
+    }
+
+    [Fact]
+    public void InheritedNestedUnsupportedShape_DoesNotEmitSerializers()
+    {
+        const string source = """
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            public abstract class UnsupportedHolderBase
+            {
+                public Task Unsupported { get; set; } = null!;
+            }
+
+            public sealed class DerivedUnsupportedHolder : UnsupportedHolderBase
+            {
+                public string Name { get; set; } = string.Empty;
+            }
+
+            [Node("Invalid")]
+            public sealed record InvalidNode : Node
+            {
+                public DerivedUnsupportedHolder Holder { get; set; } = new();
+            }
+            """;
+
+        AssertGeneratorProducesNoSources(source);
+    }
+
     [Fact]
     public void IgnoredNestedNativeSizedIntegerProperties_EmitSerializers()
     {
@@ -335,6 +394,74 @@ public class CollectionShapeRoundTripTests
 
         var generated = GeneratorTestHelpers.RunGenerator(source);
         Assert.Contains("Serializer.g.cs", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecursiveNestedTypeWithExcludedUnsupportedMembers_EmitsSerializers()
+    {
+        const string source = """
+            #nullable enable
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            public abstract class SupportedHolderBase
+            {
+                public string Name { get; set; } = string.Empty;
+                public Task Hidden { get; set; } = null!;
+            }
+
+            public sealed class RecursiveSupportedHolder : SupportedHolderBase
+            {
+                public RecursiveSupportedHolder? Next { get; set; }
+
+                [Property(Ignore = true)]
+                public Task Ignored { get; set; } = null!;
+
+                [Property(Ignore = true)]
+                public new Task Hidden { get; set; } = null!;
+
+                public static Task Static { get; } = Task.CompletedTask;
+
+                public Task this[int index] => Task.CompletedTask;
+            }
+
+            [Node("Valid")]
+            public sealed record ValidNode : Node
+            {
+                public RecursiveSupportedHolder Holder { get; set; } = new();
+            }
+            """;
+
+        var generated = GeneratorTestHelpers.RunGenerator(source);
+        Assert.Contains("ValidNodeSerializer.g.cs", generated, StringComparison.Ordinal);
+        Assert.Contains("RecursiveSupportedHolderSerializer.g.cs", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NonSerializedUnsupportedEntityProperties_EmitSerializers()
+    {
+        // Ignored properties, static properties, and indexers are outside the serialized property
+        // set, so an unsupported type on one of them must not suppress the entity's serializer.
+        const string source = """
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            [Node("Valid")]
+            public sealed record ValidNode : Node
+            {
+                public string Name { get; set; } = string.Empty;
+
+                [Property(Ignore = true)]
+                public Task Ignored { get; set; } = null!;
+
+                public static Task Shared { get; set; } = Task.CompletedTask;
+
+                public Task this[int index] => Task.CompletedTask;
+            }
+            """;
+
+        var generated = GeneratorTestHelpers.RunGenerator(source);
+        Assert.Contains("ValidNodeSerializer.g.cs", generated, StringComparison.Ordinal);
     }
 
     private static IEntitySerializer CreateSerializer(System.Reflection.Assembly assembly, string serializerTypeName)

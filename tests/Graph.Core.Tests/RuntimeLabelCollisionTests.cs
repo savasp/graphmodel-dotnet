@@ -404,9 +404,10 @@ public class RuntimeLabelCollisionTests : IDisposable
     public void CreateEntitySchemaInfo_InheritedPropertyCollidesWithDerivedProperty_Collides()
     {
         // Mirrors CG007's InheritedNodeWithDuplicatePropertyLabels_ProducesDiagnostic: SchemaRegistry
-        // flattens the full inheritance chain via Type.GetProperties(), so this is visible even though
-        // Labels.GetLabelFromProperty (keyed by PropertyInfo.DeclaringType) cannot see it - see the
-        // Labels-layer tests below for that narrower, complementary check.
+        // walks the full inheritance chain (most-derived declaration of each name wins, matching
+        // serialization), so this is visible even though Labels.GetLabelFromProperty (keyed by
+        // PropertyInfo.DeclaringType) cannot see it - see the Labels-layer tests below for that
+        // narrower, complementary check.
         const string source = """
             using Cvoya.Graph;
 

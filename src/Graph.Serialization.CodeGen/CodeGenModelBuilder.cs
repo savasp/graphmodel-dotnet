@@ -163,7 +163,9 @@ internal sealed class CodeGenModelBuilder
             ? underlyingType
             : namedType;
 
-        if (IsNativeSizedInteger(type) || (elementType is not null && IsNativeSizedInteger(elementType)))
+        // Element shapes are covered by the recursive BuildTypeReference(elementType) call below,
+        // which re-applies this same check at every nesting level.
+        if (GraphDataModel.IsUnsupportedFrameworkType(type) || GraphDataModel.IsDictionaryType(type))
         {
             hasUnsupportedTypeShape = true;
         }
@@ -223,6 +225,7 @@ internal sealed class CodeGenModelBuilder
                 .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
                     property.GetMethod != null &&
                     !property.IsStatic &&
+                    !property.IsIndexer &&
                     seenProperties.Add(property.Name)))
             {
                 properties.Add(property);
@@ -235,6 +238,7 @@ internal sealed class CodeGenModelBuilder
                 .OfType<IPropertySymbol>()
                 .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
                     property.GetMethod != null &&
+                    !property.IsIndexer &&
                     seenProperties.Add(property.Name)))
             {
                 properties.Add(property);
@@ -417,19 +421,8 @@ internal sealed class CodeGenModelBuilder
                 property.Type.Identity == GetTypeIdentity(parameter.Type)) == true);
     }
 
-    private static ITypeSymbol UnwrapNullableValueType(ITypeSymbol type)
-    {
-        return type is INamedTypeSymbol { IsGenericType: true } namedType &&
-               namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T
-            ? namedType.TypeArguments[0]
-            : type;
-    }
-
-    private static bool IsNativeSizedInteger(ITypeSymbol type)
-    {
-        type = UnwrapNullableValueType(type);
-        return type.SpecialType is SpecialType.System_IntPtr or SpecialType.System_UIntPtr;
-    }
+    private static ITypeSymbol UnwrapNullableValueType(ITypeSymbol type) =>
+        GraphDataModel.UnwrapNullableValueType(type);
 
     private static IEnumerable<string> GetBaseTypeIdentities(INamedTypeSymbol type)
     {

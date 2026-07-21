@@ -118,6 +118,75 @@ public sealed class RuntimeKeySchemaValidationTests
         AssertInvalidSchema(source, "RuntimeNestedNativeIntegerNode", "native-sized integer", "IntPtr");
     }
 
+    [Theory]
+    [InlineData("System.Threading.Tasks.Task", "framework type")]
+    [InlineData("System.Threading.Tasks.ValueTask", "framework type")]
+    [InlineData("System.Action", "delegate type")]
+    [InlineData("System.Collections.Generic.Dictionary<string, string>", "dictionary type")]
+    [InlineData("System.Collections.IDictionary", "dictionary type")]
+    [InlineData("System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, string>>", "dictionary type")]
+    [InlineData("System.Collections.Generic.List<System.Collections.Generic.List<System.Threading.Tasks.Task>>", "framework type")]
+    [InlineData("System.IO.Stream", "framework type")]
+    [InlineData("System.Net.IPAddress", "framework type")]
+    [InlineData("System.Reflection.MemberInfo", "framework type")]
+    [InlineData("System.Runtime.InteropServices.GCHandle", "framework type")]
+    public void CreateEntitySchemaInfo_ComplexPropertyContainingUnsupportedShape_Throws(
+        string propertyType,
+        string expectedReason)
+    {
+        var source = $$"""
+            using Cvoya.Graph;
+
+            public sealed class UnsupportedHolder
+            {
+                public {{propertyType}} Unsupported { get; set; }
+            }
+
+            [Node("RuntimeNestedUnsupportedNode")]
+            public sealed record RuntimeNestedUnsupportedNode : Node
+            {
+                public UnsupportedHolder DomainKey { get; init; } = new();
+            }
+            """;
+
+        AssertInvalidSchema(
+            source,
+            "RuntimeNestedUnsupportedNode",
+            "DomainKey.Unsupported",
+            expectedReason);
+    }
+
+    [Fact]
+    public void CreateEntitySchemaInfo_ComplexPropertyWithInheritedUnsupportedMember_Throws()
+    {
+        const string source = """
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            public abstract class UnsupportedHolderBase
+            {
+                public Task Unsupported { get; set; } = null!;
+            }
+
+            public sealed class DerivedUnsupportedHolder : UnsupportedHolderBase
+            {
+                public string Name { get; set; } = string.Empty;
+            }
+
+            [Node("RuntimeInheritedUnsupportedNode")]
+            public sealed record RuntimeInheritedUnsupportedNode : Node
+            {
+                public DerivedUnsupportedHolder DomainKey { get; init; } = new();
+            }
+            """;
+
+        AssertInvalidSchema(
+            source,
+            "RuntimeInheritedUnsupportedNode",
+            "DomainKey.Unsupported",
+            "framework type");
+    }
+
     [Fact]
     public void CreateEntitySchemaInfo_ComplexCollectionElementContainingNativeSizedInteger_Throws()
     {
@@ -211,6 +280,83 @@ public sealed class RuntimeKeySchemaValidationTests
             """;
 
         AssertValidSchema(source, "RuntimeIgnoredNestedNativeIntegerNode");
+    }
+
+    [Fact]
+    public void CreateEntitySchemaInfo_RecursiveComplexPropertyWithExcludedUnsupportedMembers_Succeeds()
+    {
+        const string source = """
+            #nullable enable
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            public abstract class SupportedHolderBase
+            {
+                public string Name { get; set; } = string.Empty;
+                public Task Hidden { get; set; } = null!;
+            }
+
+            public sealed class RecursiveSupportedHolder : SupportedHolderBase
+            {
+                public RecursiveSupportedHolder? Next { get; set; }
+
+                [Property(Ignore = true)]
+                public Task Ignored { get; set; } = null!;
+
+                [Property(Ignore = true)]
+                public new Task Hidden { get; set; } = null!;
+
+                public static Task Static { get; } = Task.CompletedTask;
+
+                public Task this[int index] => Task.CompletedTask;
+            }
+
+            [Node("RuntimeRecursiveFilteredNode")]
+            public sealed record RuntimeRecursiveFilteredNode : Node
+            {
+                public RecursiveSupportedHolder DomainKey { get; init; } = new();
+            }
+            """;
+
+        AssertValidSchema(source, "RuntimeRecursiveFilteredNode");
+    }
+
+    [Fact]
+    public void CreateEntitySchemaInfo_NonSerializedUnsupportedEntityProperties_AreExcluded()
+    {
+        // The exclusions applied to nested complex members apply to the entity's own declarations
+        // too: an unsupported type on an ignored property, a static property, or an indexer is not
+        // a schema error, and only the ignored declaration stays in the schema (flagged as ignored).
+        const string source = """
+            using System.Threading.Tasks;
+            using Cvoya.Graph;
+
+            [Node("RuntimeNonSerializedUnsupportedNode")]
+            public sealed record RuntimeNonSerializedUnsupportedNode : Node
+            {
+                public string DomainKey { get; init; } = string.Empty;
+
+                [Property(Ignore = true)]
+                public Task Ignored { get; init; } = null!;
+
+                public static Task Shared { get; set; } = Task.CompletedTask;
+
+                public Task this[int index] => Task.CompletedTask;
+            }
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["RuntimeNonSerializedUnsupportedNode"],
+            types =>
+            {
+                var schema = CreateEntitySchemaInfo(types[0]);
+
+                Assert.Contains("DomainKey", schema.Properties.Keys);
+                Assert.True(schema.Properties["Ignored"].Ignore);
+                Assert.DoesNotContain("Shared", schema.Properties.Keys);
+                Assert.DoesNotContain("Item", schema.Properties.Keys);
+            });
     }
 
     [Theory]

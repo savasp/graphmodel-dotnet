@@ -21,6 +21,7 @@ internal static class Utils
             var props = t.GetMembers()
                 .OfType<IPropertySymbol>()
                 .Where(p => !p.IsStatic &&
+                    !p.IsIndexer &&
                     p.DeclaredAccessibility == Accessibility.Public &&
                     p.GetMethod != null &&
                     seenProperties.Add(p.Name));
@@ -192,8 +193,8 @@ internal static class Utils
 
     internal static bool SerializationShouldSkipProperty(IPropertySymbol property, INamedTypeSymbol type)
     {
-        // Skip static properties
-        if (property.IsStatic)
+        // Static properties and indexers are not part of the serialized property graph.
+        if (property.IsStatic || property.IsIndexer)
             return true;
 
         // Check if property has [Property(Ignore = true)]

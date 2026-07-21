@@ -154,6 +154,13 @@ Native-sized integers (`IntPtr`/`UIntPtr`, including the `nint`/`nuint` aliases)
 anywhere in an entity's property graph: as ordinary properties, key values, nullable values,
 collection elements, or members of complex property values.
 
+The same root-and-nested rule rejects dictionaries, delegates, and every type declared under
+`System.Threading.Tasks`, `System.IO`, `System.Net`, `System.Reflection`, or `System.Runtime` —
+including the enums and structs those namespaces declare. Inherited public instance properties
+participate in validation. Static properties, indexers, and properties marked
+`[Property(Ignore = true)]` are not serialized, and the rules above ignore them: they never trigger
+CG004/CG005, a runtime schema failure, or serializer suppression.
+
 ```csharp
 public record Person : Node
 {

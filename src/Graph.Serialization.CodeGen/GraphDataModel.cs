@@ -83,6 +83,9 @@ internal static class GraphDataModel
         if (type.SpecialType == SpecialType.System_String)
             return false;
 
+        if (IsDictionaryType(type))
+            return false;
+
         // Handle arrays first
         if (type is IArrayTypeSymbol arrayType)
         {
@@ -121,8 +124,69 @@ internal static class GraphDataModel
         if (type.SpecialType == SpecialType.System_String)
             return false;
 
+        if (IsDictionaryType(type))
+            return false;
+
         var elementType = GetCollectionElementType(type);
         return elementType != null && !IsSimple(elementType);
+    }
+
+    internal static bool IsUnsupportedFrameworkType(ITypeSymbol type)
+    {
+        type = UnwrapNullableValueType(type);
+
+        if (type.SpecialType is SpecialType.System_IntPtr or SpecialType.System_UIntPtr)
+            return true;
+
+        var fullName = type.ToDisplayString();
+        return fullName.StartsWith("System.Threading.Tasks.") ||
+               fullName.StartsWith("System.Action") ||
+               fullName.StartsWith("System.Func") ||
+               type.TypeKind == TypeKind.Delegate ||
+               fullName.StartsWith("System.IO.") ||
+               fullName.StartsWith("System.Net.") ||
+               fullName.StartsWith("System.Reflection.") ||
+               fullName.StartsWith("System.Runtime.");
+    }
+
+    internal static bool IsDictionaryType(ITypeSymbol type)
+    {
+        if (type is not INamedTypeSymbol namedType)
+            return false;
+
+        if (namedType.Name == "IDictionary" &&
+            namedType.ContainingNamespace?.ToDisplayString() == "System.Collections")
+        {
+            return true;
+        }
+
+        if (namedType.AllInterfaces.Any(candidate =>
+            candidate.Name == "IDictionary" &&
+            candidate.ContainingNamespace?.ToDisplayString() == "System.Collections"))
+        {
+            return true;
+        }
+
+        return IsDictionaryGenericDefinition(namedType) ||
+               namedType.AllInterfaces.Any(IsDictionaryGenericDefinition);
+    }
+
+    private static bool IsDictionaryGenericDefinition(INamedTypeSymbol type)
+    {
+        if (!type.IsGenericType)
+            return false;
+
+        var definition = type.ConstructedFrom;
+        return definition.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic" &&
+               definition.Name is "IDictionary" or "IReadOnlyDictionary";
+    }
+
+    internal static ITypeSymbol UnwrapNullableValueType(ITypeSymbol type)
+    {
+        return type is INamedTypeSymbol { IsGenericType: true } namedType &&
+               namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T
+            ? namedType.TypeArguments[0]
+            : type;
     }
 
     /// <summary>
