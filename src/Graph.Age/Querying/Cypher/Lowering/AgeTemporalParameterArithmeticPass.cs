@@ -246,7 +246,13 @@ internal sealed class AgeTemporalParameterArithmeticPass : ICypherPass
 
         private QueryParameter AddParameter(object value)
         {
-            var name = $"age_temporal_{parameterIndex++}";
+            string name;
+            do
+            {
+                name = $"age_temporal_{parameterIndex++}";
+            }
+            while (parameters.ContainsKey(name));
+
             parameters[name] = value;
             Changed = true;
             return new QueryParameter(name);

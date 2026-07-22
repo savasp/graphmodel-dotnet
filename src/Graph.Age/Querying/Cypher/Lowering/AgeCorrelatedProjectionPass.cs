@@ -333,8 +333,8 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
         CypherStatement input,
         string countAliasPrefix)
     {
-        var returnIndex = FindReturnIndex(input.Clauses, required: false);
-        if (returnIndex < 0)
+        var terminalIndex = FindProjectionTerminalIndex(input.Clauses);
+        if (terminalIndex < 0)
         {
             return input;
         }
@@ -342,6 +342,7 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
         var extractor = new PatternSubqueryExtractor(countAliasPrefix);
         var output = new List<ICypherClause>();
         var scope = new List<string>();
+        OrderByClause? entityResultOrdering = null;
         for (var index = 0; index < input.Clauses.Count; index++)
         {
             var clause = input.Clauses[index];
@@ -369,14 +370,28 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
                         break;
                     }
 
-                case OrderByClause orderBy when index < returnIndex:
-                    // A leading ORDER BY holds the final result ordering (AgeClauseOrderPass
-                    // repositions it after lowering), so its counts stay pending and their stages
-                    // are emitted with the RETURN counts, where the aliases are in scope.
-                    output.Add(RewriteOrdering(orderBy, extractor));
-                    break;
+                case OrderByClause orderBy when index < terminalIndex:
+                    {
+                        // The explicit ordering still controls paging before entity hydration, while
+                        // entity projections must also carry the ordering through their property-load
+                        // pipeline. Keep the original expression so it can be lowered again at the
+                        // projection boundary if no explicit result ordering is already attached.
+                        var rewritten = RewriteOrdering(orderBy, extractor);
+                        if (input.Clauses[terminalIndex] is EntityProjectionClause)
+                        {
+                            var counts = extractor.Drain();
+                            if (counts.Length > 0)
+                            {
+                                entityResultOrdering = orderBy;
+                                EmitCountStages(output, scope, counts);
+                            }
+                        }
 
-                case ReturnClause @return when index == returnIndex:
+                        output.Add(rewritten);
+                        break;
+                    }
+
+                case ReturnClause @return when index == terminalIndex:
                     {
                         var items = @return.Items
                             .Select(item => new ReturnItem(extractor.Rewrite(item.Expression), item.Alias))
@@ -384,18 +399,42 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
 
                         // Trailing ORDER BY may reference the same counts; rewrite it now so the
                         // stages land before RETURN, where the aliases are still in scope.
-                        var trailing = new ICypherClause[input.Clauses.Count - returnIndex - 1];
+                        var trailing = new ICypherClause[input.Clauses.Count - terminalIndex - 1];
                         for (var offset = 0; offset < trailing.Length; offset++)
                         {
-                            trailing[offset] = input.Clauses[returnIndex + 1 + offset] is OrderByClause trailingOrder
+                            trailing[offset] = input.Clauses[terminalIndex + 1 + offset] is OrderByClause trailingOrder
                                 ? RewriteOrdering(trailingOrder, extractor)
-                                : input.Clauses[returnIndex + 1 + offset];
+                                : input.Clauses[terminalIndex + 1 + offset];
                         }
 
                         EmitCountStages(output, scope, extractor.Drain());
                         output.Add(new ReturnClause(items, @return.Distinct));
                         output.AddRange(trailing);
                         index = input.Clauses.Count - 1;
+                        break;
+                    }
+
+                case EntityProjectionClause projection when index == terminalIndex:
+                    {
+                        var sourceOrdering = projection.Ordering.Count > 0
+                            ? projection.Ordering
+                            : entityResultOrdering?.Items ?? [];
+                        var ordering = sourceOrdering
+                            .Select(item => new OrderByItem(
+                                extractor.Rewrite(item.Expression),
+                                item.Descending))
+                            .ToArray();
+                        EmitCountStages(output, scope, extractor.Drain());
+                        output.Add(new EntityProjectionClause(
+                            projection.Shape,
+                            projection.SourceAlias,
+                            projection.RelationshipAlias,
+                            projection.TargetAlias,
+                            projection.LoadSourceProperties,
+                            projection.LoadTargetProperties,
+                            projection.IncludePathCoordinates,
+                            ordering,
+                            projection.RowIdentityAliases));
                         break;
                     }
 
@@ -410,6 +449,19 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
         return extractor.Created == 0
             ? input
             : new CypherStatement(output, input.Parameters, input.PathTypes);
+    }
+
+    private static int FindProjectionTerminalIndex(IReadOnlyList<ICypherClause> clauses)
+    {
+        for (var index = clauses.Count - 1; index >= 0; index--)
+        {
+            if (clauses[index] is ReturnClause or EntityProjectionClause)
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     private static OrderByClause RewriteOrdering(OrderByClause orderBy, PatternSubqueryExtractor extractor) =>

@@ -129,6 +129,27 @@ public sealed class AgeCorrelatedProjectionPassTests
     }
 
     [Fact]
+    public async Task EmitsRelationshipCountStagesBeforeEntityProjectionOrdering()
+    {
+        await using var store = new AgeGraphStore(
+            "Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres",
+            "translation");
+        var query = store.Graph.Nodes<Person>()
+            .OrderByDescending(person =>
+                person.CountRelationships<Knows>(GraphTraversalDirection.Outgoing));
+
+        var rendered = Translate(query).Text;
+
+        Assert.DoesNotContain("COUNT {", rendered);
+        Assert.Contains("count(__age_count0_relationship0) AS __age_count0", rendered);
+        Assert.Contains("count(__age_count1_relationship0) AS __age_count1", rendered);
+        Assert.Contains("ORDER BY __projectionOrder0 DESC", rendered);
+        Assert.True(
+            rendered.IndexOf("AS __age_count1", StringComparison.Ordinal) <
+            rendered.IndexOf("__age_count1 AS __projectionOrder0", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task LowersComplexCollectionSizeAndEscapesItsReservedProjectionAlias()
     {
         await using var store = new AgeGraphStore(

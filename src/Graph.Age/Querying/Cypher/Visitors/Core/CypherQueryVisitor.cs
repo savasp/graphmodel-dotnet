@@ -19,6 +19,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 {
     private static readonly CypherPassRunner LoweringPasses = new(
     [
+        new AgeRelationshipPredicatePass(),
         new AgeCorrelatedProjectionPass(),
         new AgeLabelPatternPass(),
         // Label lowering adds marker-based root-isolation EXISTS predicates. AGE parses those
@@ -30,6 +31,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         new AgeTemporalParameterArithmeticPass(),
         new AgeInlineComplexPropertyProjectionPass(),
         new AgeEntityProjectionPass(),
+        new AgeSetOperationProjectionPass(),
     ]);
 
     private readonly Type _rootType;
@@ -134,8 +136,11 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         }
     }
 
-    internal static CypherStatement LowerStatement(CypherStatement statement) =>
-        LoweringPasses.Run(statement);
+    internal static CypherStatement LowerStatement(CypherStatement statement)
+    {
+        var branches = AgeClauseContainerTraversal.RunSetOperationBranches(statement, LowerStatement);
+        return LoweringPasses.Run(branches);
+    }
 
     private static Exception PreserveProviderException(GraphQueryTranslationException exception)
     {
