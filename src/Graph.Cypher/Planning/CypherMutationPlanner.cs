@@ -377,7 +377,7 @@ public sealed class CypherMutationPlanner
     private void EnsureComputedCollectionCanBeStored(GraphPropertyAssignment assignment)
     {
         if (assignment is GraphComputedPropertyAssignment computed &&
-            GraphDataModel.IsCollectionOfSimple(
+            ExpressionToCypherAstLowerer.IsReconstructedSimpleCollection(
                 assignment.Property?.PropertyType ?? computed.ValueExpression.ReturnType) &&
             dialect.GetPropertyCompanionStorageNames(assignment.StorageName).Count > 0)
         {

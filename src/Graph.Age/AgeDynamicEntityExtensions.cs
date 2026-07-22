@@ -46,28 +46,35 @@ public static class AgeDynamicEntityExtensions
             value is System.Collections.IEnumerable objectList)
         {
             var elementType = typeof(T).GetGenericArguments()[0];
-            var genericListType = typeof(List<>).MakeGenericType(elementType);
-            var genericList = Activator.CreateInstance(genericListType)!;
-            var addMethod = genericListType.GetMethod("Add")!;
+            var genericList = (System.Collections.IList)Activator.CreateInstance(
+                typeof(List<>).MakeGenericType(elementType))!;
+            var preservesNullElements = !elementType.IsValueType ||
+                Nullable.GetUnderlyingType(elementType) is not null;
 
             foreach (var item in objectList)
             {
                 if (item == null)
                 {
-                    addMethod.Invoke(genericList, [null]);
+                    if (!preservesNullElements)
+                    {
+                        throw new GraphException(
+                            $"Property '{propertyName}' contains a null element that the requested " +
+                            $"non-nullable element type '{elementType}' cannot represent.");
+                    }
+
+                    genericList.Add(null);
                 }
                 else
                 {
                     try
                     {
                         // Use SerializationBridge for proper conversion from Age types
-                        var converted = SerializationBridge.FromAgeValue(item, elementType);
-                        addMethod.Invoke(genericList, [converted]);
+                        genericList.Add(SerializationBridge.FromAgeValue(item, elementType));
                     }
                     catch (Exception exception) when (IsConversionFailure(exception))
                     {
                         // If conversion fails, try direct cast
-                        addMethod.Invoke(genericList, [item]);
+                        genericList.Add(item);
                     }
                 }
             }

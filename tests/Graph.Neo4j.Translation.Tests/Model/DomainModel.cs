@@ -40,6 +40,8 @@ public record Person : Node
 
     public List<string?> NullableNicknames { get; set; } = [];
 
+    public byte[] Fingerprint { get; set; } = [];
+
     public EmploymentStatus Status { get; set; }
 }
 

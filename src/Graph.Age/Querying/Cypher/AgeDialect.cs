@@ -155,9 +155,7 @@ public sealed class AgeDialect : ICypherDialect
                 declaredType,
                 value,
                 omitNullPayloads: false,
-                static item => item,
-                clearCollectionCompanionsForScalar: declaredType is null ||
-                    GraphDataModel.IsCollectionOfSimple(declaredType))
+                static item => item)
             .Select(item => new CypherStoredPropertyValue(item.StorageName, item.Value))
             .ToArray();
 

@@ -16,8 +16,7 @@ public sealed class SimpleCollectionStorageCodecTests
             typeof(int?[]),
             new int?[] { null, 1, null, null, 2, null },
             omitNullPayloads: true,
-            static value => value,
-            clearCollectionCompanionsForScalar: true);
+            static value => value);
         var physical = encoded.ToDictionary(
             item => item.StorageName,
             item => Adapt(item.Value),
@@ -47,8 +46,7 @@ public sealed class SimpleCollectionStorageCodecTests
                     typeof(int?[]),
                     values,
                     omitNullPayloads: false,
-                    static value => value,
-                    clearCollectionCompanionsForScalar: true)
+                    static value => value)
                 .ToDictionary(item => item.StorageName, item => Adapt(item.Value), StringComparer.Ordinal);
 
             var decoded = SimpleCollectionStorageCodec.DecodeProperties(physical, payloadOmitsNulls: false)["values"];
@@ -67,15 +65,13 @@ public sealed class SimpleCollectionStorageCodecTests
                 typeof(string?[]),
                 new string?[] { null, "ordinary" },
                 omitNullPayloads: true,
-                static value => value,
-                clearCollectionCompanionsForScalar: true)
+                static value => value)
             .Concat(SimpleCollectionStorageCodec.EncodeValue(
                 logicalName,
                 typeof(string?[]),
                 new string?[] { "value", null },
                 omitNullPayloads: true,
-                static value => value,
-                clearCollectionCompanionsForScalar: true));
+                static value => value));
         var physical = encoded.ToDictionary(
             item => item.StorageName,
             item => Adapt(item.Value),
@@ -121,8 +117,7 @@ public sealed class SimpleCollectionStorageCodecTests
                 typeof(int?[]),
                 new int?[] { null },
                 omitNullPayloads: true,
-                static value => value,
-                clearCollectionCompanionsForScalar: true)
+                static value => value)
             .ToDictionary(item => item.StorageName, item => Adapt(item.Value), StringComparer.Ordinal);
         physical[SimpleCollectionStorageCodec.GetNullIndexesPropertyName("values")] =
             GraphValue.List([GraphValue.Scalar(invalidIndex)]);
@@ -139,8 +134,7 @@ public sealed class SimpleCollectionStorageCodecTests
                 typeof(int[]),
                 new List<int> { 1 },
                 omitNullPayloads: true,
-                static value => value,
-                clearCollectionCompanionsForScalar: true)
+                static value => value)
             .ToDictionary(item => item.StorageName, item => Adapt(item.Value), StringComparer.Ordinal);
         physical[SimpleCollectionStorageCodec.GetElementTypePropertyName("values")] =
             GraphValue.Scalar(SimpleCollectionStorageCodec.GetTypeIdentity(typeof(List<int>)));
@@ -157,14 +151,55 @@ public sealed class SimpleCollectionStorageCodecTests
                 typeof(int[]),
                 new List<int> { 1 },
                 omitNullPayloads: true,
-                static value => value,
-                clearCollectionCompanionsForScalar: true)
+                static value => value)
             .ToDictionary(item => item.StorageName, item => Adapt(item.Value), StringComparer.Ordinal);
         physical[SimpleCollectionStorageCodec.GetElementTypePropertyName("values")] =
             GraphValue.Scalar(typeof(int).FullName);
 
         Assert.Throws<GraphException>(() =>
             SimpleCollectionStorageCodec.DecodeProperties(physical, payloadOmitsNulls: true));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ByteArrayValue_EncodesAsScalarPayload(bool declared)
+    {
+        var value = new byte[] { 1, 2, 3 };
+
+        var encoded = SimpleCollectionStorageCodec.EncodeValue(
+            "data",
+            declared ? typeof(byte[]) : null,
+            value,
+            omitNullPayloads: true,
+            static item => item);
+
+        Assert.Equal(3, encoded.Count);
+        Assert.Same(value, encoded.Single(item => item.StorageName == "data").Value);
+        Assert.Null(encoded.Single(item =>
+            item.StorageName == SimpleCollectionStorageCodec.GetNullIndexesPropertyName("data")).Value);
+        Assert.Null(encoded.Single(item =>
+            item.StorageName == SimpleCollectionStorageCodec.GetElementTypePropertyName("data")).Value);
+    }
+
+    [Fact]
+    public void ScalarValue_AlwaysClearsCollectionCompanions()
+    {
+        var encoded = SimpleCollectionStorageCodec.EncodeValue(
+            "name",
+            typeof(string),
+            "value",
+            omitNullPayloads: true,
+            static item => item);
+
+        Assert.Equal(
+            new (string StorageName, object? Value)[]
+            {
+                ("name", "value"),
+                (SimpleCollectionStorageCodec.GetNullIndexesPropertyName("name"), null),
+                (SimpleCollectionStorageCodec.GetElementTypePropertyName("name"), null),
+            },
+            encoded.Select(item => (item.StorageName, item.Value)));
     }
 
     private static GraphValue Adapt(object? value) => value switch

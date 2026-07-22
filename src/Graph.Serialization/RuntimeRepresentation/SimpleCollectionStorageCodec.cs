@@ -74,8 +74,7 @@ internal static class SimpleCollectionStorageCodec
         Type? declaredType,
         object? value,
         bool omitNullPayloads,
-        Func<object?, object?> convert,
-        bool clearCollectionCompanionsForScalar)
+        Func<object?, object?> convert)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(logicalName);
         ArgumentNullException.ThrowIfNull(convert);
@@ -93,17 +92,12 @@ internal static class SimpleCollectionStorageCodec
                 convert);
         }
 
-        var result = new List<StoredPropertyValue>
-        {
+        return
+        [
             new(GetPayloadPropertyName(logicalName), convert(value)),
-        };
-        if (clearCollectionCompanionsForScalar)
-        {
-            result.Add(new(GetNullIndexesPropertyName(logicalName), null));
-            result.Add(new(GetElementTypePropertyName(logicalName), null));
-        }
-
-        return result;
+            new(GetNullIndexesPropertyName(logicalName), null),
+            new(GetElementTypePropertyName(logicalName), null),
+        ];
     }
 
     internal static IReadOnlyDictionary<string, GraphValue> DecodeProperties(
@@ -264,8 +258,16 @@ internal static class SimpleCollectionStorageCodec
 
     private static bool TryGetCollectionElementType(Type? declaredType, Type? runtimeType, out Type elementType)
     {
-        elementType = declaredType is null ? null! : GraphResultTypeHelpers.GetCollectionElementType(declaredType)!;
-        elementType ??= runtimeType is null ? null! : GraphResultTypeHelpers.GetCollectionElementType(runtimeType)!;
+        // byte[] classifies as both a simple scalar and a simple collection; EntityFactory gives
+        // IsSimple precedence, so such values must stay native scalars here too.
+        var sourceType = declaredType ?? runtimeType;
+        if (sourceType is null || GraphDataModel.IsSimple(sourceType))
+        {
+            elementType = null!;
+            return false;
+        }
+
+        elementType = GraphResultTypeHelpers.GetCollectionElementType(sourceType)!;
         return elementType is not null && GraphDataModel.IsSimple(elementType);
     }
 

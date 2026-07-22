@@ -113,9 +113,7 @@ public sealed class Neo4jDialect : ICypherDialect
                 declaredType,
                 value,
                 omitNullPayloads: true,
-                static item => item,
-                clearCollectionCompanionsForScalar: declaredType is null ||
-                    GraphDataModel.IsCollectionOfSimple(declaredType))
+                static item => item)
             .Select(item => new CypherStoredPropertyValue(item.StorageName, item.Value))
             .ToArray();
 
