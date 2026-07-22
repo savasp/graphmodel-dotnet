@@ -46,6 +46,31 @@ public class AnalyzerHelperTypeClassificationTests
         {
             public RecursiveValueObject? Next { get; set; }
         }
+
+        public sealed class TaggedCollection<TTag, TItem> : IEnumerable<TItem>
+        {
+            public IEnumerator<TItem> GetEnumerator() => throw new NotSupportedException();
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        public sealed class SimpleItemCollection : IEnumerable<int>
+        {
+            public IEnumerator<int> GetEnumerator() => throw new NotSupportedException();
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        public sealed class ComplexItemCollection : IEnumerable<FlatValueObject>
+        {
+            public IEnumerator<FlatValueObject> GetEnumerator() => throw new NotSupportedException();
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        public sealed class AmbiguousItemCollection : IEnumerable<int>, IEnumerable<FlatValueObject>
+        {
+            IEnumerator<int> IEnumerable<int>.GetEnumerator() => throw new NotSupportedException();
+            IEnumerator<FlatValueObject> IEnumerable<FlatValueObject>.GetEnumerator() => throw new NotSupportedException();
+            IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
+        }
         """;
 
     private static readonly Compilation Compilation = CreateCompilation();
@@ -181,6 +206,11 @@ public class AnalyzerHelperTypeClassificationTests
             "List<FlatValueObject>" => Named("System.Collections.Generic.List`1", FlatValueObject()),
             "List<RecursiveValueObject>" => Named("System.Collections.Generic.List`1", RecursiveValueObject()),
             "List<SimpleStruct>" => Named("System.Collections.Generic.List`1", SimpleStruct()),
+            "TaggedCollection<FlatValueObject,int>" => Named("TestTypes.TaggedCollection`2", FlatValueObject(), Int32()),
+            "TaggedCollection<int,FlatValueObject>" => Named("TestTypes.TaggedCollection`2", Int32(), FlatValueObject()),
+            "SimpleItemCollection" => Named("TestTypes.SimpleItemCollection"),
+            "ComplexItemCollection" => Named("TestTypes.ComplexItemCollection"),
+            "AmbiguousItemCollection" => Named("TestTypes.AmbiguousItemCollection"),
             "List<List<int>>" => Named("System.Collections.Generic.List`1", Named("System.Collections.Generic.List`1", Int32())),
             "List<List<FlatValueObject>>" => Named("System.Collections.Generic.List`1", Named("System.Collections.Generic.List`1", FlatValueObject())),
             "IReadOnlyList<FlatValueObject>" => Named("System.Collections.Generic.IReadOnlyList`1", FlatValueObject()),
@@ -260,6 +290,11 @@ public class AnalyzerHelperTypeClassificationTests
         { "List<string>", true },
         { "List<Point>", true },
         { "List<System.Drawing.Point>", false },
+        { "TaggedCollection<FlatValueObject,int>", true },
+        { "TaggedCollection<int,FlatValueObject>", false },
+        { "SimpleItemCollection", true },
+        { "ComplexItemCollection", false },
+        { "AmbiguousItemCollection", false },
         { "ArrayList", false },
         { "List<object>", false },
         { "List<List<int>>", false },
@@ -284,6 +319,11 @@ public class AnalyzerHelperTypeClassificationTests
         { "List<RecursiveValueObject>", true },
         { "List<SimpleStruct>", true },
         { "List<System.Drawing.Point>", true },
+        { "TaggedCollection<FlatValueObject,int>", false },
+        { "TaggedCollection<int,FlatValueObject>", true },
+        { "SimpleItemCollection", false },
+        { "ComplexItemCollection", true },
+        { "AmbiguousItemCollection", false },
         { "List<List<FlatValueObject>>", false },
         { "Dictionary<string,FlatValueObject>", false },
         { "IDictionary<string,FlatValueObject>", false },

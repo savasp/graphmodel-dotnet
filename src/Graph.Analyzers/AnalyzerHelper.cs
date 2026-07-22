@@ -471,24 +471,8 @@ internal class AnalyzerHelper
         if (IsDictionaryType(type))
             return false;
 
-        // Check if it implements IEnumerable
-        if (!ImplementsIEnumerable(type))
-            return false;
-
-        // Check arrays
-        if (type is IArrayTypeSymbol arrayType)
-        {
-            return IsSimpleType(arrayType.ElementType);
-        }
-
-        // Check generic collections
-        if (type is INamedTypeSymbol { IsGenericType: true } genericType)
-        {
-            var elementType = genericType.TypeArguments.FirstOrDefault();
-            return elementType != null && IsSimpleType(elementType);
-        }
-
-        return false;
+        var elementType = GetCollectionElementType(type);
+        return elementType is not null && IsSimpleType(elementType);
     }
 
     public bool IsCollectionOfComplexTypes(ITypeSymbol type)
@@ -501,24 +485,8 @@ internal class AnalyzerHelper
         if (IsDictionaryType(type))
             return false;
 
-        // Check if it implements IEnumerable
-        if (!ImplementsIEnumerable(type))
-            return false;
-
-        // Check arrays
-        if (type is IArrayTypeSymbol arrayType)
-        {
-            return IsComplexType(arrayType.ElementType);
-        }
-
-        // Check generic collections
-        if (type is INamedTypeSymbol { IsGenericType: true } genericType)
-        {
-            var elementType = genericType.TypeArguments.FirstOrDefault();
-            return elementType != null && IsComplexType(elementType);
-        }
-
-        return false;
+        var elementType = GetCollectionElementType(type);
+        return elementType is not null && IsComplexType(elementType);
     }
 
     private static bool ImplementsIEnumerable(ITypeSymbol type)
@@ -552,18 +520,41 @@ internal class AnalyzerHelper
 
     public static ITypeSymbol? GetCollectionElementType(ITypeSymbol type)
     {
-        // Handle arrays
         if (type is IArrayTypeSymbol arrayType)
             return arrayType.ElementType;
 
-        // Handle generic collections
-        if (type is INamedTypeSymbol { IsGenericType: true } genericType)
+        if (type is not INamedTypeSymbol namedType)
+            return null;
+
+        // Require one distinct IEnumerable<T> element type so classification cannot depend on the
+        // order in which Roslyn returns implemented interfaces.
+        ITypeSymbol? elementType = null;
+
+        if (IsGenericEnumerable(namedType))
+            elementType = namedType.TypeArguments[0];
+
+        foreach (var interfaceType in namedType.AllInterfaces)
         {
-            return genericType.TypeArguments.FirstOrDefault();
+            if (!IsGenericEnumerable(interfaceType))
+                continue;
+
+            var candidate = interfaceType.TypeArguments[0];
+            if (elementType is null)
+            {
+                elementType = candidate;
+            }
+            else if (!SymbolEqualityComparer.Default.Equals(elementType, candidate))
+            {
+                return null;
+            }
         }
 
-        return null;
+        return elementType;
     }
+
+    private static bool IsGenericEnumerable(INamedTypeSymbol type) =>
+        type.IsGenericType &&
+        type.ConstructedFrom.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T;
 
     public ComplexTypeValidationResult ValidateComplexType(ITypeSymbol type)
     {

@@ -34,6 +34,37 @@ public class GraphDataModelTypeClassificationTests
             public string Street { get; init; } = string.Empty;
             public int Unit { get; init; }
         }
+
+        public sealed class TaggedCollection<TTag, TItem> : System.Collections.Generic.IEnumerable<TItem>
+        {
+            public System.Collections.Generic.IEnumerator<TItem> GetEnumerator() => throw new System.NotSupportedException();
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        public sealed class SimpleItemCollection : System.Collections.Generic.IEnumerable<int>
+        {
+            public System.Collections.Generic.IEnumerator<int> GetEnumerator() => throw new System.NotSupportedException();
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        public sealed class ComplexItemCollection : System.Collections.Generic.IEnumerable<FlatValueObject>
+        {
+            public System.Collections.Generic.IEnumerator<FlatValueObject> GetEnumerator() => throw new System.NotSupportedException();
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        public sealed class AmbiguousItemCollection :
+            System.Collections.Generic.IEnumerable<int>,
+            System.Collections.Generic.IEnumerable<FlatValueObject>
+        {
+            System.Collections.Generic.IEnumerator<int> System.Collections.Generic.IEnumerable<int>.GetEnumerator() =>
+                throw new System.NotSupportedException();
+            System.Collections.Generic.IEnumerator<FlatValueObject>
+                System.Collections.Generic.IEnumerable<FlatValueObject>.GetEnumerator() =>
+                    throw new System.NotSupportedException();
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() =>
+                throw new System.NotSupportedException();
+        }
         """;
 
     private static readonly Compilation Compilation = CreateCompilation();
@@ -153,6 +184,11 @@ public class GraphDataModelTypeClassificationTests
             "List<Point>" => Named("System.Collections.Generic.List`1", Point()),
             "List<System.Drawing.Point>" => Named("System.Collections.Generic.List`1", DrawingPoint()),
             "List<FlatValueObject>" => Named("System.Collections.Generic.List`1", FlatValueObject()),
+            "TaggedCollection<FlatValueObject,int>" => Named("TestTypes.TaggedCollection`2", FlatValueObject(), Int32()),
+            "TaggedCollection<int,FlatValueObject>" => Named("TestTypes.TaggedCollection`2", Int32(), FlatValueObject()),
+            "SimpleItemCollection" => Named("TestTypes.SimpleItemCollection"),
+            "ComplexItemCollection" => Named("TestTypes.ComplexItemCollection"),
+            "AmbiguousItemCollection" => Named("TestTypes.AmbiguousItemCollection"),
             "Dictionary<string,int>" => Named("System.Collections.Generic.Dictionary`2", String(), Int32()),
             _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "Unknown test shape."),
         };
@@ -209,7 +245,24 @@ public class GraphDataModelTypeClassificationTests
         { "List<nuint?>", false },
         { "List<Point>", true },
         { "List<System.Drawing.Point>", false },
+        { "TaggedCollection<FlatValueObject,int>", true },
+        { "TaggedCollection<int,FlatValueObject>", false },
+        { "SimpleItemCollection", true },
+        { "ComplexItemCollection", false },
+        { "AmbiguousItemCollection", false },
         { "List<FlatValueObject>", false },
+        { "Dictionary<string,int>", false },
+    };
+
+    public static TheoryData<string, bool> CollectionOfComplexCases => new()
+    {
+        { "string", false },
+        { "TaggedCollection<FlatValueObject,int>", false },
+        { "TaggedCollection<int,FlatValueObject>", true },
+        { "SimpleItemCollection", false },
+        { "ComplexItemCollection", true },
+        { "AmbiguousItemCollection", false },
+        { "Dictionary<string,int>", false },
     };
 
     [Theory]
@@ -224,6 +277,13 @@ public class GraphDataModelTypeClassificationTests
     public void IsCollectionOfSimple_ReturnsExpectedResult(string shape, bool expected)
     {
         Assert.Equal(expected, GraphDataModel.IsCollectionOfSimple(Resolve(shape)));
+    }
+
+    [Theory]
+    [MemberData(nameof(CollectionOfComplexCases))]
+    public void IsCollectionOfComplex_ReturnsExpectedResult(string shape, bool expected)
+    {
+        Assert.Equal(expected, GraphDataModel.IsCollectionOfComplex(Resolve(shape)));
     }
 
     [Theory]
