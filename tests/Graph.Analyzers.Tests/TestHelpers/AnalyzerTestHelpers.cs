@@ -13,6 +13,8 @@ using Microsoft.CodeAnalysis.Testing;
 /// </summary>
 public static class AnalyzerTestHelpers
 {
+    private static readonly ReferenceAssemblies CurrentReferenceAssemblies = new("net10.0");
+
     /// <summary>
     /// Creates a diagnostic result for the specified diagnostic ID
     /// </summary>
@@ -29,12 +31,25 @@ public static class AnalyzerTestHelpers
             TestState =
             {
                 Sources = { source },
-                ReferenceAssemblies = ReferenceAssemblies.Net.Net80,
+                ReferenceAssemblies = CurrentReferenceAssemblies,
             },
         };
 
-        // Add reference to Graph
-        test.TestState.AdditionalReferences.Add(typeof(INode).Assembly);
+        // The analyzer-testing package does not yet ship a .NET 10 reference-assembly preset.
+        // Use the current test host's trusted platform assemblies so AttributeData binds against
+        // the same framework identity as the repository's net10.0 Graph reference.
+        var trustedAssemblies = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator);
+        foreach (var path in trustedAssemblies.Distinct(StringComparer.Ordinal))
+        {
+            test.TestState.AdditionalReferences.Add(MetadataReference.CreateFromFile(path));
+        }
+
+        var graphAssemblyPath = typeof(INode).Assembly.Location;
+        if (!trustedAssemblies.Contains(graphAssemblyPath, StringComparer.Ordinal))
+        {
+            test.TestState.AdditionalReferences.Add(MetadataReference.CreateFromFile(graphAssemblyPath));
+        }
 
         test.ExpectedDiagnostics.AddRange(expected);
         await test.RunAsync();

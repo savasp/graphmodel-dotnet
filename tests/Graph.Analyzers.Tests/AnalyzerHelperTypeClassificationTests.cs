@@ -68,6 +68,37 @@ public class AnalyzerHelperTypeClassificationTests
             options: new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
+    private static CSharpCompilation CreateLookalikeCompilation()
+    {
+        const string lookalikeSource = """
+            namespace System
+            {
+                public readonly struct DateTime { }
+                public readonly struct DateTimeOffset { }
+                public readonly struct TimeSpan { }
+                public readonly struct TimeOnly { }
+                public readonly struct DateOnly { }
+                public readonly struct Guid { }
+                public sealed class Uri { }
+            }
+
+            namespace Cvoya.Graph
+            {
+                public readonly struct Point { }
+            }
+            """;
+        var trustedAssemblies = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator);
+        var references = trustedAssemblies
+            .Select(path => (MetadataReference)MetadataReference.CreateFromFile(path));
+
+        return CSharpCompilation.Create(
+            assemblyName: "Consumer.NamedSimpleLookalikes",
+            syntaxTrees: [CSharpSyntaxTree.ParseText(lookalikeSource)],
+            references: references,
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
     /// <summary>
     /// Resolves an <see cref="ITypeSymbol"/> for one of the truth-table shapes below by a short
     /// symbolic name. Kept as a switch (rather than reflection-driven Type-to-symbol mapping) so
@@ -369,6 +400,27 @@ public class AnalyzerHelperTypeClassificationTests
     public void IsConstructibleCollectionType_ReturnsExpectedResult(string shape, bool expected)
     {
         AssertEqual(expected, AnalyzerHelper.IsConstructibleCollectionType(Resolve(shape)), shape);
+    }
+
+    [Theory]
+    [InlineData("System.DateTime")]
+    [InlineData("System.DateTimeOffset")]
+    [InlineData("System.TimeSpan")]
+    [InlineData("System.TimeOnly")]
+    [InlineData("System.DateOnly")]
+    [InlineData("System.Guid")]
+    [InlineData("System.Uri")]
+    [InlineData("Cvoya.Graph.Point")]
+    public void SourceDefinedNamedSimpleLookalike_IsNotSimpleOrValid(string metadataName)
+    {
+        var compilation = CreateLookalikeCompilation();
+        var type = compilation.GetTypeByMetadataName(metadataName)
+            ?? throw new InvalidOperationException($"Could not resolve source type '{metadataName}'.");
+        var helper = new AnalyzerHelper(compilation);
+
+        AssertEqual(false, AnalyzerHelper.IsSimpleType(type), metadataName);
+        AssertEqual(false, helper.IsValidNodePropertyType(type), metadataName);
+        AssertEqual(false, helper.IsValidRelationshipPropertyType(type), metadataName);
     }
 
     /// <summary>

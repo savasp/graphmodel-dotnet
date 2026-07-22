@@ -10,15 +10,17 @@ internal sealed class CodeGenModelBuilder
 {
     private readonly Dictionary<INamedTypeSymbol, SerializableTypeModel> models = new(SymbolEqualityComparer.Default);
     private readonly List<SerializableTypeModel> orderedModels = [];
+    private readonly GraphAttributeSymbols graphAttributes;
     private bool hasUnsupportedTypeShape;
 
-    private CodeGenModelBuilder()
+    private CodeGenModelBuilder(GraphAttributeSymbols graphAttributes)
     {
+        this.graphAttributes = graphAttributes;
     }
 
     public static TypeDiscoverySet Build(INamedTypeSymbol root)
     {
-        var builder = new CodeGenModelBuilder();
+        var builder = new CodeGenModelBuilder(GraphAttributeSymbols.Resolve(root.ContainingAssembly));
         var rootModel = builder.BuildType(root);
 
         if (builder.hasUnsupportedTypeShape)
@@ -50,17 +52,17 @@ internal sealed class CodeGenModelBuilder
         }
 
         var serializationProperties = Utils.GetAllProperties(type)
-            .Where(property => !Utils.SerializationShouldSkipProperty(property, type))
+            .Where(property => !Utils.SerializationShouldSkipProperty(property, type, graphAttributes))
             .Select(BuildProperty)
             .ToList();
 
         var deserializationProperties = GetAllPropertiesIncludingInterfacesForDeserialization(type)
-            .Where(property => !Utils.SerializationShouldSkipProperty(property, type))
+            .Where(property => !Utils.SerializationShouldSkipProperty(property, type, graphAttributes))
             .Select(BuildProperty)
             .ToList();
 
         var schemaProperties = GetAllPropertiesIncludingInterfacesForSchema(type)
-            .Where(property => !Utils.SerializationShouldSkipProperty(property, type))
+            .Where(property => !Utils.SerializationShouldSkipProperty(property, type, graphAttributes))
             .Select(BuildProperty)
             .ToList();
 
@@ -98,7 +100,7 @@ internal sealed class CodeGenModelBuilder
             Utils.GetNamespaceName(type),
             Utils.GetUniqueSerializerClassName(type),
             GetUniqueHintName(type),
-            Utils.GetLabelFromType(type),
+            Utils.GetLabelFromType(type, graphAttributes),
             GetKind(type),
             type.IsRecord,
             constructors.Any(constructor => constructor.Parameters.Length == 0),
@@ -125,7 +127,7 @@ internal sealed class CodeGenModelBuilder
     {
         return new SerializablePropertyModel(
             property.Name,
-            Utils.GetPropertyName(property),
+            Utils.GetPropertyName(property, graphAttributes),
             property.ContainingType.ToDisplayString(),
             property.ContainingType.TypeKind == TypeKind.Interface,
             BuildTypeReference(property.Type),
@@ -305,7 +307,7 @@ internal sealed class CodeGenModelBuilder
                GraphDataModel.IsCollectionOfComplex(property.Type);
     }
 
-    private static IEnumerable<INamedTypeSymbol> DiscoverComplexPropertyTypes(INamedTypeSymbol type)
+    private IEnumerable<INamedTypeSymbol> DiscoverComplexPropertyTypes(INamedTypeSymbol type)
     {
         // Discover dependency serializers from the same effective property set the entity serializer
         // is generated over - inherited public instance properties and applicable interface
@@ -320,7 +322,7 @@ internal sealed class CodeGenModelBuilder
         var seenComplexTypes = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var property in GetAllPropertiesIncludingInterfacesForDeserialization(type)
-            .Where(property => !Utils.SerializationShouldSkipProperty(property, type)))
+            .Where(property => !Utils.SerializationShouldSkipProperty(property, type, graphAttributes)))
         {
             if (GetComplexPropertyType(property.Type) is INamedTypeSymbol complexType &&
                 seenComplexTypes.Add(GetTypeIdentity(complexType)))

@@ -289,6 +289,31 @@ public class CollectionShapeRoundTripTests
     }
 
     [Fact]
+    public void SourceDefinedNamedSimpleLookalikes_DoNotEmitSerializers()
+    {
+        const string source = """
+            namespace System
+            {
+                public readonly struct Guid { }
+            }
+
+            namespace Cvoya.Graph
+            {
+                public readonly struct Point { }
+            }
+
+            [Cvoya.Graph.Node("Invalid")]
+            public sealed record InvalidNode : Cvoya.Graph.Node
+            {
+                public System.Guid TrackingId { get; set; }
+                public Cvoya.Graph.Point Location { get; set; }
+            }
+            """;
+
+        AssertGeneratorProducesNoSources(source);
+    }
+
+    [Fact]
     public void NestedNativeSizedIntegerProperties_DoNotEmitSerializers()
     {
         const string source = """

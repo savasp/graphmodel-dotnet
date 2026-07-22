@@ -176,9 +176,14 @@ internal static class Utils
 
     internal static string GetPropertyName(IPropertySymbol property)
     {
-        var propertyAttribute = property.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute" &&
-                                 a.AttributeClass.ContainingNamespace?.ToString() == "Cvoya.Graph");
+        return GetPropertyName(property, GraphAttributeSymbols.Resolve(property.ContainingAssembly));
+    }
+
+    internal static string GetPropertyName(
+        IPropertySymbol property,
+        GraphAttributeSymbols graphAttributes)
+    {
+        var propertyAttribute = graphAttributes.FindPropertyAttribute(property);
 
         var labelArgument = propertyAttribute?.NamedArguments
             .FirstOrDefault(argument => argument.Key == "Label");
@@ -191,16 +196,17 @@ internal static class Utils
         return property.Name;
     }
 
-    internal static bool SerializationShouldSkipProperty(IPropertySymbol property, INamedTypeSymbol type)
+    internal static bool SerializationShouldSkipProperty(
+        IPropertySymbol property,
+        INamedTypeSymbol type,
+        GraphAttributeSymbols graphAttributes)
     {
         // Static properties and indexers are not part of the serialized property graph.
         if (property.IsStatic || property.IsIndexer)
             return true;
 
         // Check if property has [Property(Ignore = true)]
-        var propertyAttribute = property.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute" &&
-                                 a.AttributeClass?.ContainingNamespace?.ToString() == "Cvoya.Graph");
+        var propertyAttribute = graphAttributes.FindPropertyAttribute(property);
 
         if (propertyAttribute != null)
         {
@@ -223,12 +229,12 @@ internal static class Utils
         return char.ToUpper(parameter.Name[0]) + parameter.Name.Substring(1);
     }
 
-    internal static string GetLabelFromType(INamedTypeSymbol type)
+    internal static string GetLabelFromType(
+        INamedTypeSymbol type,
+        GraphAttributeSymbols graphAttributes)
     {
         // Check for custom label from Node attribute
-        var nodeAttribute = type.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "NodeAttribute" &&
-                                 a.AttributeClass?.ContainingNamespace?.ToString() == "Cvoya.Graph");
+        var nodeAttribute = graphAttributes.FindNodeAttribute(type);
 
         if (nodeAttribute is { ConstructorArguments.Length: > 0 })
         {
@@ -272,9 +278,7 @@ internal static class Utils
         }
 
         // Check for custom label from Relationship attribute
-        var relationshipAttribute = type.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "RelationshipAttribute" &&
-                                 a.AttributeClass?.ContainingNamespace?.ToString() == "Cvoya.Graph");
+        var relationshipAttribute = graphAttributes.FindRelationshipAttribute(type);
 
         if (relationshipAttribute is { ConstructorArguments.Length: > 0 })
         {
