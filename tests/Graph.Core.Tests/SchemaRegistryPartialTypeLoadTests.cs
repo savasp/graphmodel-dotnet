@@ -100,6 +100,44 @@ public class SchemaRegistryPartialTypeLoadTests
     }
 
     [Fact]
+    public void Initialize_PublishesDiagnosticsAfterRegistrationAndIgnoresSinkFailures()
+    {
+        const string loadableNodeLabel = "PartialLoad_DiagnosticFailureNode";
+
+        PartialTypeLoadFixtureAssembly.Run(
+            loadableNodeLabel,
+            "PARTIAL_LOAD_DIAGNOSTIC_FAILURE_REL",
+            "PartialLoad_DiagnosticFailureDeferredNode",
+            fixture =>
+            {
+                EntitySchemaInfo? schemaObservedByDiagnostic = null;
+                SchemaRegistry? callbackRegistry = null;
+                using var registry = new SchemaRegistry(
+                    (_, _) =>
+                    {
+                        schemaObservedByDiagnostic = callbackRegistry!.GetNodeSchema(loadableNodeLabel);
+                        throw new InvalidOperationException("Diagnostic sink failure.");
+                    });
+                callbackRegistry = registry;
+
+                try
+                {
+                    var exception = Record.Exception(
+                        () => registry.InitializeAsync(TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+
+                    Assert.Null(exception);
+                    Assert.NotNull(schemaObservedByDiagnostic);
+                    Assert.Equal("LoadableNode", schemaObservedByDiagnostic.Type.Name);
+                    Assert.Equal(fixture.Assembly, schemaObservedByDiagnostic.Type.Assembly);
+                }
+                finally
+                {
+                    registry.ClearAsync(TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+                }
+            });
+    }
+
+    [Fact]
     public void RegisterGraphEntityTypes_UnexpectedGetTypesFailure_Propagates()
     {
         using var registry = new SchemaRegistry();

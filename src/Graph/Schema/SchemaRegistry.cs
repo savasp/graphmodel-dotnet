@@ -30,6 +30,7 @@ public class SchemaRegistry : IDisposable
     private readonly ConcurrentDictionary<string, EntitySchemaInfo> _nodeSchemas = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, EntitySchemaInfo> _relationshipSchemas = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Assembly> _scannedAssemblies = new();
+    private readonly ConcurrentQueue<PartialScanDiagnostic> _pendingPartialScanDiagnostics = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private readonly Action<Assembly, IReadOnlyList<Exception>> _partialScanDiagnostic;
     private volatile bool _isInitialized;
@@ -75,7 +76,7 @@ public class SchemaRegistry : IDisposable
         }
         finally
         {
-            _semaphore.Release();
+            ReleaseSemaphoreAndReportPartialScans();
         }
     }
 
@@ -119,7 +120,7 @@ public class SchemaRegistry : IDisposable
         }
         finally
         {
-            _semaphore.Release();
+            ReleaseSemaphoreAndReportPartialScans();
         }
     }
 
@@ -159,7 +160,7 @@ public class SchemaRegistry : IDisposable
         }
         finally
         {
-            _semaphore.Release();
+            ReleaseSemaphoreAndReportPartialScans();
         }
     }
 
@@ -196,7 +197,7 @@ public class SchemaRegistry : IDisposable
         }
         finally
         {
-            _semaphore.Release();
+            ReleaseSemaphoreAndReportPartialScans();
         }
     }
 
@@ -233,7 +234,7 @@ public class SchemaRegistry : IDisposable
         }
         finally
         {
-            _semaphore.Release();
+            ReleaseSemaphoreAndReportPartialScans();
         }
     }
 
@@ -270,7 +271,7 @@ public class SchemaRegistry : IDisposable
         }
         finally
         {
-            _semaphore.Release();
+            ReleaseSemaphoreAndReportPartialScans();
         }
     }
 
@@ -303,7 +304,7 @@ public class SchemaRegistry : IDisposable
         }
         finally
         {
-            _semaphore.Release();
+            ReleaseSemaphoreAndReportPartialScans();
         }
     }
 
@@ -738,7 +739,8 @@ public class SchemaRegistry : IDisposable
             {
                 // A later schema miss will retry this assembly. Types registered below can be
                 // encountered again safely because registration is idempotent by type identity.
-                _partialScanDiagnostic(assembly, discovery.LoaderExceptions);
+                _pendingPartialScanDiagnostics.Enqueue(
+                    new PartialScanDiagnostic(assembly, discovery.LoaderExceptions));
             }
 
             foreach (var nodeType in discovery.NodeTypes)
@@ -774,7 +776,7 @@ public class SchemaRegistry : IDisposable
         }
         catch (ReflectionTypeLoadException exception)
         {
-            types = [.. exception.Types.OfType<Type>()];
+            types = [.. exception.Types.OfType<Type>().Distinct()];
             loaderExceptions = exception.LoaderExceptions?.OfType<Exception>().ToArray() ?? [];
             isComplete = false;
         }
@@ -794,6 +796,26 @@ public class SchemaRegistry : IDisposable
         }
 
         return new GraphEntityTypeDiscovery(nodeTypes, relationshipTypes, isComplete, loaderExceptions);
+    }
+
+    private void ReleaseSemaphoreAndReportPartialScans()
+    {
+        _semaphore.Release();
+
+        // Diagnostics are an external, best-effort side effect. Run them only after releasing the
+        // registry semaphore so a trace listener can neither block registration by throwing nor
+        // deadlock the registry by re-entering a schema lookup.
+        while (_pendingPartialScanDiagnostics.TryDequeue(out var diagnostic))
+        {
+            try
+            {
+                _partialScanDiagnostic(diagnostic.Assembly, diagnostic.LoaderExceptions);
+            }
+            catch (Exception)
+            {
+                // A diagnostic sink must not change schema discovery behavior.
+            }
+        }
     }
 
     private static void TracePartialScan(Assembly assembly, IReadOnlyList<Exception> loaderExceptions)
@@ -816,6 +838,10 @@ public class SchemaRegistry : IDisposable
         IReadOnlyList<Type> NodeTypes,
         IReadOnlyList<Type> RelationshipTypes,
         bool IsComplete,
+        IReadOnlyList<Exception> LoaderExceptions);
+
+    private sealed record PartialScanDiagnostic(
+        Assembly Assembly,
         IReadOnlyList<Exception> LoaderExceptions);
 
     /// <summary>
