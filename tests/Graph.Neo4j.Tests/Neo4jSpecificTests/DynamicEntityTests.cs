@@ -33,7 +33,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await FindDynamicNodeAsync(node);
 
         // Direct assertion for 'active' property
         var activeRaw = fetched.Properties["active"];
@@ -76,7 +76,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await FindDynamicNodeAsync(node);
 
         Assert.Equal("Jane Smith", fetched.GetProperty<string>("name"));
         Assert.True(fetched.HasProperty("address"));
@@ -109,8 +109,6 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         await Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
 
         var relationship = new DynamicRelationship(
-            startNodeId: person1.Id,
-            endNodeId: person2.Id,
             type: "NEO4J_KNOWS", // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?>
             {
@@ -120,11 +118,11 @@ public class DynamicEntityTests(Neo4jHarness harness) :
             }
         );
 
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicRelationshipAsync(relationship.Id, null, TestContext.Current.CancellationToken);
+        await ConnectDynamicAsync(person1, relationship, person2);
+        var fetched = await Graph.DynamicRelationships()
+            .Where(candidate => candidate.HasType(relationship.Type))
+            .SingleAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(person1.Id, fetched.StartNodeId);
-        Assert.Equal(person2.Id, fetched.EndNodeId);
         Assert.Equal("NEO4J_KNOWS", fetched.Type);
         Assert.Equal(0.8, fetched.GetProperty<double>("strength"));
         Assert.True(fetched.GetProperty<bool>("active"));
@@ -141,27 +139,25 @@ public class DynamicEntityTests(Neo4jHarness harness) :
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        // Update the node
-        var updatedNode = new DynamicNode(
-            id: node.Id,
-            labels: ["Neo4jPerson", "Neo4jEmployee"], // Use labels that don't conflict with other test models
-            properties: new Dictionary<string, object?>
-            {
-                ["name"] = "Updated Name",
-                ["age"] = 25,
-                ["department"] = "Engineering"
-            }
-        );
-
-        await Graph.UpdateNodeAsync(updatedNode, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        await Graph.DynamicNodes()
+            .Where(candidate => candidate.HasLabel("Neo4jPerson") &&
+                candidate.GetProperty<string>("name") == "Original Name")
+            .UpdateAsync(
+                setters => setters
+                    .SetProperty(candidate => candidate.Properties["name"], "Updated Name")
+                    .SetProperty(candidate => candidate.Properties["age"], 25)
+                    .SetProperty(candidate => candidate.Properties["department"], "Engineering"),
+                TestContext.Current.CancellationToken);
+        var fetched = await Graph.DynamicNodes()
+            .Where(candidate => candidate.HasLabel("Neo4jPerson") &&
+                candidate.GetProperty<string>("name") == "Updated Name")
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("Updated Name", fetched.GetProperty<string>("name"));
         Assert.Equal(25, fetched.GetProperty<int>("age"));
         Assert.Equal("Engineering", fetched.GetProperty<string>("department"));
         Assert.True(fetched.HasLabel("Neo4jPerson"));
-        Assert.True(fetched.HasLabel("Neo4jEmployee"));
-        Assert.Equal(2, fetched.Labels.Count);
+        Assert.Single(fetched.Labels);
     }
 
     [Fact]
@@ -181,32 +177,23 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         await Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
 
         var relationship = new DynamicRelationship(
-            startNodeId: person1.Id,
-            endNodeId: person2.Id,
             type: "NEO4J_KNOWS",
             properties: new Dictionary<string, object?> { ["since"] = DateTime.UtcNow }
         );
 
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        await ConnectDynamicAsync(person1, relationship, person2);
 
-        // Update the relationship
-        var updatedRelationship = new DynamicRelationship(
-            startNodeId: person1.Id,
-            endNodeId: person2.Id,
-            type: "NEO4J_KNOWS",
-            properties: new Dictionary<string, object?>
-            {
-                ["since"] = DateTime.UtcNow.AddDays(-1),
-                ["strength"] = 0.9,
-                ["active"] = false
-            }
-        )
-        {
-            Id = relationship.Id // Keep the same ID
-        };
-
-        await Graph.UpdateRelationshipAsync(updatedRelationship, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicRelationshipAsync(relationship.Id, null, TestContext.Current.CancellationToken);
+        await Graph.DynamicRelationships()
+            .Where(candidate => candidate.HasType(relationship.Type))
+            .UpdateAsync(
+                setters => setters
+                    .SetProperty(candidate => candidate.Properties["since"], DateTime.UtcNow.AddDays(-1))
+                    .SetProperty(candidate => candidate.Properties["strength"], 0.9)
+                    .SetProperty(candidate => candidate.Properties["active"], false),
+                TestContext.Current.CancellationToken);
+        var fetched = await Graph.DynamicRelationships()
+            .Where(candidate => candidate.HasType(relationship.Type))
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(0.9, fetched.GetProperty<double>("strength"));
         Assert.False(fetched.GetProperty<bool>("active"));
@@ -222,10 +209,16 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        await Graph.DeleteNodeAsync(node.Id, false, null, TestContext.Current.CancellationToken);
+        var affected = await Graph.DynamicNodes()
+            .Where(candidate => candidate.HasLabel("Neo4jPerson") &&
+                candidate.GetProperty<string>("name") == "To Delete")
+            .DeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken));
+        Assert.Equal(1, affected);
+        Assert.Null(await Graph.DynamicNodes()
+            .Where(candidate => candidate.HasLabel("Neo4jPerson") &&
+                candidate.GetProperty<string>("name") == "To Delete")
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -245,17 +238,19 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         await Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
 
         var relationship = new DynamicRelationship(
-            startNodeId: person1.Id,
-            endNodeId: person2.Id,
             type: "NEO4J_KNOWS",
             properties: new Dictionary<string, object?> { ["since"] = DateTime.UtcNow }
         );
 
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
-        await Graph.DeleteRelationshipAsync(relationship.Id, null, TestContext.Current.CancellationToken);
+        await ConnectDynamicAsync(person1, relationship, person2);
+        var affected = await Graph.DynamicRelationships()
+            .Where(candidate => candidate.HasType(relationship.Type))
+            .DeleteAsync(TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            Graph.GetDynamicRelationshipAsync(relationship.Id, null, TestContext.Current.CancellationToken));
+        Assert.Equal(1, affected);
+        Assert.Null(await Graph.DynamicRelationships()
+            .Where(candidate => candidate.HasType(relationship.Type))
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -329,32 +324,24 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         await Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
 
-        var relationships = new[]
-        {
+        await ConnectDynamicAsync(
+            person1,
             new DynamicRelationship(
-                startNodeId: person1.Id,
-                endNodeId: person2.Id,
-                type: "Neo4jKNOWS",
-                properties: new Dictionary<string, object?> { ["since"] = DateTime.UtcNow, ["active"] = true }
-            ),
+                "Neo4jKNOWS",
+                new Dictionary<string, object?> { ["since"] = DateTime.UtcNow, ["active"] = true }),
+            person2);
+        await ConnectDynamicAsync(
+            person2,
             new DynamicRelationship(
-                startNodeId: person2.Id,
-                endNodeId: person3.Id,
-                type: "Neo4jKNOWS",
-                properties: new Dictionary<string, object?> { ["since"] = DateTime.UtcNow, ["active"] = false }
-            ),
+                "Neo4jKNOWS",
+                new Dictionary<string, object?> { ["since"] = DateTime.UtcNow, ["active"] = false }),
+            person3);
+        await ConnectDynamicAsync(
+            person1,
             new DynamicRelationship(
-                startNodeId: person1.Id,
-                endNodeId: person3.Id,
-                type: "Neo4jWORKS_WITH",
-                properties: new Dictionary<string, object?> { ["project"] = "Alpha" }
-            )
-        };
-
-        foreach (var rel in relationships)
-        {
-            await Graph.CreateRelationshipAsync(rel, null, TestContext.Current.CancellationToken);
-        }
+                "Neo4jWORKS_WITH",
+                new Dictionary<string, object?> { ["project"] = "Alpha" }),
+            person3);
 
         // Query by type
         var knowsRelationships = await Graph.DynamicRelationships()
@@ -498,7 +485,6 @@ public class DynamicEntityTests(Neo4jHarness harness) :
             .Where(n => n.HasLabel("Neo4jPerson"))
             .Select(n => new
             {
-                Id = n.Id,
                 Name = n.GetProperty<string>("name"),
                 Age = n.GetProperty<int?>("age"),
                 Department = n.GetProperty<string>("department"),
@@ -527,7 +513,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await FindDynamicNodeAsync(node);
 
         // Test extension methods
         Assert.True(fetched.HasLabel("Neo4jPerson"));
@@ -564,7 +550,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await FindDynamicNodeAsync(node);
 
         Assert.Equal("Alice", fetched.GetProperty<string>("name"));
         Assert.Null(fetched.GetProperty<int?>("age"));
@@ -581,7 +567,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await FindDynamicNodeAsync(node);
 
         // Dynamic nodes with empty labels should remain empty
         Assert.Empty(fetched.Labels);
@@ -597,7 +583,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await FindDynamicNodeAsync(node);
 
         Assert.True(fetched.HasLabel("Neo4jPerson"));
         Assert.Empty(fetched.Properties);
@@ -619,7 +605,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await FindDynamicNodeAsync(node);
 
         Assert.Equal(100, fetched.Properties.Count);
         Assert.Equal("value50", fetched.GetProperty<string>("property50"));
@@ -641,7 +627,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await FindDynamicNodeAsync(node);
 
         Assert.Equal("Alice", fetched.GetProperty<string>("name"));
         Assert.Equal("12345", fetched.GetProperty<string>("user_id"));
@@ -665,7 +651,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await FindDynamicNodeAsync(node);
 
         Assert.Equal(42, fetched.GetProperty<int>("intValue"));
         Assert.Equal(123456789L, fetched.GetProperty<long>("longValue"));
@@ -692,7 +678,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await FindDynamicNodeAsync(node);
 
         var fetchedDateTime = fetched.GetProperty<DateTime>("createdAt");
         Assert.Equal(now.Year, fetchedDateTime.Year);
@@ -705,4 +691,25 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         var fetchedTime = fetched.GetProperty<TimeOnly>("time");
         Assert.Equal(timeOnly, fetchedTime);
     }
+
+    private Task<DynamicNode> FindDynamicNodeAsync(DynamicNode node)
+    {
+        var query = Graph.DynamicNodes();
+        query = node.Labels.Count > 0
+            ? query.Where(candidate => candidate.HasLabel(node.Labels[0]))
+            : query.Where(candidate => candidate.GetProperty<string>("name") == node.GetProperty<string>("name"));
+        return query.SingleAsync(TestContext.Current.CancellationToken);
+    }
+
+    private Task ConnectDynamicAsync(
+        DynamicNode source,
+        DynamicRelationship relationship,
+        DynamicNode target) =>
+        Graph.CreateRelationshipAsync(
+            Graph.DynamicNodes().Where(candidate =>
+                candidate.GetProperty<string>("name") == source.GetProperty<string>("name")),
+            relationship,
+            Graph.DynamicNodes().Where(candidate =>
+                candidate.GetProperty<string>("name") == target.GetProperty<string>("name")),
+            cancellationToken: TestContext.Current.CancellationToken);
 }

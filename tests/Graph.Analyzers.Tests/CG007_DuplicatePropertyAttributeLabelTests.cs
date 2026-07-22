@@ -171,8 +171,6 @@ public class CG007_DuplicatePropertyAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 
                 [Property(Label = "weight")]
                 public int Weight { get; set; }

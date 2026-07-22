@@ -7,6 +7,9 @@ namespace Cvoya.Graph.CompatibilityTests;
 [Node("ContractAddressCollectionOwner")]
 public sealed record ContractAddressCollectionOwner : Node
 {
+    /// <summary>Gets the selector used by the provider contract tests.</summary>
+    public string TestKey { get; init; } = Guid.NewGuid().ToString("N");
+
     /// <summary>Gets the owned address values.</summary>
     public List<ContractAddressValue> Addresses { get; init; } = [];
 }

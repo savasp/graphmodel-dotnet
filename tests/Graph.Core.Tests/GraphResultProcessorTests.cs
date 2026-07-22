@@ -32,7 +32,6 @@ public class GraphResultProcessorTests
         var secondNode = Assert.IsType<DynamicNode>(await materializer.MaterializeAsync<DynamicNode>(
             [second], cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Equal(firstNode.Id, secondNode.Id);
         Assert.Equal(firstNode.Labels, secondNode.Labels);
         Assert.Equal(firstNode.Properties, secondNode.Properties);
         Assert.IsType<long>(firstNode.Properties["large"]);
@@ -87,7 +86,7 @@ public class GraphResultProcessorTests
     }
 
     [Fact]
-    public async Task BareRelationshipWireFixture_MaterializesWithoutEndpointNodesOrId()
+    public async Task BareRelationshipWireFixture_MaterializesWithoutEndpointProperties()
     {
         var start = Node("start-wire", "start-public", "Start", 1, 1m);
         var end = Node("end-wire", "end-public", "End", 2, 2m);
@@ -111,9 +110,6 @@ public class GraphResultProcessorTests
             TestContext.Current.CancellationToken));
         var result = Assert.IsType<DynamicRelationship>(factory.Deserialize(info));
 
-        Assert.Empty(result.Id);
-        Assert.Empty(result.StartNodeId);
-        Assert.Empty(result.EndNodeId);
         Assert.Equal("KNOWS", result.Type);
         Assert.Equal(2020, Assert.IsType<int>(result.Properties["Since"]));
     }
@@ -132,8 +128,6 @@ public class GraphResultProcessorTests
             end.ElementId!,
             new Dictionary<string, GraphValue>
             {
-                [nameof(IEntity.Id)] = GraphValue.Scalar("relationship-public"),
-                [nameof(Cvoya.Graph.Relationship.Direction)] = GraphValue.Scalar(RelationshipDirection.Outgoing.ToString()),
                 ["__metadata__"] = GraphValue.Scalar(versionIndependentTypeName),
             });
         var record = new GraphRecord(new Dictionary<string, GraphValue>
@@ -151,7 +145,7 @@ public class GraphResultProcessorTests
     }
 
     [Fact]
-    public async Task RelationshipWireFixture_LegacyMapMetadataRecoversExactClrType()
+    public async Task RelationshipWireFixture_MapMetadataRecoversExactClrType()
     {
         var start = Node("start-wire", "start-public", "Start", 1, 1m);
         var end = Node("end-wire", "end-public", "End", 2, 2m);
@@ -162,8 +156,6 @@ public class GraphResultProcessorTests
             end.ElementId!,
             new Dictionary<string, GraphValue>
             {
-                [nameof(IEntity.Id)] = GraphValue.Scalar("relationship-public"),
-                [nameof(Cvoya.Graph.Relationship.Direction)] = GraphValue.Scalar(RelationshipDirection.Outgoing.ToString()),
                 ["__metadata__"] = GraphValue.Map(new Dictionary<string, GraphValue>
                 {
                     ["type"] = GraphValue.Scalar(typeof(MetadataDerivedRelationship).AssemblyQualifiedName),
@@ -210,8 +202,6 @@ public class GraphResultProcessorTests
         Assert.Equal("Start", segment.StartNode.Properties["name"]);
         Assert.Equal("End", segment.EndNode.Properties["name"]);
         Assert.NotSame(segment.StartNode, segment.EndNode);
-        Assert.Empty(segment.Relationship.StartNodeId);
-        Assert.Empty(segment.Relationship.EndNodeId);
     }
 
     [Fact]
@@ -242,7 +232,7 @@ public class GraphResultProcessorTests
     [Fact]
     public void RelationshipInterface_DoesNotExposePhysicalDirection()
     {
-        Assert.Null(typeof(IRelationship).GetProperty(nameof(Cvoya.Graph.Relationship.Direction)));
+        Assert.Null(typeof(IRelationship).GetProperty("Direction"));
     }
 
     [Fact]
@@ -369,7 +359,7 @@ public class GraphResultProcessorTests
             ["Place"],
             new Dictionary<string, GraphValue>
             {
-                [nameof(IEntity.Id)] = GraphValue.Scalar("place-1"),
+                ["Id"] = GraphValue.Scalar("place-1"),
                 ["address"] = GraphValue.Map(new Dictionary<string, GraphValue>
                 {
                     ["city"] = GraphValue.Scalar("Berlin"),
@@ -383,6 +373,7 @@ public class GraphResultProcessorTests
             TestContext.Current.CancellationToken));
         var result = Assert.IsType<DynamicNode>(factory.Deserialize(info));
 
+        Assert.Equal("place-1", result.Properties["Id"]);
         var address = Assert.IsType<Dictionary<string, object>>(result.Properties["address"]);
         Assert.Equal("Berlin", address["city"]);
         Assert.Equal("10115", address["zip"]);
@@ -468,7 +459,7 @@ public class GraphResultProcessorTests
             ["Person"],
             new Dictionary<string, GraphValue>
             {
-                [nameof(IEntity.Id)] = GraphValue.Scalar(publicId),
+                ["Id"] = GraphValue.Scalar(publicId),
                 ["name"] = GraphValue.Scalar(name),
                 ["large"] = GraphValue.Scalar(large),
                 ["precise"] = GraphValue.Scalar(precise),
@@ -483,7 +474,6 @@ public class GraphResultProcessorTests
             ["Dictionary"],
             new Dictionary<string, GraphValue>
             {
-                [nameof(IEntity.Id)] = GraphValue.Scalar(publicId),
                 [nameof(INode.Labels)] = GraphValue.List([GraphValue.Scalar("Dictionary")]),
                 [propertyName] = GraphValue.Scalar(propertyValue),
             });
@@ -508,8 +498,6 @@ public class GraphResultProcessorTests
             end.ElementId!,
             new Dictionary<string, GraphValue>
             {
-                [nameof(IEntity.Id)] = GraphValue.Scalar(wireId),
-                [nameof(Cvoya.Graph.Relationship.Direction)] = GraphValue.Scalar(RelationshipDirection.Outgoing.ToString()),
                 ["SequenceNumber"] = GraphValue.Scalar(sequence),
             });
 
@@ -545,11 +533,9 @@ public class GraphResultProcessorTests
 
     private sealed record FriendProjection(string Name, int Age);
 
-    private record MetadataBaseRelationship(string StartNodeId, string EndNodeId)
-        : Relationship(StartNodeId, EndNodeId);
+    private record MetadataBaseRelationship : Relationship;
 
-    private sealed record MetadataDerivedRelationship(string StartNodeId, string EndNodeId)
-        : MetadataBaseRelationship(StartNodeId, EndNodeId);
+    private sealed record MetadataDerivedRelationship : MetadataBaseRelationship;
 
     private sealed record ValueCollectionNode : Node
     {

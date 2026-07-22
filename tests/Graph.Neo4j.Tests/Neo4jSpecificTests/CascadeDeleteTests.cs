@@ -13,7 +13,7 @@ public class CascadeDeleteTests(Neo4jHarness harness) :
     Neo4jTest(harness)
 {
     [Fact]
-    public async Task DeleteNodeAsync_RemovesFullComplexPropertySubtree()
+    public async Task DeleteAsync_RemovesFullComplexPropertySubtree()
     {
         var suffix = Guid.NewGuid().ToString("N");
         var propertyValues = new[]
@@ -42,26 +42,28 @@ public class CascadeDeleteTests(Neo4jHarness harness) :
         var propertyNodeCount = await CountComplexPropertyNodesAsync(propertyValues);
         Assert.Equal(3, propertyNodeCount);
 
-        await Graph.DeleteNodeAsync(node.Id, true, null, TestContext.Current.CancellationToken);
+        await Graph.Nodes<Class1>().Where(candidate => candidate.Property1 == node.Property1)
+            .DeleteAsync(cascadeDelete: true, cancellationToken: TestContext.Current.CancellationToken);
 
         var remainingPropertyNodeCount = await CountComplexPropertyNodesAsync(propertyValues);
         Assert.Equal(0, remainingPropertyNodeCount);
     }
 
     [Fact]
-    public async Task DeleteNodeAsync_DoesNotDeleteSameIdNodeUnderDifferentRawLabel()
+    public async Task DeleteAsync_DoesNotDeleteMatchingDomainDataUnderDifferentRawLabel()
     {
         var node = new Class1 { Property1 = $"root-{Guid.NewGuid():N}" };
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
-        await CreateRawCollisionNodeAsync(node.Id);
+        await CreateRawCollisionNodeAsync(node.Property1);
 
-        await Graph.DeleteNodeAsync(node.Id, true, null, TestContext.Current.CancellationToken);
+        await Graph.Nodes<Class1>().Where(candidate => candidate.Property1 == node.Property1)
+            .DeleteAsync(cascadeDelete: true, cancellationToken: TestContext.Current.CancellationToken);
 
-        var collisionCount = await CountRawCollisionNodesAsync(node.Id);
+        var collisionCount = await CountRawCollisionNodesAsync(node.Property1);
         Assert.Equal(1, collisionCount);
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => Graph.GetNodeAsync<Class1>(node.Id, null, TestContext.Current.CancellationToken));
+        Assert.Null(await Graph.Nodes<Class1>().Where(candidate => candidate.Property1 == node.Property1)
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
     }
 
     private async Task<int> CountComplexPropertyNodesAsync(IReadOnlyCollection<string> propertyValues)
@@ -79,17 +81,17 @@ public class CascadeDeleteTests(Neo4jHarness harness) :
         });
     }
 
-    private async Task CreateRawCollisionNodeAsync(string nodeId)
+    private async Task CreateRawCollisionNodeAsync(string marker)
     {
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var neo4jTransaction = (GraphTransaction)transaction;
 
         const string cypher = @"
-            CREATE (:CascadeDeleteCollision {Id: $nodeId, Name: $name})";
+            CREATE (:CascadeDeleteCollision {Property1: $marker, Name: $name})";
 
         var result = await neo4jTransaction.Transaction.RunAsync(cypher, new
         {
-            nodeId,
+            marker,
             name = "Untouched"
         });
 
@@ -97,13 +99,13 @@ public class CascadeDeleteTests(Neo4jHarness harness) :
         await transaction.CommitAsync();
     }
 
-    private async Task<int> CountRawCollisionNodesAsync(string nodeId)
+    private async Task<int> CountRawCollisionNodesAsync(string marker)
     {
         const string cypher = @"
-            MATCH (collision:CascadeDeleteCollision {Id: $nodeId})
+            MATCH (collision:CascadeDeleteCollision {Property1: $marker})
             RETURN COUNT(collision) AS count";
 
-        return await ReadCountAsync(cypher, new { nodeId });
+        return await ReadCountAsync(cypher, new { marker });
     }
 
     private async Task<int> ReadCountAsync(string cypher, object parameters)

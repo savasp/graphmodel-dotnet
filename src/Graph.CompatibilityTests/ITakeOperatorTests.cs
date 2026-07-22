@@ -26,7 +26,7 @@ public interface ITakeOperatorTests : IGraphTest
             .OrderBy(person => person.Age)
             .Take(3)
             .Where(person => person.Age >= 3)
-            .Select(person => person.Id)
+            .Select(person => person.TestKey)
             .ToArray();
         var actual = await Graph.Nodes<Person>()
             .Where(person => person.LastName == "PostPagingTake")
@@ -35,7 +35,7 @@ public interface ITakeOperatorTests : IGraphTest
             .Where(person => person.Age >= 3)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(expectedIds, actual.Select(person => person.Id));
+        Assert.Equal(expectedIds, actual.Select(person => person.TestKey));
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public interface ITakeOperatorTests : IGraphTest
             .OrderBy(person => person.Age)
             .Skip(2)
             .Where(person => person.Age >= 4)
-            .Select(person => person.Id)
+            .Select(person => person.TestKey)
             .ToArray();
         var actual = await Graph.Nodes<Person>()
             .Where(person => person.LastName == "PostPagingSkip")
@@ -69,7 +69,7 @@ public interface ITakeOperatorTests : IGraphTest
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal([4, 5], actual.Select(person => person.Age));
-        Assert.Equal(expectedIds, actual.Select(person => person.Id));
+        Assert.Equal(expectedIds, actual.Select(person => person.TestKey));
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public interface ITakeOperatorTests : IGraphTest
             .OrderBy(person => person.Age)
             .Take(3)
             .OrderByDescending(person => person.Age)
-            .Select(person => person.Id)
+            .Select(person => person.TestKey)
             .ToArray();
         var actual = await Graph.Nodes<Person>()
             .Where(person => person.LastName == "PostPagingOrder")
@@ -102,7 +102,7 @@ public interface ITakeOperatorTests : IGraphTest
             .OrderByDescending(person => person.Age)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(expectedIds, actual.Select(person => person.Id));
+        Assert.Equal(expectedIds, actual.Select(person => person.TestKey));
     }
 
     [Fact]
@@ -178,13 +178,13 @@ public interface ITakeOperatorTests : IGraphTest
         await Graph.CreateNodeAsync(memory3, null, TestContext.Current.CancellationToken);
 
         // Create relationships
-        var rel1 = new UserMemory(user.Id, memory1.Id);
-        var rel2 = new UserMemory(user.Id, memory2.Id);
-        var rel3 = new UserMemory(user.Id, memory3.Id);
+        var rel1 = new UserMemory();
+        var rel2 = new UserMemory();
+        var rel3 = new UserMemory();
 
-        await Graph.CreateRelationshipAsync(rel1, null, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(rel2, null, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(rel3, null, TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user, rel1, memory1, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user, rel2, memory2, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user, rel3, memory3, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act - This is the type of query that was failing before the fix
         var query = Graph.Nodes<Memory>()
@@ -424,19 +424,19 @@ public interface ITakeOperatorTests : IGraphTest
         await Graph.CreateNodeAsync(memory4, null, TestContext.Current.CancellationToken);
 
         // Create relationships - user1 has all memories, user2 has only some
-        var rel1 = new UserMemory(user1.Id, memory1.Id);
-        var rel2 = new UserMemory(user1.Id, memory2.Id);
-        var rel3 = new UserMemory(user1.Id, memory3.Id);
-        var rel4 = new UserMemory(user1.Id, memory4.Id);
-        var rel5 = new UserMemory(user2.Id, memory2.Id);
-        var rel6 = new UserMemory(user2.Id, memory4.Id);
+        var rel1 = new UserMemory();
+        var rel2 = new UserMemory();
+        var rel3 = new UserMemory();
+        var rel4 = new UserMemory();
+        var rel5 = new UserMemory();
+        var rel6 = new UserMemory();
 
-        await Graph.CreateRelationshipAsync(rel1, null, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(rel2, null, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(rel3, null, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(rel4, null, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(rel5, null, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(rel6, null, TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user1, rel1, memory1, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user1, rel2, memory2, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user1, rel3, memory3, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user1, rel4, memory4, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user2, rel5, memory2, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user2, rel6, memory4, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act - Get only 2 most recent memories for user1
         var results = await Graph.Nodes<Memory>()
@@ -474,8 +474,8 @@ public interface ITakeOperatorTests : IGraphTest
         foreach (var memory in memories)
         {
             await Graph.CreateNodeAsync(memory, null, TestContext.Current.CancellationToken);
-            var rel = new UserMemory(user.Id, memory.Id);
-            await Graph.CreateRelationshipAsync(rel, null, TestContext.Current.CancellationToken);
+            var rel = new UserMemory();
+            await Graph.ConnectAsync(user, rel, memory, cancellationToken: TestContext.Current.CancellationToken);
         }
 
         // Act - Skip first 2, take next 2
@@ -534,13 +534,13 @@ public interface ITakeOperatorTests : IGraphTest
         await Graph.CreateNodeAsync(memory2, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(memory3, null, TestContext.Current.CancellationToken);
 
-        var rel1 = new UserMemory(user.Id, memory1.Id);
-        var rel2 = new UserMemory(user.Id, memory2.Id);
-        var rel3 = new UserMemory(user.Id, memory3.Id);
+        var rel1 = new UserMemory();
+        var rel2 = new UserMemory();
+        var rel3 = new UserMemory();
 
-        await Graph.CreateRelationshipAsync(rel1, null, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(rel2, null, TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(rel3, null, TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user, rel1, memory1, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user, rel2, memory2, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(user, rel3, memory3, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act - Project to just content and take 2
         var results = await Graph.Nodes<Memory>()
@@ -575,8 +575,8 @@ public interface ITakeOperatorTests : IGraphTest
 
         await Graph.CreateNodeAsync(user, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(memory, null, TestContext.Current.CancellationToken);
-        var rel = new UserMemory(user.Id, memory.Id);
-        await Graph.CreateRelationshipAsync(rel, null, TestContext.Current.CancellationToken);
+        var rel = new UserMemory();
+        await Graph.ConnectAsync(user, rel, memory, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
         var results = await Graph.Nodes<Memory>()

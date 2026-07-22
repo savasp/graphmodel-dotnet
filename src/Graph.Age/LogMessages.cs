@@ -31,56 +31,8 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating node of type {NodeType}")]
     internal static partial void LogDebugAgeGraph160(this ILogger logger, global::System.String nodeType);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully created node {NodeId}")]
-    internal static partial void LogDebugAgeGraph173(this ILogger logger, global::System.String nodeId);
-
     [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to create node of type {NodeType}")]
     internal static partial void LogErrorAgeGraph182(this ILogger logger, Exception exception, global::System.String nodeType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating relationship of type {RelationshipType}")]
-    internal static partial void LogDebugAgeGraph208(this ILogger logger, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully created relationship {RelationshipId}")]
-    internal static partial void LogDebugAgeGraph225(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to create relationship of type {RelationshipType}")]
-    internal static partial void LogErrorAgeGraph234(this ILogger logger, Exception exception, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Updating node {NodeId} of type {NodeType}")]
-    internal static partial void LogDebugAgeGraph262(this ILogger logger, global::System.String nodeId, global::System.String nodeType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully updated node {NodeId}")]
-    internal static partial void LogDebugAgeGraph281(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to update node {NodeId} of type {NodeType}")]
-    internal static partial void LogErrorAgeGraph290(this ILogger logger, Exception exception, global::System.String nodeId, global::System.String nodeType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Updating relationship {RelationshipId} of type {RelationshipType}")]
-    internal static partial void LogDebugAgeGraph318(this ILogger logger, global::System.String relationshipId, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully updated relationship {RelationshipId}")]
-    internal static partial void LogDebugAgeGraph337(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to update relationship {RelationshipId} of type {RelationshipType}")]
-    internal static partial void LogErrorAgeGraph346(this ILogger logger, Exception exception, global::System.String relationshipId, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Deleting node {NodeId}")]
-    internal static partial void LogDebugAgeGraph368(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully deleted node {NodeId}")]
-    internal static partial void LogDebugAgeGraph387(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to delete node {NodeId}")]
-    internal static partial void LogErrorAgeGraph397(this ILogger logger, Exception exception, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Deleting relationship {RelationshipId}")]
-    internal static partial void LogDebugAgeGraph418(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Successfully deleted relationship {RelationshipId}")]
-    internal static partial void LogDebugAgeGraph432(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Failed to delete relationship {RelationshipId}")]
-    internal static partial void LogErrorAgeGraph441(this ILogger logger, Exception exception, global::System.String relationshipId);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Building dynamic nodes queryable")]
     internal static partial void LogDebugAgeGraph457(this ILogger logger);
@@ -118,74 +70,14 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to dispose transaction after a failed operation")]
     internal static partial void LogWarningTransactionHelpers107(this ILogger logger, Exception exception);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating node of type {NodeType} with ID {NodeId}")]
-    internal static partial void LogDebugAgeNodeManager44(this ILogger logger, global::System.String nodeType, global::System.String nodeId);
+    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating node of type {NodeType}")]
+    internal static partial void LogDebugAgeNodeManager44(this ILogger logger, global::System.String nodeType);
 
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Created node of type {NodeType} with ID {NodeId}")]
-    internal static partial void LogInformationAgeNodeManager73(this ILogger logger, global::System.String nodeType, global::System.String nodeId);
+    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Created node of type {NodeType}")]
+    internal static partial void LogInformationAgeNodeManager73(this ILogger logger, global::System.String nodeType);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error creating node of type {NodeType}")]
     internal static partial void LogErrorAgeNodeManager79(this ILogger logger, Exception exception, global::System.String nodeType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Updating node of type {NodeType} with ID {NodeId}")]
-    internal static partial void LogDebugAgeNodeManager92(this ILogger logger, global::System.String nodeType, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Node with ID {NodeId} not found for update")]
-    internal static partial void LogWarningAgeNodeManager115(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Updated node of type {NodeType} with ID {NodeId}")]
-    internal static partial void LogInformationAgeNodeManager123(this ILogger logger, global::System.String nodeType, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error updating node {NodeId} of type {NodeType}")]
-    internal static partial void LogErrorAgeNodeManager128(this ILogger logger, Exception exception, global::System.String nodeId, global::System.String nodeType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Deleting node with ID: {NodeId}, cascade: {CascadeDelete}")]
-    internal static partial void LogDebugAgeNodeManager141(this ILogger logger, global::System.String nodeId, global::System.Boolean cascadeDelete);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Node with ID {NodeId} not found for deletion")]
-    internal static partial void LogWarningAgeNodeManager151(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Node with ID {NodeId} not found for deletion")]
-    internal static partial void LogWarningAgeNodeManager224(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Deleted node with ID {NodeId}")]
-    internal static partial void LogInformationAgeNodeManager228(this ILogger logger, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error deleting node with ID: {NodeId}")]
-    internal static partial void LogErrorAgeNodeManager233(this ILogger logger, Exception exception, global::System.String nodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating relationship of type {RelationshipType} from {StartNodeId} to {EndNodeId}")]
-    internal static partial void LogDebugAgeRelationshipManager40(this ILogger logger, global::System.String relationshipType, global::System.String startNodeId, global::System.String endNodeId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Created relationship of type {RelationshipType} with ID {RelationshipId}")]
-    internal static partial void LogInformationAgeRelationshipManager86(this ILogger logger, global::System.String relationshipType, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error creating relationship of type {RelationshipType}")]
-    internal static partial void LogErrorAgeRelationshipManager93(this ILogger logger, Exception exception, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Updating relationship of type {RelationshipType} with ID {RelationshipId}")]
-    internal static partial void LogDebugAgeRelationshipManager106(this ILogger logger, global::System.String relationshipType, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Relationship with ID {RelationshipId} not found for update")]
-    internal static partial void LogWarningAgeRelationshipManager138(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Updated relationship of type {RelationshipType} with ID {RelationshipId}")]
-    internal static partial void LogInformationAgeRelationshipManager153(this ILogger logger, global::System.String relationshipType, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error updating relationship {RelationshipId} of type {RelationshipType}")]
-    internal static partial void LogErrorAgeRelationshipManager160(this ILogger logger, Exception exception, global::System.String relationshipId, global::System.String relationshipType);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Deleting relationship with ID {RelationshipId}")]
-    internal static partial void LogDebugAgeRelationshipManager173(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Relationship with ID {RelationshipId} not found for deletion")]
-    internal static partial void LogWarningAgeRelationshipManager188(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Deleted relationship with ID {RelationshipId}")]
-    internal static partial void LogInformationAgeRelationshipManager192(this ILogger logger, global::System.String relationshipId);
-
-    [LoggerMessage(EventId = 0, Level = LogLevel.Error, Message = "Error deleting relationship with ID {RelationshipId}")]
-    internal static partial void LogErrorAgeRelationshipManager197(this ILogger logger, Exception exception, global::System.String relationshipId);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Skipping null complex property {PropertyName}")]
     internal static partial void LogDebugComplexPropertyManager88(this ILogger logger, global::System.String propertyName);

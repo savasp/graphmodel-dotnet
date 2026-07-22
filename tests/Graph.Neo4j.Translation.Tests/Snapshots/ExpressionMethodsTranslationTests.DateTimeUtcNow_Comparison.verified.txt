@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-WHERE src.CreatedAt < datetime()
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND src.CreatedAt < datetime()
 OPTIONAL MATCH src_path = (src)-[rels*1..5]->(prop)
 WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)
 WITH src,

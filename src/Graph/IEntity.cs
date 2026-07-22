@@ -9,13 +9,4 @@ namespace Cvoya.Graph;
 /// </summary>
 public interface IEntity
 {
-    /// <summary>
-    /// Gets the identifier used by the transitional ID-based graph APIs.
-    /// </summary>
-    /// <remarks>
-    /// This property is ordinary mapped data for schema purposes. It is not a domain key unless the
-    /// implementing property explicitly declares <see cref="PropertyAttribute.IsKey"/>. Domain keys do not
-    /// represent provider-native graph element identity and are not implicit mutation targets.
-    /// </remarks>
-    string Id { get; init; }
 }

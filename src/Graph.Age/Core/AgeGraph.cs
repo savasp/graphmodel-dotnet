@@ -7,6 +7,7 @@ using Cvoya.Graph.Age.Entities;
 using Cvoya.Graph.Age.Querying;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.Age.Querying.Linq.Providers;
+using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Querying.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -110,30 +111,6 @@ internal class AgeGraph : IGraph
         return new GraphRelationshipQueryable<R>(provider);
     }
 
-    /// <inheritdoc />
-    public async Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : class, Graph.INode
-    {
-        var query = Nodes<N>(transaction)
-            .Where(n => n.Id == id);
-
-        return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new EntityNotFoundException($"Node with ID {id} not found");
-    }
-
-    /// <inheritdoc />
-    public async Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, Graph.IRelationship
-    {
-        var query = Nodes<Graph.INode>(transaction)
-            .PathSegments<Graph.INode, R, Graph.INode>(GraphTraversalDirection.Both)
-            .Where(segment => segment.Relationship.Id == id);
-
-        var segment = await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new EntityNotFoundException($"Relationship with ID {id} not found");
-        return LegacyRelationshipEndpoints.Populate<R>(segment);
-    }
-
     /// <summary>
     /// Converts a public <see cref="IGraphTransaction"/> to the internal <see cref="AgeGraphTransaction"/>
     /// used by queryable construction, or <see langword="null"/> if none was given (in which case
@@ -164,9 +141,6 @@ internal class AgeGraph : IGraph
         if (node is null)
             throw new ArgumentException("Node cannot be null.", nameof(node));
 
-        if (string.IsNullOrEmpty(node.Id))
-            throw new ArgumentException("Node ID cannot be null or empty.", nameof(node));
-
         cancellationToken.ThrowIfCancellationRequested();
         EnsureOwnedTransaction(transaction);
 
@@ -185,7 +159,6 @@ internal class AgeGraph : IGraph
                 _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebugAgeGraph173(node.Id);
         }
         catch (OperationCanceledException)
         {
@@ -207,445 +180,25 @@ internal class AgeGraph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, Graph.IRelationship
-    {
-        if (relationship is null)
-            throw new ArgumentException("Relationship cannot be null.", nameof(relationship));
-
-        if (string.IsNullOrEmpty(relationship.Id))
-            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship));
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        try
-        {
-            _logger.LogDebugAgeGraph208(typeof(R).Name);
-
-            // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to create relationship of type {typeof(R).Name}",
-                _logger,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebugAgeGraph225(relationship.Id);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to create relationship of type {typeof(R).Name}";
-            _logger.LogErrorAgeGraph234(ex, typeof(R).Name);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task CreateAsync<TSource, TRelationship, TTarget>(
+    public Task CreateAsync<TSource, TRelationship, TTarget>(
         TSource source,
         TRelationship relationship,
         TTarget target,
-        GraphOperationOptions? options = null,
+        RelationshipDirection direction = RelationshipDirection.Outgoing,
         IGraphTransaction? transaction = null,
         CancellationToken cancellationToken = default)
         where TSource : class, Graph.INode
         where TRelationship : class, Graph.IRelationship
         where TTarget : class, Graph.INode
-    {
-        SubgraphArguments.Validate(source, relationship, target);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        var createMissingEndpoints = options?.CreateMissingEndpoints ?? false;
-
-        try
-        {
-            _logger.LogDebugAgeGraph208(typeof(TRelationship).Name);
-
-            // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
-            // Create-only sends the new endpoints (including their complex-property subtrees) and
-            // the edge across the Npgsql execution boundary in one batch, preceded by the legacy
-            // duplicate-id probes the batch no longer performs for itself. The transitional
-            // merge-by-Id option stays on the per-entity managers until the legacy API is removed.
-            // Both paths share this transaction and savepoint boundary, so either is atomic.
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    // When the caller owns the surrounding transaction, isolate the batch behind a
-                    // savepoint so a post-execution validation failure cannot leave its writes for the
-                    // caller to commit.
-                    var savepoint = transaction is null ? null : $"cvoya_subgraph_{Guid.NewGuid():N}";
-                    if (savepoint is not null)
-                    {
-                        await tx.DbTransaction.SaveAsync(savepoint, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    try
-                    {
-                        if (createMissingEndpoints)
-                        {
-                            await EnsureLegacyRelationshipIdAvailableAsync(
-                                relationship.Id,
-                                tx.Runner,
-                                cancellationToken).ConfigureAwait(false);
-                            await _graphContext.NodeManager
-                                .CreateNodeIfMissingAsync(source, tx, cancellationToken)
-                                .ConfigureAwait(false);
-                            if (!string.Equals(source.Id, target.Id, StringComparison.Ordinal))
-                            {
-                                await _graphContext.NodeManager
-                                    .CreateNodeIfMissingAsync(target, tx, cancellationToken)
-                                    .ConfigureAwait(false);
-                            }
-
-                            await _graphContext.RelationshipManager
-                                .CreateRelationshipAsync(relationship, tx, cancellationToken)
-                                .ConfigureAwait(false);
-                        }
-                        else
-                        {
-                            await EnsureLegacyCreateOnlyIdsAvailableAsync(
-                                source.Id,
-                                relationship.Id,
-                                target.Id,
-                                tx.Runner,
-                                cancellationToken).ConfigureAwait(false);
-                            await _graphContext.SubgraphManager.CreateSubgraphAsync(
-                                source,
-                                relationship,
-                                target,
-                                tx,
-                                cancellationToken).ConfigureAwait(false);
-                        }
-
-                        if (savepoint is not null)
-                        {
-                            await tx.DbTransaction.ReleaseAsync(savepoint, cancellationToken).ConfigureAwait(false);
-                        }
-
-                        return true;
-                    }
-                    catch (Exception operationException) when (savepoint is not null)
-                    {
-                        try
-                        {
-                            await tx.DbTransaction.RollbackAsync(savepoint, CancellationToken.None).ConfigureAwait(false);
-                            await tx.DbTransaction.ReleaseAsync(savepoint, CancellationToken.None).ConfigureAwait(false);
-                        }
-                        catch (Exception rollbackException) when (rollbackException is NpgsqlException or InvalidOperationException)
-                        {
-                            throw new GraphException(
-                                "Failed to restore the caller transaction after subgraph creation failed.",
-                                new AggregateException(operationException, rollbackException));
-                        }
-
-                        throw;
-                    }
-                },
-                $"Failed to create subgraph for relationship of type {typeof(TRelationship).Name}",
-                _logger,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to create subgraph for relationship of type {typeof(TRelationship).Name}";
-            _logger.LogErrorAgeGraph234(ex, typeof(TRelationship).Name);
-
-            if (ex is GraphException)
-            {
-                throw;
-            }
-
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <summary>
-    /// Reproduces the create-only duplicate-id errors the batch planner used to raise from its own
-    /// in-batch probes. The batch now correlates endpoints transiently and no longer reads domain
-    /// ids, so the legacy <c>CreateAsync</c> contract - the operation fails atomically if an
-    /// endpoint id already exists - is enforced here instead.
-    /// </summary>
-    private static async Task EnsureLegacyCreateOnlyIdsAvailableAsync(
-        string sourceId,
-        string relationshipId,
-        string targetId,
-        AgeQueryRunner runner,
-        CancellationToken cancellationToken)
-    {
-        // Create-only creates both endpoints, so two endpoints sharing an id would leave two roots
-        // answering to it - the state the probes below exist to prevent. It needs no round-trip.
-        if (string.Equals(sourceId, targetId, StringComparison.Ordinal))
-        {
-            throw new GraphException("Create-only subgraph endpoints must have distinct IDs.");
-        }
-
-        if (await AgeNodeManager.NodeExistsByIdAsync(sourceId, runner, cancellationToken).ConfigureAwait(false))
-        {
-            throw new GraphException($"Node with ID '{sourceId}' already exists.");
-        }
-
-        if (await AgeNodeManager.NodeExistsByIdAsync(targetId, runner, cancellationToken).ConfigureAwait(false))
-        {
-            throw new GraphException($"Node with ID '{targetId}' already exists.");
-        }
-
-        await EnsureLegacyRelationshipIdAvailableAsync(relationshipId, runner, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private static async Task EnsureLegacyRelationshipIdAvailableAsync(
-        string relationshipId,
-        AgeQueryRunner runner,
-        CancellationToken cancellationToken)
-    {
-        var result = await runner.RunAsync(
-            $"MATCH ()-[relationship {{Id: $relationshipId}}]-() WHERE {AgeElementMatcher.UserRelationshipPredicate("relationship")} RETURN count(relationship) AS existingCount",
-            new { relationshipId },
-            cancellationToken).ConfigureAwait(false);
-        if ((await result.SingleAsync(cancellationToken).ConfigureAwait(false))["existingCount"].As<long>() > 0)
-        {
-            throw new GraphException($"Relationship with ID '{relationshipId}' already exists.");
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : class, Graph.INode
-    {
-        if (node is null)
-            throw new ArgumentException("Node cannot be null.", nameof(node));
-
-        if (string.IsNullOrEmpty(node.Id))
-            throw new ArgumentException("Node ID cannot be null or empty.", nameof(node));
-
-        GraphDataModel.EnforceGraphConstraintsForNode(node);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        try
-        {
-            _logger.LogDebugAgeGraph262(node.Id, typeof(N).Name);
-
-            // Ensure schema is created before any transaction (to avoid mixing schema and data
-            // operations). The update path validates properties against the schema registry, so
-            // this must not depend on a prior create having initialized it (#227).
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.NodeManager.UpdateNodeAsync(node, tx, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to update node {node.Id} of type {typeof(N).Name}",
-                _logger,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebugAgeGraph281(node.Id);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to update node {node.Id} of type {typeof(N).Name}";
-            _logger.LogErrorAgeGraph290(ex, node.Id, typeof(N).Name);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, Graph.IRelationship
-    {
-        if (relationship is null)
-            throw new ArgumentException("Relationship cannot be null.", nameof(relationship));
-
-        if (string.IsNullOrEmpty(relationship.Id))
-            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship));
-
-        GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        try
-        {
-            _logger.LogDebugAgeGraph318(relationship.Id, typeof(R).Name);
-
-            // Ensure schema is created before any transaction (to avoid mixing schema and data
-            // operations). The update path validates properties against the schema registry, so
-            // this must not depend on a prior create having initialized it (#227).
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.RelationshipManager.UpdateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}",
-                _logger,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebugAgeGraph337(relationship.Id);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}";
-            _logger.LogErrorAgeGraph346(ex, relationship.Id, typeof(R).Name);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task DeleteNodeAsync(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrEmpty(id))
-            throw new ArgumentException("Node ID cannot be null or empty.", nameof(id));
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        try
-        {
-            _logger.LogDebugAgeGraph368(id);
-
-            // Delete-by-ID needs the complete registered-label set to recognize legacy nodes
-            // written before EntityKind was stored. Initialize before opening the data
-            // transaction so a cold registry cannot turn an existing node into not-found (#239).
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.NodeManager.DeleteNodeAsync(id, tx, cascadeDelete, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to delete node {id}",
-                _logger,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebugAgeGraph387(id);
-
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to delete node {id}";
-            _logger.LogErrorAgeGraph397(ex, id);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrEmpty(id))
-            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(id));
-
-        cancellationToken.ThrowIfCancellationRequested();
-        EnsureOwnedTransaction(transaction);
-
-        try
-        {
-            _logger.LogDebugAgeGraph418(id);
-
-            await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                transaction,
-                async tx =>
-                {
-                    await _graphContext.RelationshipManager.DeleteRelationshipAsync(id, tx, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                $"Failed to delete relationship {id}",
-                _logger,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebugAgeGraph432(id);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var message = $"Failed to delete relationship {id}";
-            _logger.LogErrorAgeGraph441(ex, id);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-            throw new GraphException(message, ex);
-        }
-    }
+        => GraphCommandExtensions.CreateNewAsync(
+            this,
+            source,
+            relationship,
+            target,
+            direction,
+            GraphRelationshipCreationMode.Standard,
+            transaction,
+            cancellationToken);
 
     // Dynamic entity methods
 
@@ -667,28 +220,6 @@ internal class AgeGraph : IGraph
         var ageTransaction = ToAgeTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, ageTransaction, isReadOnly: true);
         return new GraphRelationshipQueryable<DynamicRelationship>(provider);
-    }
-
-    /// <inheritdoc />
-    public async Task<DynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-    {
-        var query = DynamicNodes(transaction)
-            .Where(n => n.Id == id);
-
-        return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new EntityNotFoundException($"Dynamic node with ID {id} not found");
-    }
-
-    /// <inheritdoc />
-    public async Task<DynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-    {
-        var query = Nodes<Graph.INode>(transaction)
-            .PathSegments<Graph.INode, DynamicRelationship, Graph.INode>(GraphTraversalDirection.Both)
-            .Where(segment => segment.Relationship.Id == id);
-
-        var segment = await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new EntityNotFoundException($"Dynamic relationship with ID {id} not found");
-        return LegacyRelationshipEndpoints.Populate<DynamicRelationship>(segment);
     }
 
     /// <inheritdoc />

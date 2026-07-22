@@ -114,8 +114,6 @@ public class CG001_MissingParameterlessClassConstructorTests
                 public string Id { get; init; } = string.Empty;
                 public string Type { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public string CustomProperty { get; set; } = string.Empty;
             }
             """;
@@ -143,8 +141,6 @@ public class CG001_MissingParameterlessClassConstructorTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public string Type { get; set; } = string.Empty;
             }
             """;

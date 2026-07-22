@@ -15,10 +15,7 @@ namespace Cvoya.Graph;
 /// await using var transaction = await graph.GetTransactionAsync();
 /// try
 /// {
-///     await graph.CreateNodeAsync(person, transaction: transaction);
-///     await graph.CreateNodeAsync(address, transaction: transaction);
-///     var livesAt = new LivesAt(person.Id, address.Id);
-///     await graph.CreateRelationshipAsync(livesAt, transaction: transaction);
+///     await graph.CreateAsync(person, new LivesAt(), address, transaction: transaction);
 ///     await transaction.CommitAsync();
 /// }
 /// catch

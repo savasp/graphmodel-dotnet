@@ -29,8 +29,8 @@ public sealed class ElementBoundMutationTests(Neo4jHarness harness) : Neo4jTest(
         var neo4jTransaction = Assert.IsType<GraphTransaction>(transaction);
         var elementId = await GetElementIdAsync(
             neo4jTransaction,
-            "MATCH (n {Id: $id}) RETURN elementId(n) AS elementId",
-            new { id = person.Id });
+            "MATCH (n {TestKey: $testKey}) RETURN elementId(n) AS elementId",
+            new { testKey = person.TestKey });
 
         var updated = person with { FirstName = "after-element-bound" };
         var wasUpdated = await neo4jGraph.Context.NodeManager.UpdateByElementIdAsync(
@@ -42,12 +42,10 @@ public sealed class ElementBoundMutationTests(Neo4jHarness harness) : Neo4jTest(
         Assert.True(wasUpdated);
         var record = await QuerySingleAsync(
             neo4jTransaction,
-            "MATCH (n) WHERE elementId(n) = $elementId RETURN n.FirstName AS firstName, n.Id AS storedId",
+            "MATCH (n) WHERE elementId(n) = $elementId RETURN n.FirstName AS firstName, n.TestKey AS storedTestKey",
             new { elementId });
         Assert.Equal("after-element-bound", record["firstName"].As<string>());
-        // #469: the element-bound update must not delete the stored legacy Id, or Id-addressed
-        // legacy APIs can no longer find the node during the coexistence window.
-        Assert.Equal(person.Id, record["storedId"].As<string>());
+        Assert.Equal(person.TestKey, record["storedTestKey"].As<string>());
 
         await transaction.CommitAsync();
     }
@@ -72,7 +70,7 @@ public sealed class ElementBoundMutationTests(Neo4jHarness harness) : Neo4jTest(
         // separator bug (#469 F2) would still remove exactly these two labels for ordinary label
         // names, but this pins the intended end state precisely rather than relying on that.
         var newLabels = new[] { $"ElementBoundD{Guid.NewGuid():N}", $"ElementBoundE{Guid.NewGuid():N}" };
-        var updated = new DynamicNode(node.Id, newLabels, new Dictionary<string, object?> { ["marker"] = marker, ["rank"] = "after" });
+        var updated = new DynamicNode(newLabels, new Dictionary<string, object?> { ["marker"] = marker, ["rank"] = "after" });
         var wasUpdated = await neo4jGraph.Context.NodeManager.UpdateByElementIdAsync(
             updated,
             elementId,
@@ -90,7 +88,7 @@ public sealed class ElementBoundMutationTests(Neo4jHarness harness) : Neo4jTest(
         Assert.DoesNotContain(originalLabels[1], labels);
         Assert.DoesNotContain(originalLabels[2], labels);
         Assert.Equal("after", record["rank"].As<string>());
-        Assert.Equal(node.Id, record["storedId"].As<string>());
+        Assert.Null(record["storedId"].As<string?>());
 
         await transaction.CommitAsync();
     }
@@ -120,21 +118,25 @@ public sealed class ElementBoundMutationTests(Neo4jHarness harness) : Neo4jTest(
     {
         var first = new Person { FirstName = "relationship-source" };
         var second = new Person { FirstName = "relationship-target" };
-        var relationship = new Knows(first, second) { Since = DateTime.UnixEpoch };
+        var relationship = new Knows { Since = DateTime.UnixEpoch };
         await Graph.CreateNodeAsync(first, cancellationToken: TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(second, cancellationToken: TestContext.Current.CancellationToken);
-        await Graph.CreateRelationshipAsync(relationship, cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            Graph.Nodes<Person>().Where(person => person.TestKey == first.TestKey),
+            relationship,
+            Graph.Nodes<Person>().Where(person => person.TestKey == second.TestKey),
+            cancellationToken: TestContext.Current.CancellationToken);
         var neo4jGraph = Assert.IsType<Neo4jGraph>(Graph);
 
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var neo4jTransaction = Assert.IsType<GraphTransaction>(transaction);
         var identity = await QuerySingleAsync(
             neo4jTransaction,
-            "MATCH ()-[r {Id: $id}]->() RETURN elementId(r) AS elementId, r.Direction AS storedDirection",
-            new { id = relationship.Id });
+            "MATCH ()-[r {TestKey: $testKey}]->() RETURN elementId(r) AS elementId, r.Direction AS storedDirection",
+            new { testKey = relationship.TestKey });
         var elementId = identity["elementId"].As<string>();
         var directionBeforeUpdate = identity["storedDirection"];
-        Assert.NotNull(directionBeforeUpdate);
+        Assert.Null(directionBeforeUpdate);
 
         var replacement = DateTime.UnixEpoch.AddDays(1);
         var updated = relationship with { Since = replacement };
@@ -147,21 +149,18 @@ public sealed class ElementBoundMutationTests(Neo4jHarness harness) : Neo4jTest(
         Assert.True(wasUpdated);
         var record = await QuerySingleAsync(
             neo4jTransaction,
-            "MATCH ()-[r]->() WHERE elementId(r) = $elementId RETURN r.Since AS since, r.Id AS storedId, r.Direction AS storedDirection",
+            "MATCH ()-[r]->() WHERE elementId(r) = $elementId RETURN r.Since AS since, r.TestKey AS storedTestKey, r.Direction AS storedDirection",
             new { elementId });
         var storedSince = record["since"].As<ZonedDateTime>().ToDateTimeOffset().UtcDateTime;
         Assert.Equal(replacement, storedSince);
-        // #469: the element-bound update must not delete stored legacy identity properties -
-        // legacy APIs address relationships by `()-[r {Id: ...}]->()` and reject direction changes
-        // against the stored Direction, so both must survive the full-replace SET.
-        Assert.Equal(relationship.Id, record["storedId"].As<string>());
+        Assert.Equal(relationship.TestKey, record["storedTestKey"].As<string>());
         Assert.Equal(directionBeforeUpdate, record["storedDirection"]);
 
         await transaction.CommitAsync();
     }
 
     [Fact]
-    public async Task RelationshipManager_UpdateByElementIdAsync_RawRelationshipWithoutClrMetadata_ThrowsIdentityChange()
+    public async Task RelationshipManager_UpdateByElementIdAsync_RawRelationshipWithoutClrMetadata_UpdatesByNativeType()
     {
         var neo4jGraph = Assert.IsType<Neo4jGraph>(Graph);
         // Direct manager access bypasses the CreateNodeAsync/CreateRelationshipAsync entry points
@@ -170,26 +169,26 @@ public sealed class ElementBoundMutationTests(Neo4jHarness harness) : Neo4jTest(
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var neo4jTransaction = Assert.IsType<GraphTransaction>(transaction);
 
-        // A raw driver-seeded relationship: matching physical type, but no CVOYA CLR metadata.
         var elementId = await GetElementIdAsync(
             neo4jTransaction,
             "CREATE (:RawUpdateSource)-[r:KNOWS {weight: 1}]->(:RawUpdateTarget) RETURN elementId(r) AS elementId",
             new { });
 
-        var exception = await Assert.ThrowsAsync<GraphException>(() =>
-            neo4jGraph.Context.RelationshipManager.UpdateByElementIdAsync(
-                new Knows("missing-source", "missing-target"),
-                elementId,
-                neo4jTransaction,
-                TestContext.Current.CancellationToken));
-        Assert.Contains("cannot be changed on update", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("<missing>", exception.Message, StringComparison.Ordinal);
+        var wasUpdated = await neo4jGraph.Context.RelationshipManager.UpdateByElementIdAsync(
+            new Knows(),
+            elementId,
+            neo4jTransaction,
+            TestContext.Current.CancellationToken);
+
+        Assert.True(wasUpdated);
 
         var record = await QuerySingleAsync(
             neo4jTransaction,
-            "MATCH ()-[r]->() WHERE elementId(r) = $elementId RETURN r.weight AS weight",
+            "MATCH ()-[r]->() WHERE elementId(r) = $elementId RETURN r.weight AS weight, r.TestKey AS testKey, r.__metadata__ AS metadata",
             new { elementId });
-        Assert.Equal(1L, record["weight"].As<long>());
+        Assert.Null(record["weight"]);
+        Assert.False(string.IsNullOrWhiteSpace(record["testKey"].As<string>()));
+        Assert.Null(record["metadata"]);
 
         await transaction.RollbackAsync();
     }
@@ -205,7 +204,7 @@ public sealed class ElementBoundMutationTests(Neo4jHarness harness) : Neo4jTest(
         var neo4jTransaction = Assert.IsType<GraphTransaction>(transaction);
 
         var wasUpdated = await neo4jGraph.Context.RelationshipManager.UpdateByElementIdAsync(
-            new Knows("missing-source", "missing-target"),
+            new Knows(),
             "5:00000000-0000-0000-0000-000000000000:9999999",
             neo4jTransaction,
             TestContext.Current.CancellationToken);
@@ -235,7 +234,7 @@ public sealed class ElementBoundMutationTests(Neo4jHarness harness) : Neo4jTest(
         var entity = new EntityFactory().Serialize(seed);
         var complexPropertyManager = new ComplexPropertyManager(neo4jGraph.Context);
 
-        await complexPropertyManager.CreateElementBoundComplexPropertiesAsync(
+        await complexPropertyManager.CreateComplexPropertiesAsync(
             neo4jTransaction.Transaction,
             parentElementId,
             entity,
@@ -275,7 +274,7 @@ public sealed class ElementBoundMutationTests(Neo4jHarness harness) : Neo4jTest(
             FirstName = "complex-owner",
             Address = new AddressValue { Street = "First Street", City = "First City" }
         };
-        await complexPropertyManager.CreateElementBoundComplexPropertiesAsync(
+        await complexPropertyManager.CreateComplexPropertiesAsync(
             neo4jTransaction.Transaction,
             parentElementId,
             new EntityFactory().Serialize(original),

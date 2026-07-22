@@ -57,24 +57,12 @@ internal sealed class PersonSerializer : IEntitySerializer
             : firstnamePropRep.Value is SimpleValue firstnamePropRepSimpleValue
                 ? (string)firstnamePropRepSimpleValue.Object
                 : string.Empty;
-        // Extracting init-only property 'Id'
-        string idValue;
-        // Look for property 'Id' in both simple and complex properties
-        var idPropRep = entity.SimpleProperties.TryGetValue("Id", out var idSimpleProp) ? idSimpleProp
-                    : entity.ComplexProperties.TryGetValue("Id", out var idComplexProp) ? idComplexProp : null;
-        // Extract simple value - no conversion, just cast
-        idValue = idPropRep is null
-            ? string.Empty
-            : idPropRep.Value is SimpleValue idPropRepSimpleValue
-                ? (string)idPropRepSimpleValue.Object
-                : string.Empty;
 
         var result = new TestNamespace.Person(
             LastName
         )
         {
-            FirstName = firstnameValue,
-            Id = idValue
+            FirstName = firstnameValue
         };
 
         // Set remaining properties with setters
@@ -142,28 +130,6 @@ internal sealed class PersonSerializer : IEntitySerializer
                 Value: serializedValue
             );
             simpleProperties["first_name"] = propertyRep;
-        }
-
-        // Serialize property: Id
-        {
-            var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Id")!;
-            var value = entity.Id;
-            Serialized? serializedValue;
-
-            serializedValue = value is null
-                ? null
-                : new SimpleValue(
-                    Object: value,
-                    Type: typeof(string)
-                );
-
-            var propertyRep = new Property(
-                PropertyInfo: propInfo,
-                Label: "Id",
-                IsNullable: false,
-                Value: serializedValue
-            );
-            simpleProperties["Id"] = propertyRep;
         }
 
         // Serialize property: Labels
@@ -258,18 +224,6 @@ internal sealed class PersonSerializer : IEntitySerializer
                 ElementType: typeof(string),
                 IsNullable: false
             ) { IsElementNullable = false };
-        }
-
-        // Schema for property: Id
-        {
-            var propInfo = typeof(TestNamespace.Person).GetProperty("Id")
-                ?? typeof(Cvoya.Graph.IEntity).GetProperty("Id")!;
-            simpleProperties["Id"] = new PropertySchema(
-                PropertyInfo: propInfo,
-                PropertyName: "Id",
-                PropertyType: PropertyType.Simple,
-                IsNullable: false
-            );
         }
 
         // Schema for property: LastName

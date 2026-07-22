@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH (src)-[r:`PIPE|SEPARATED`]->(tgt)
-WHERE r.StartNodeId <> $p0
+WHERE r.__graphModelComplexProperty IS NULL AND r.Marker <> $p0
 RETURN r AS Relationship
 
 == Parameters ==

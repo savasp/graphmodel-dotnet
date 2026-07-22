@@ -17,19 +17,21 @@ public class ComplexObjectGraphSerializationTests(AgeHarness harness) : AgeTest(
         await Graph.CreateNodeAsync(owner, cancellationToken: cancellationToken);
         var domainNode = new ContractAddressNode { City = "Domain Boulder", Street = "2nd Ave" };
         await Graph.CreateNodeAsync(domainNode, cancellationToken: cancellationToken);
-        await Graph.CreateRelationshipAsync(
-            new ContractPrimaryAddress(owner.Id, domainNode.Id),
+        await Graph.ConnectAsync(
+            owner,
+            new ContractPrimaryAddress(),
+            domainNode,
             cancellationToken: cancellationToken);
 
         var viaDomainValue = await Graph.Nodes<ContractAddressOwner>()
             .Where(candidate => candidate.Address.City == "Domain Boulder")
             .ToListAsync(cancellationToken);
-        Assert.DoesNotContain(viaDomainValue, candidate => candidate.Id == owner.Id);
+        Assert.DoesNotContain(viaDomainValue, candidate => candidate.TestKey == owner.TestKey);
 
         var viaComplexValue = await Graph.Nodes<ContractAddressOwner>()
             .Where(candidate => candidate.Address.City == "Complex Austin")
             .ToListAsync(cancellationToken);
-        var fetched = Assert.Single(viaComplexValue, candidate => candidate.Id == owner.Id);
+        var fetched = Assert.Single(viaComplexValue, candidate => candidate.TestKey == owner.TestKey);
         Assert.Equal("Complex Austin", fetched.Address.City);
     }
 
@@ -49,8 +51,9 @@ public class ComplexObjectGraphSerializationTests(AgeHarness harness) : AgeTest(
         var node = new Kennel { Name = "Large Kennel", Animals = animals };
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        var fetched = await Graph.GetNodeAsync<Kennel>(
-            node.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await Graph.FindNodeAsync(
+            node,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(animals.Count, fetched.Animals.Count);
         for (var index = 0; index < animals.Count; index++)

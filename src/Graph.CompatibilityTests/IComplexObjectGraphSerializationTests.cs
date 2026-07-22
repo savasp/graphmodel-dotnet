@@ -15,7 +15,7 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         var n1 = new Class1 { Property1 = "Value A", Property2 = "Value B", A = new ComplexClassA { Property1 = "Nested A", Property2 = "Nested B" } };
 
         await this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken);
-        var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.Nodes<Class1>().SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(n1.Property1, fetched.Property1);
         Assert.Equal(n1.Property2, fetched.Property2);
         Assert.Equal(n1.A?.Property1, fetched.A?.Property1);
@@ -31,7 +31,7 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         nestedA.B = new ComplexClassB { Property1 = "Nested B1" };
 
         await this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken);
-        var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.Nodes<Class1>().SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(n1.Property1, fetched.Property1);
         Assert.Equal(n1.Property2, fetched.Property2);
         Assert.Equal(n1.A?.Property1, fetched.A?.Property1);
@@ -54,7 +54,7 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         nestedA.C.B = new ComplexClassB();
 
         await this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken);
-        var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.Nodes<Class1>().SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(n1.Property1, fetched.Property1);
         Assert.Equal(n1.Property2, fetched.Property2);
         Assert.Equal(n1.A?.Property1, fetched.A?.Property1);
@@ -91,7 +91,7 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         n1.B[0].A = n1.A[0]; // Share A[0] with B[0]
 
         await this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken);
-        var fetched = await this.Graph.GetNodeAsync<Class2>(n1.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.Nodes<Class2>().SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(n1.Property1, fetched.Property1);
         Assert.Equal(n1.Property2, fetched.Property2);
@@ -131,7 +131,7 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         };
 
         await this.Graph.CreateNodeAsync(kennel, null, TestContext.Current.CancellationToken);
-        var fetched = await this.Graph.GetNodeAsync<Kennel>(kennel.Id, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.FindNodeByTestKeyAsync<Kennel>(kennel.TestKey, null, TestContext.Current.CancellationToken);
 
         Assert.Equal(kennel.Animals.Count, fetched.Animals.Count);
 
@@ -169,15 +169,23 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         var updateBarrier = new AsyncBarrier(participantCount: 2);
 
         var failures = await Task.WhenAll(
-            UpdateInOwnTransactionAsync(owner with { Address = payloadA }, updateBarrier, cancellationToken),
-            UpdateInOwnTransactionAsync(owner with { Address = payloadB }, updateBarrier, cancellationToken));
+            UpdateInOwnTransactionAsync(
+                owner,
+                setters => setters.SetProperty(candidate => candidate.Address, payloadA),
+                updateBarrier,
+                cancellationToken),
+            UpdateInOwnTransactionAsync(
+                owner,
+                setters => setters.SetProperty(candidate => candidate.Address, payloadB),
+                updateBarrier,
+                cancellationToken));
 
         AssertExpectedConcurrentFailures(failures);
         Assert.True(
             failures.Any(failure => failure is null),
             $"Both concurrent updates failed: {failures[0]}; {failures[1]}");
 
-        var fetched = await Graph.GetNodeAsync<ContractAddressOwner>(owner.Id, null, cancellationToken);
+        var fetched = await Graph.FindNodeByTestKeyAsync<ContractAddressOwner>(owner.TestKey, null, cancellationToken);
         var successfulPayloads = new List<ContractAddressValue>();
         if (failures[0] is null) successfulPayloads.Add(payloadA);
         if (failures[1] is null) successfulPayloads.Add(payloadB);
@@ -212,15 +220,23 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         var updateBarrier = new AsyncBarrier(participantCount: 2);
 
         var failures = await Task.WhenAll(
-            UpdateInOwnTransactionAsync(owner with { Addresses = payloadA }, updateBarrier, cancellationToken),
-            UpdateInOwnTransactionAsync(owner with { Addresses = payloadB }, updateBarrier, cancellationToken));
+            UpdateInOwnTransactionAsync(
+                owner,
+                setters => setters.SetProperty(candidate => candidate.Addresses, payloadA),
+                updateBarrier,
+                cancellationToken),
+            UpdateInOwnTransactionAsync(
+                owner,
+                setters => setters.SetProperty(candidate => candidate.Addresses, payloadB),
+                updateBarrier,
+                cancellationToken));
 
         AssertExpectedConcurrentFailures(failures);
         Assert.True(
             failures.Any(failure => failure is null),
             $"Both concurrent updates failed: {failures[0]}; {failures[1]}");
 
-        var fetched = await Graph.GetNodeAsync<ContractAddressCollectionOwner>(owner.Id, null, cancellationToken);
+        var fetched = await Graph.FindNodeByTestKeyAsync<ContractAddressCollectionOwner>(owner.TestKey, null, cancellationToken);
         var successfulPayloads = new List<List<ContractAddressValue>>();
         if (failures[0] is null) successfulPayloads.Add(payloadA);
         if (failures[1] is null) successfulPayloads.Add(payloadB);
@@ -245,21 +261,20 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
 
         var originalStreet = owner.Address.Street;
         var replacement = new ContractAddressValue { City = "Complex Denver", Street = "16th St" };
-        await Graph.UpdateNodeAsync(owner with { Address = replacement }, null, cancellationToken);
+        var affected = await Graph.SelectNode(owner).UpdateAsync(
+            setters => setters.SetProperty(candidate => candidate.Address, replacement),
+            cancellationToken);
 
-        var survivingNode = await Graph.GetNodeAsync<ContractAddressNode>(domainNode.Id, null, cancellationToken);
-        Assert.Equal(domainNode.Id, survivingNode.Id);
+        var survivingNode = await Graph.FindNodeByTestKeyAsync<ContractAddressNode>(domainNode.TestKey, null, cancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(domainNode.TestKey, survivingNode.TestKey);
         Assert.Equal(domainNode.Street, survivingNode.Street);
         Assert.Equal(domainNode.City, survivingNode.City);
-        var survivingRelationship = await Graph.GetRelationshipAsync<ContractPrimaryAddress>(
-            domainRelationship.Id,
-            null,
-            cancellationToken);
-        Assert.Equal(domainRelationship.Id, survivingRelationship.Id);
-        Assert.Equal(domainRelationship.StartNodeId, survivingRelationship.StartNodeId);
-        Assert.Equal(domainRelationship.EndNodeId, survivingRelationship.EndNodeId);
+        var survivingRelationship = await Graph.Relationships<ContractPrimaryAddress>()
+            .SingleAsync(cancellationToken);
+        Assert.IsType<ContractPrimaryAddress>(survivingRelationship);
 
-        var fetched = await Graph.GetNodeAsync<ContractAddressOwner>(owner.Id, null, cancellationToken);
+        var fetched = await Graph.FindNodeByTestKeyAsync<ContractAddressOwner>(owner.TestKey, null, cancellationToken);
         Assert.Equal(replacement, fetched.Address);
         Assert.Equal(1, await CountContractAddressValuesAsync(
             [originalStreet, replacement.Street], cancellationToken));
@@ -274,15 +289,16 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
             domainCity: "Domain Tacoma",
             cancellationToken);
 
-        await Graph.DeleteNodeAsync(owner.Id, cascadeDelete: true, null, cancellationToken);
+        var affected = await Graph.SelectNode(owner).DeleteAsync(cascadeDelete: true, cancellationToken);
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            Graph.GetNodeAsync<ContractAddressOwner>(owner.Id, null, cancellationToken));
+        Assert.Equal(1, affected);
+        Assert.Null(await Graph.NodesByTestKey<ContractAddressOwner>(owner.TestKey)
+            .SingleOrDefaultAsync(cancellationToken));
         Assert.Equal(
             0,
             await CountContractAddressValuesAsync([owner.Address.Street], cancellationToken));
-        var survivingNode = await Graph.GetNodeAsync<ContractAddressNode>(domainNode.Id, null, cancellationToken);
-        Assert.Equal(domainNode.Id, survivingNode.Id);
+        var survivingNode = await Graph.FindNodeByTestKeyAsync<ContractAddressNode>(domainNode.TestKey, null, cancellationToken);
+        Assert.Equal(domainNode.TestKey, survivingNode.TestKey);
         Assert.Equal(domainNode.Street, survivingNode.Street);
         Assert.Equal(domainNode.City, survivingNode.City);
     }
@@ -299,19 +315,19 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         var viaDomainValue = await Graph.Nodes<ContractAddressOwner>()
             .Where(candidate => candidate.Address.City == "Domain Boulder")
             .ToListAsync(cancellationToken);
-        Assert.Contains(viaDomainValue, candidate => candidate.Id == owner.Id);
+        Assert.Contains(viaDomainValue, candidate => candidate.TestKey == owner.TestKey);
 
         var viaComplexValue = await Graph.Nodes<ContractAddressOwner>()
             .Where(candidate => candidate.Address.City == "Complex Austin")
             .ToListAsync(cancellationToken);
-        var fetched = Assert.Single(viaComplexValue, candidate => candidate.Id == owner.Id);
+        var fetched = Assert.Single(viaComplexValue, candidate => candidate.TestKey == owner.TestKey);
         Assert.Equal("Complex Austin", fetched.Address.City);
 
         var splitAcrossTargets = await Graph.Nodes<ContractAddressOwner>()
             .Where(candidate => candidate.Address.City == "Domain Boulder")
             .Where(candidate => candidate.Address.Street == "1st Ave")
             .ToListAsync(cancellationToken);
-        Assert.DoesNotContain(splitAcrossTargets, candidate => candidate.Id == owner.Id);
+        Assert.DoesNotContain(splitAcrossTargets, candidate => candidate.TestKey == owner.TestKey);
     }
 
     private async Task<int> CountContractAddressValuesAsync(
@@ -341,13 +357,14 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         var domainNode = new ContractAddressNode { City = domainCity, Street = "2nd Ave" };
         await Graph.CreateNodeAsync(domainNode, null, cancellationToken);
 
-        var domainRelationship = new ContractPrimaryAddress(owner.Id, domainNode.Id);
-        await Graph.CreateRelationshipAsync(domainRelationship, null, cancellationToken);
+        var domainRelationship = new ContractPrimaryAddress();
+        await Graph.ConnectAsync(owner, domainRelationship, domainNode, cancellationToken: cancellationToken);
         return (owner, domainNode, domainRelationship);
     }
 
     private async Task<Exception?> UpdateInOwnTransactionAsync<TNode>(
         TNode node,
+        System.Linq.Expressions.Expression<Func<GraphPropertySetters<TNode>, GraphPropertySetters<TNode>>> setters,
         AsyncBarrier updateBarrier,
         CancellationToken cancellationToken)
         where TNode : class, INode
@@ -358,7 +375,7 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
             await using var transaction = await Graph.GetTransactionAsync(cancellationToken);
             barrierSignaled = true;
             await updateBarrier.SignalAndWaitAsync(cancellationToken);
-            await Graph.UpdateNodeAsync(node, transaction, cancellationToken);
+            _ = await Graph.SelectNode(node, transaction).UpdateAsync(setters, cancellationToken);
             await transaction.CommitAsync();
             return null;
         }

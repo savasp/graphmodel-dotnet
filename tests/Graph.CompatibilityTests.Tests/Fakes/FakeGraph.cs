@@ -35,46 +35,19 @@ internal sealed class FakeGraph : IGraph, IAsyncDisposable
     public IGraphQueryable<DynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null) =>
         throw new NotSupportedException();
 
-    public Task<DynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException();
-
-    public Task<DynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException();
-
     public IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null) where N : class, INode =>
         throw new NotSupportedException();
 
     public IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null) where R : class, IRelationship =>
         throw new NotSupportedException();
 
-    public Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : class, INode =>
-        throw new NotSupportedException();
-
-    public Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : class, IRelationship =>
-        throw new NotSupportedException();
-
     public Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : class, INode =>
         throw new NotSupportedException();
 
-    public Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : class, IRelationship =>
-        throw new NotSupportedException();
-
-    public Task CreateAsync<TSource, TRelationship, TTarget>(TSource source, TRelationship relationship, TTarget target, GraphOperationOptions? options = null, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+    public Task CreateAsync<TSource, TRelationship, TTarget>(TSource source, TRelationship relationship, TTarget target, RelationshipDirection direction = RelationshipDirection.Outgoing, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where TSource : class, INode
         where TRelationship : class, IRelationship
         where TTarget : class, INode =>
-        throw new NotSupportedException();
-
-    public Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : class, INode =>
-        throw new NotSupportedException();
-
-    public Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : class, IRelationship =>
-        throw new NotSupportedException();
-
-    public Task DeleteNodeAsync(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException();
-
-    public Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
     public IGraphQueryable<IEntity> Search(string query, IGraphTransaction? transaction = null) =>

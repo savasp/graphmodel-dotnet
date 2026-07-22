@@ -174,7 +174,6 @@ public interface IStreamingTests : IGraphTest
 
         static void AssertComplexEntity(Class1 expected, Class1 actual)
         {
-            Assert.Equal(expected.Id, actual.Id);
             Assert.Equal(expected.Property1, actual.Property1);
             Assert.Equal(expected.Property2, actual.Property2);
 

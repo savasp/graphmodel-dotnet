@@ -6,6 +6,17 @@ namespace Cvoya.Graph.Querying.Commands;
 /// <summary>Validates graph and bound-transaction scope before selected-endpoint I/O.</summary>
 internal static class GraphCommandProviderScope
 {
+    public static void ValidateGraph(IGraphCommandProvider graph, IGraphCommandProvider query)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        ArgumentNullException.ThrowIfNull(query);
+
+        if (!ReferenceEquals(graph.GraphOwnershipToken, query.GraphOwnershipToken))
+        {
+            throw new GraphException("A selected relationship endpoint must belong to the receiver graph instance.");
+        }
+    }
+
     public static void Validate(IGraphCommandProvider first, IGraphCommandProvider second)
     {
         ArgumentNullException.ThrowIfNull(first);

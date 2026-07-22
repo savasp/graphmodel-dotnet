@@ -121,14 +121,13 @@ public class InheritedComplexPropertyTests
                 public string Note { get; set; } = string.Empty;
             }
 
-            public abstract record LinkBase(string StartNodeId, string EndNodeId)
-                : Relationship(StartNodeId, EndNodeId)
+            public abstract record LinkBase : Relationship
             {
                 public Metadata? Info { get; set; }
             }
 
             [Relationship("LINKS")]
-            public record Links(string StartNodeId, string EndNodeId) : LinkBase(StartNodeId, EndNodeId);
+            public record Links : LinkBase;
             """;
         var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
         Assert.NotNull(assembly.GetType("InheritedRelationship.Generated.MetadataSerializer", throwOnError: true));
@@ -139,7 +138,7 @@ public class InheritedComplexPropertyTests
 
         var metadata = Activator.CreateInstance(metadataType)!;
         metadataType.GetProperty("Note")!.SetValue(metadata, "hi");
-        var rel = Activator.CreateInstance(relType, ["a", "b"])!;
+        var rel = Activator.CreateInstance(relType)!;
         relType.GetProperty("Info")!.SetValue(rel, metadata);
 
         var roundTripped = serializer.Deserialize(serializer.Serialize(rel));

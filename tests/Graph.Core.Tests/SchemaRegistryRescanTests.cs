@@ -41,51 +41,11 @@ public class SchemaRegistryRescanTests
             ?? throw new InvalidOperationException("NodeAttribute(string) constructor was not found.");
 
         type.SetCustomAttribute(new CustomAttributeBuilder(labelConstructor, [label]));
-        ImplementIdProperty(type);
         ImplementLabelsProperty(type);
         type.DefineDefaultConstructor(MethodAttributes.Public);
 
         return type.CreateType()
             ?? throw new InvalidOperationException("Dynamic node type was not created.");
-    }
-
-    private static void ImplementIdProperty(TypeBuilder type)
-    {
-        var idField = type.DefineField("_id", typeof(string), FieldAttributes.Private);
-        var property = type.DefineProperty(nameof(IEntity.Id), PropertyAttributes.None, typeof(string), null);
-
-        var getter = type.DefineMethod(
-            "get_Id",
-            MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName | MethodAttributes.HideBySig,
-            typeof(string),
-            Type.EmptyTypes);
-        var getterIl = getter.GetILGenerator();
-        getterIl.Emit(OpCodes.Ldarg_0);
-        getterIl.Emit(OpCodes.Ldfld, idField);
-        getterIl.Emit(OpCodes.Ret);
-
-        var setter = type.DefineMethod(
-            "set_Id",
-            MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.SpecialName | MethodAttributes.HideBySig,
-            CallingConventions.HasThis,
-            typeof(void),
-            [typeof(System.Runtime.CompilerServices.IsExternalInit)],
-            null,
-            [typeof(string)],
-            null,
-            null);
-        var setterIl = setter.GetILGenerator();
-        setterIl.Emit(OpCodes.Ldarg_0);
-        setterIl.Emit(OpCodes.Ldarg_1);
-        setterIl.Emit(OpCodes.Stfld, idField);
-        setterIl.Emit(OpCodes.Ret);
-
-        property.SetGetMethod(getter);
-        property.SetSetMethod(setter);
-
-        var interfaceProperty = typeof(IEntity).GetProperty(nameof(IEntity.Id))!;
-        type.DefineMethodOverride(getter, interfaceProperty.GetMethod!);
-        type.DefineMethodOverride(setter, interfaceProperty.SetMethod!);
     }
 
     private static void ImplementLabelsProperty(TypeBuilder type)

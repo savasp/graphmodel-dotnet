@@ -25,10 +25,6 @@ public record Company : Node
 [Relationship(Label = "WORKS_FOR")]
 public record WorksFor : Relationship
 {
-    public WorksFor() : base(string.Empty, string.Empty) { }
-
-    public WorksFor(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     public string Position { get; set; } = string.Empty;
     public DateTime StartDate { get; set; }
     public decimal Salary { get; set; }

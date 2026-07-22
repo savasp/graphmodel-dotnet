@@ -19,12 +19,12 @@ public interface IClassHierarchyTests : IGraphTest
 
         await this.Graph.CreateNodeAsync(manager, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await this.Graph.GetNodeAsync<Person>(manager.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await this.Graph.FindNodeByTestKeyAsync<Person>(manager.TestKey, null, TestContext.Current.CancellationToken);
 
         // Even though we are retrieving as Person, we should still get the full Manager object
         Assert.NotNull(retrieved);
         Assert.IsType<Manager>(retrieved);
-        Assert.Equal(manager.Id, retrieved.Id);
+        Assert.Equal(manager.TestKey, retrieved.TestKey);
         Assert.Equal(manager.FirstName, retrieved.FirstName);
         Assert.Equal(manager.LastName, retrieved.LastName);
         Assert.Equal(manager.Age, retrieved.Age);
@@ -48,11 +48,11 @@ public interface IClassHierarchyTests : IGraphTest
 
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await this.Graph.GetNodeAsync<Manager>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await this.Graph.FindNodeByTestKeyAsync<Manager>(person.TestKey, null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(retrieved);
         Assert.IsType<Manager>(retrieved);
-        Assert.Equal(manager.Id, retrieved.Id);
+        Assert.Equal(manager.TestKey, retrieved.TestKey);
         Assert.Equal(manager.FirstName, retrieved.FirstName);
         Assert.Equal(manager.LastName, retrieved.LastName);
         Assert.Equal(manager.Age, retrieved.Age);
@@ -76,11 +76,11 @@ public interface IClassHierarchyTests : IGraphTest
 
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await this.Graph.FindNodeByTestKeyAsync<Person>(person.TestKey, null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(retrieved);
         Assert.IsType<Manager>(retrieved);
-        Assert.Equal(manager.Id, retrieved.Id);
+        Assert.Equal(manager.TestKey, retrieved.TestKey);
         Assert.Equal(manager.FirstName, retrieved.FirstName);
         Assert.Equal(manager.LastName, retrieved.LastName);
         Assert.Equal(manager.Age, retrieved.Age);
@@ -105,21 +105,19 @@ public interface IClassHierarchyTests : IGraphTest
         };
         await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
-        var knowsWell = new KnowsWell(person1, person2)
+        var knowsWell = new KnowsWell
         {
             Since = DateTime.UtcNow,
             HowWell = "Very well"
         };
 
-        await this.Graph.CreateRelationshipAsync(knowsWell, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(person1, knowsWell, person2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var retrieved = await this.Graph.GetRelationshipAsync<Knows>(knowsWell.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await this.Graph.FindRelationshipByTestKeyAsync<Knows>(knowsWell.TestKey, null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
-        Assert.Equal(knowsWell.Id, retrieved.Id);
-        Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
-        Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
+        Assert.Equal(knowsWell.TestKey, retrieved.TestKey);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }
@@ -141,7 +139,7 @@ public interface IClassHierarchyTests : IGraphTest
         };
         await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
-        var knowsWell = new KnowsWell(person1, person2)
+        var knowsWell = new KnowsWell
         {
             Since = DateTime.UtcNow,
             HowWell = "Very well"
@@ -149,15 +147,13 @@ public interface IClassHierarchyTests : IGraphTest
 
         Knows knows = knowsWell; // Implicit conversion to base type
 
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(person1, knows, person2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var retrieved = await this.Graph.GetRelationshipAsync<KnowsWell>(knowsWell.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await this.Graph.FindRelationshipByTestKeyAsync<KnowsWell>(knowsWell.TestKey, null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
-        Assert.Equal(knowsWell.Id, retrieved.Id);
-        Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
-        Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
+        Assert.Equal(knowsWell.TestKey, retrieved.TestKey);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, retrieved.HowWell);
     }
@@ -179,22 +175,20 @@ public interface IClassHierarchyTests : IGraphTest
         };
         await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
-        var knowsWell = new KnowsWell(person1, person2)
+        var knowsWell = new KnowsWell
         {
             Since = DateTime.UtcNow,
             HowWell = "Very well"
         };
 
         Knows knows = knowsWell; // Implicit conversion to base type
-        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(person1, knows, person2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var retrieved = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await this.Graph.FindRelationshipByTestKeyAsync<Knows>(knows.TestKey, null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
-        Assert.Equal(knowsWell.Id, retrieved.Id);
-        Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
-        Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
+        Assert.Equal(knowsWell.TestKey, retrieved.TestKey);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }
@@ -218,7 +212,7 @@ public interface IClassHierarchyTests : IGraphTest
 
         Assert.NotNull(retrieved);
         Assert.IsType<Manager>(retrieved);
-        Assert.Equal(manager.Id, retrieved.Id);
+        Assert.Equal(manager.TestKey, retrieved.TestKey);
         Assert.Equal(manager.FirstName, retrieved.FirstName);
         Assert.Equal(manager.LastName, retrieved.LastName);
         Assert.Equal(manager.Age, retrieved.Age);
@@ -242,7 +236,7 @@ public interface IClassHierarchyTests : IGraphTest
             Age = 32
         };
 
-        var knowsWell = new KnowsWell(person1, person2)
+        var knowsWell = new KnowsWell
         {
             Since = DateTime.UtcNow,
             HowWell = "Very well"
@@ -250,16 +244,14 @@ public interface IClassHierarchyTests : IGraphTest
 
         await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(knowsWell, null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(person1, knowsWell, person2, cancellationToken: TestContext.Current.CancellationToken);
 
         var retrieved = this.Graph.Relationships<Knows>()
             .FirstOrDefault();
 
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
-        Assert.Equal(knowsWell.Id, retrieved.Id);
-        Assert.Empty(retrieved.StartNodeId);
-        Assert.Empty(retrieved.EndNodeId);
+        Assert.Equal(knowsWell.TestKey, retrieved.TestKey);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }
@@ -276,11 +268,11 @@ public interface IClassHierarchyTests : IGraphTest
 
         await this.Graph.CreateNodeAsync(policeDog, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await this.Graph.GetNodeAsync<Animal>(policeDog.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await this.Graph.FindNodeByTestKeyAsync<Animal>(policeDog.TestKey, null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(retrieved);
         var typedRetrieved = Assert.IsType<PoliceDog>(retrieved);
-        Assert.Equal(policeDog.Id, typedRetrieved.Id);
+        Assert.Equal(policeDog.TestKey, typedRetrieved.TestKey);
         Assert.Equal(policeDog.Name, typedRetrieved.Name);
         Assert.Equal(policeDog.Breed, typedRetrieved.Breed);
         Assert.Equal(policeDog.Badge, typedRetrieved.Badge);
@@ -299,11 +291,11 @@ public interface IClassHierarchyTests : IGraphTest
         await this.Graph.CreateNodeAsync(policeDog, null, TestContext.Current.CancellationToken);
 
         // Request via the mid-hierarchy type (Dog), still get the most-derived PoliceDog back.
-        var retrieved = await this.Graph.GetNodeAsync<Dog>(policeDog.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await this.Graph.FindNodeByTestKeyAsync<Dog>(policeDog.TestKey, null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(retrieved);
         var typedRetrieved = Assert.IsType<PoliceDog>(retrieved);
-        Assert.Equal(policeDog.Id, typedRetrieved.Id);
+        Assert.Equal(policeDog.TestKey, typedRetrieved.TestKey);
         Assert.Equal(policeDog.Name, typedRetrieved.Name);
         Assert.Equal(policeDog.Breed, typedRetrieved.Breed);
         Assert.Equal(policeDog.Badge, typedRetrieved.Badge);
@@ -320,11 +312,11 @@ public interface IClassHierarchyTests : IGraphTest
 
         await this.Graph.CreateNodeAsync(dog, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await this.Graph.GetNodeAsync<Animal>(dog.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await this.Graph.FindNodeByTestKeyAsync<Animal>(dog.TestKey, null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(retrieved);
         var typedRetrieved = Assert.IsType<Dog>(retrieved);
-        Assert.Equal(dog.Id, typedRetrieved.Id);
+        Assert.Equal(dog.TestKey, typedRetrieved.TestKey);
         Assert.Equal(dog.Name, typedRetrieved.Name);
         Assert.Equal(dog.Breed, typedRetrieved.Breed);
     }
@@ -344,15 +336,15 @@ public interface IClassHierarchyTests : IGraphTest
         await this.Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
 
         // Alice knows everyone, Bob knows 2, Charlie knows 1, Dave knows none
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(alice, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(alice, bob), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(bob, charlie), null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(charlie, new Knows(), dave, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(alice, new Friend(), bob, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(bob, new Friend(), charlie, cancellationToken: TestContext.Current.CancellationToken);
+        await this.Graph.ConnectAsync(charlie, new Friend(), dave, cancellationToken: TestContext.Current.CancellationToken);
 
         // Get Alice's relationships
         var connectionStats = await this.Graph.Nodes<Person>()

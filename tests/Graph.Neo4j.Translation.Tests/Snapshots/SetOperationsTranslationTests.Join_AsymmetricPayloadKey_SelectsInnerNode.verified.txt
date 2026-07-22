@@ -1,7 +1,7 @@
 == Cypher ==
 MATCH (joined:Person)
 MATCH (src)-[r:KNOWS]->(tgt)
-WHERE r.StartNodeId = joined.Id
+WHERE r.__graphModelComplexProperty IS NULL AND r.AlternateGroupKey = joined.TestKey
 RETURN {
                 Node: joined,
                 ComplexProperties: []

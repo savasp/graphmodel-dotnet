@@ -227,13 +227,6 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         switch (entity)
         {
             case DynamicNode node:
-                // Add the Id property
-                simpleProperties[nameof(DynamicNode.Id)] = new Property(
-                    GetPropertyInfo(typeof(DynamicNode), nameof(DynamicNode.Id)),
-                    nameof(DynamicNode.Id),
-                    false,
-                    new SimpleValue(node.Id, typeof(string)));
-
                 // Add the Labels property
                 simpleProperties[nameof(DynamicNode.Labels)] = new Property(
                     GetPropertyInfo(typeof(DynamicNode), nameof(DynamicNode.Labels)),
@@ -252,40 +245,12 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                     complexProperties);
 
             case DynamicRelationship relationship:
-                // Add the Id property
-                simpleProperties[nameof(DynamicRelationship.Id)] = new Property(
-                    GetPropertyInfo(typeof(DynamicRelationship), nameof(DynamicRelationship.Id)),
-                    nameof(DynamicRelationship.Id),
-                    false,
-                    new SimpleValue(relationship.Id, typeof(string)));
-
                 // Add the Type property
                 simpleProperties[nameof(DynamicRelationship.Type)] = new Property(
                     GetPropertyInfo(typeof(DynamicRelationship), nameof(DynamicRelationship.Type)),
                     nameof(DynamicRelationship.Type),
                     false,
                     new SimpleValue(relationship.Type, typeof(string)));
-
-                // Add the StartNodeId property
-                simpleProperties[nameof(DynamicRelationship.StartNodeId)] = new Property(
-                    GetPropertyInfo(typeof(DynamicRelationship), nameof(DynamicRelationship.StartNodeId)),
-                    nameof(DynamicRelationship.StartNodeId),
-                    false,
-                    new SimpleValue(relationship.StartNodeId, typeof(string)));
-
-                // Add the EndNodeId property
-                simpleProperties[nameof(DynamicRelationship.EndNodeId)] = new Property(
-                    GetPropertyInfo(typeof(DynamicRelationship), nameof(DynamicRelationship.EndNodeId)),
-                    nameof(DynamicRelationship.EndNodeId),
-                    false,
-                    new SimpleValue(relationship.EndNodeId, typeof(string)));
-
-                // Add the Direction property
-                simpleProperties[nameof(DynamicRelationship.Direction)] = new Property(
-                    GetPropertyInfo(typeof(DynamicRelationship), nameof(DynamicRelationship.Direction)),
-                    nameof(DynamicRelationship.Direction),
-                    false,
-                    new SimpleValue(relationship.Direction, typeof(RelationshipDirection)));
 
                 // Process dynamic properties
                 ProcessDynamicProperties(relationship.Properties, simpleProperties, complexProperties);
@@ -326,7 +291,6 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         ExtractDynamicSimpleProperties(
             entity.SimpleProperties,
             properties,
-            nameof(IEntity.Id),
             nameof(DynamicNode.Labels));
 
         // Materialize complex properties into the canonical dynamic shape shared with relationships.
@@ -349,7 +313,6 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
         return new DynamicNode
         {
-            Id = entity.SimpleProperties.TryGetValue(nameof(IEntity.Id), out var idProp) && idProp.Value is SimpleValue idVal ? idVal.Object?.ToString() ?? string.Empty : string.Empty,
             Labels = labels,
             Properties = properties
         };
@@ -362,24 +325,9 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         ExtractDynamicSimpleProperties(
             entity.SimpleProperties,
             properties,
-            nameof(IEntity.Id),
-            nameof(DynamicRelationship.Type),
-            nameof(DynamicRelationship.StartNodeId),
-            nameof(DynamicRelationship.EndNodeId),
-            nameof(DynamicRelationship.Direction));
+            nameof(DynamicRelationship.Type));
 
-        // Extract required properties
-        string id = "";
         string type = "";
-        string startNodeId = "";
-        string endNodeId = "";
-        var direction = RelationshipDirection.Outgoing;
-
-        if (entity.SimpleProperties.TryGetValue(nameof(IEntity.Id), out var idProperty) &&
-            idProperty.Value is SimpleValue idValue)
-        {
-            id = idValue.Object?.ToString() ?? "";
-        }
 
         // Set type from entity.Label (authoritative from the serialized entity)
         if (!string.IsNullOrEmpty(entity.Label))
@@ -392,37 +340,10 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             type = typeValue.Object?.ToString() ?? "";
         }
 
-        if (entity.SimpleProperties.TryGetValue(nameof(DynamicRelationship.StartNodeId), out var startNodeIdProperty) &&
-            startNodeIdProperty.Value is SimpleValue startNodeIdValue)
-        {
-            startNodeId = startNodeIdValue.Object?.ToString() ?? "";
-        }
-
-        if (entity.SimpleProperties.TryGetValue(nameof(DynamicRelationship.EndNodeId), out var endNodeIdProperty) &&
-            endNodeIdProperty.Value is SimpleValue endNodeIdValue)
-        {
-            endNodeId = endNodeIdValue.Object?.ToString() ?? "";
-        }
-
-        if (entity.SimpleProperties.TryGetValue(nameof(DynamicRelationship.Direction), out var directionProperty) &&
-            directionProperty.Value is SimpleValue directionValue)
-        {
-            direction = directionValue.Object switch
-            {
-                RelationshipDirection relationshipDirection when Enum.IsDefined(relationshipDirection) => relationshipDirection,
-                string directionString when Enum.TryParse<RelationshipDirection>(directionString, out var parsedDirection) &&
-                    Enum.IsDefined(parsedDirection) => parsedDirection,
-                _ => RelationshipDirection.Outgoing
-            };
-        }
-
         // Materialize complex properties into the canonical dynamic shape shared with nodes.
         AttachDynamicComplexProperties(entity.ComplexProperties, properties);
 
-        return new DynamicRelationship(startNodeId, endNodeId, type, properties, direction)
-        {
-            Id = id,
-        };
+        return new DynamicRelationship(type, properties);
     }
 
     private static void ExtractDynamicSimpleProperties(

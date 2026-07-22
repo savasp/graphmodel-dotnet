@@ -19,9 +19,10 @@ public sealed class DegreeProjectionSelfLoopTests : IAsyncLifetime
     {
         _store = new InMemoryGraphStore();
         var alice = new Person { FirstName = "Alice" };
-        await _store.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
-        await _store.Graph.CreateRelationshipAsync(
-            new Knows(alice, alice), null, TestContext.Current.CancellationToken);
+        await _store.Graph.CreateSelfLoopAsync(
+            alice,
+            new Knows(),
+            cancellationToken: TestContext.Current.CancellationToken);
     }
 
     public async ValueTask DisposeAsync() => await _store.DisposeAsync();

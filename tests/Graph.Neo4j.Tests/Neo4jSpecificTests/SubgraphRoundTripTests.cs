@@ -60,8 +60,13 @@ public sealed class SubgraphRoundTripTests
             FirstName = "Target",
             Address = new AddressValue { Street = "2 Target Ave", City = "Targettown" }
         };
-        var knows = new Knows { StartNodeId = source.Id, EndNodeId = target.Id, Since = DateTime.UtcNow };
+        var knows = new Knows { Since = DateTime.UtcNow };
 
-        await graph.CreateAsync(source, knows, target, null, null, cancellationToken);
+        await graph.CreateAsync(
+            source,
+            knows,
+            target,
+            RelationshipDirection.Outgoing,
+            cancellationToken: cancellationToken);
     }
 }

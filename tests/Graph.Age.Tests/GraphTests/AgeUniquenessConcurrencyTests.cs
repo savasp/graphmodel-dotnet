@@ -29,6 +29,8 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
     [Node("ConcurrentUniqueAccount")]
     public record ConcurrentUniqueAccount : Node
     {
+        public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
+
         [Property(IsUnique = true)]
         public string Email { get; set; } = string.Empty;
 
@@ -63,10 +65,7 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
     [Relationship("CONCURRENT_UNIQUE_GRANT")]
     public record ConcurrentUniqueGrant : Relationship
     {
-        public ConcurrentUniqueGrant() : base(string.Empty, string.Empty) { }
-
-        public ConcurrentUniqueGrant(string startNodeId, string endNodeId)
-            : base(startNodeId, endNodeId) { }
+        public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
 
         [Property(IsUnique = true)]
         public string GrantCode { get; set; } = string.Empty;
@@ -80,7 +79,6 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
             (transaction, suffix) => this.Graph.CreateNodeAsync(
                 new ConcurrentUniqueAccount
                 {
-                    Id = $"account-{suffix}",
                     Email = "duplicate@example.com",
                     DisplayName = suffix,
                 },
@@ -100,7 +98,6 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
             (transaction, suffix) => this.Graph.CreateNodeAsync(
                 new ConcurrentKeyedAccount
                 {
-                    Id = $"keyed-{suffix}",
                     Tenant = "acme",
                     AccountNumber = "A-1",
                 },
@@ -121,9 +118,9 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         await using (var seed = await this.Graph.GetTransactionAsync(ct))
         {
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "update-a", Email = "a@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "update-a", Email = "a@example.com" }, seed, ct);
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "update-b", Email = "b@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "update-b", Email = "b@example.com" }, seed, ct);
             await seed.CommitAsync();
         }
 
@@ -131,10 +128,15 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         var ids = new Queue<string>(["update-a", "update-b"]);
 
         var failure = await StageContentionAsync(
-            (transaction, _) => this.Graph.UpdateNodeAsync(
-                new ConcurrentUniqueAccount { Id = ids.Dequeue(), Email = "claimed@example.com" },
-                transaction,
-                ct),
+            (transaction, _) =>
+            {
+                var testKey = ids.Dequeue();
+                return this.Graph.Nodes<ConcurrentUniqueAccount>(transaction)
+                    .Where(account => account.TestKey == testKey)
+                    .UpdateAsync(
+                        setters => setters.SetProperty(account => account.Email, "claimed@example.com"),
+                        ct);
+            },
             ct);
 
         Assert.Contains("unique property 'Email'", failure.Message, StringComparison.Ordinal);
@@ -149,11 +151,11 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         await using (var seed = await this.Graph.GetTransactionAsync(ct))
         {
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "grant-source", Email = "source@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "grant-source", Email = "source@example.com" }, seed, ct);
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "grant-target-1", Email = "target1@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "grant-target-1", Email = "target1@example.com" }, seed, ct);
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "grant-target-2", Email = "target2@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "grant-target-2", Email = "target2@example.com" }, seed, ct);
             await seed.CommitAsync();
         }
 
@@ -161,14 +163,17 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         var targets = new Queue<string>(["grant-target-1", "grant-target-2"]);
 
         var failure = await StageContentionAsync(
-            (transaction, suffix) => this.Graph.CreateRelationshipAsync(
-                new ConcurrentUniqueGrant("grant-source", targets.Dequeue())
-                {
-                    Id = $"grant-{suffix}",
-                    GrantCode = "GRANT-1",
-                },
-                transaction,
-                ct),
+            (transaction, _) =>
+            {
+                var targetKey = targets.Dequeue();
+                return this.Graph.CreateRelationshipAsync(
+                    this.Graph.Nodes<ConcurrentUniqueAccount>(transaction)
+                        .Where(account => account.TestKey == "grant-source"),
+                    new ConcurrentUniqueGrant { GrantCode = "GRANT-1" },
+                    this.Graph.Nodes<ConcurrentUniqueAccount>(transaction)
+                        .Where(account => account.TestKey == targetKey),
+                    cancellationToken: ct);
+            },
             ct);
 
         Assert.Contains("unique property 'GrantCode'", failure.Message, StringComparison.Ordinal);
@@ -183,44 +188,38 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         await using (var seed = await this.Graph.GetTransactionAsync(ct))
         {
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "update-grant-source", Email = "update-source@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "update-grant-source", Email = "update-source@example.com" }, seed, ct);
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "update-grant-target-1", Email = "update-target1@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "update-grant-target-1", Email = "update-target1@example.com" }, seed, ct);
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "update-grant-target-2", Email = "update-target2@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "update-grant-target-2", Email = "update-target2@example.com" }, seed, ct);
+            var source = this.Graph.Nodes<ConcurrentUniqueAccount>(seed)
+                .Where(account => account.TestKey == "update-grant-source");
             await this.Graph.CreateRelationshipAsync(
-                new ConcurrentUniqueGrant("update-grant-source", "update-grant-target-1")
-                {
-                    Id = "update-grant-1",
-                    GrantCode = "ORIGINAL-1",
-                },
-                seed,
-                ct);
+                source,
+                new ConcurrentUniqueGrant { TestKey = "update-grant-1", GrantCode = "ORIGINAL-1" },
+                this.Graph.Nodes<ConcurrentUniqueAccount>(seed)
+                    .Where(account => account.TestKey == "update-grant-target-1"),
+                cancellationToken: ct);
             await this.Graph.CreateRelationshipAsync(
-                new ConcurrentUniqueGrant("update-grant-source", "update-grant-target-2")
-                {
-                    Id = "update-grant-2",
-                    GrantCode = "ORIGINAL-2",
-                },
-                seed,
-                ct);
+                source,
+                new ConcurrentUniqueGrant { TestKey = "update-grant-2", GrantCode = "ORIGINAL-2" },
+                this.Graph.Nodes<ConcurrentUniqueAccount>(seed)
+                    .Where(account => account.TestKey == "update-grant-target-2"),
+                cancellationToken: ct);
             await seed.CommitAsync();
         }
 
-        var relationships = new Queue<(string Id, string EndNodeId)>(
-            [("update-grant-1", "update-grant-target-1"), ("update-grant-2", "update-grant-target-2")]);
+        var relationshipKeys = new Queue<string>(["update-grant-1", "update-grant-2"]);
         var failure = await StageContentionAsync(
             (transaction, _) =>
             {
-                var (id, endNodeId) = relationships.Dequeue();
-                return this.Graph.UpdateRelationshipAsync(
-                    new ConcurrentUniqueGrant("update-grant-source", endNodeId)
-                    {
-                        Id = id,
-                        GrantCode = "CLAIMED-GRANT",
-                    },
-                    transaction,
-                    ct);
+                var testKey = relationshipKeys.Dequeue();
+                return this.Graph.Relationships<ConcurrentUniqueGrant>(transaction)
+                    .Where(grant => grant.TestKey == testKey)
+                    .UpdateAsync(
+                        setters => setters.SetProperty(grant => grant.GrantCode, "CLAIMED-GRANT"),
+                        ct);
             },
             ct);
 
@@ -241,7 +240,6 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         var failure = await StageContentionAsync(
             (transaction, suffix) => this.Graph.CreateNodeAsync(
                 new DynamicNode(
-                    $"dynamic-{suffix}",
                     ["ConcurrentUniqueAccount"],
                     new Dictionary<string, object?>
                     {
@@ -263,12 +261,11 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         var failure = await StageContentionAsync(
             (transaction, suffix) => suffix == "winner"
                 ? this.Graph.CreateNodeAsync(
-                    new ConcurrentNumericAccount { Id = "numeric-winner", AccountNumber = 1 },
+                    new ConcurrentNumericAccount { AccountNumber = 1 },
                     transaction,
                     ct)
                 : this.Graph.CreateNodeAsync(
                     new DynamicNode(
-                        "numeric-loser",
                         ["ConcurrentNumericAccount"],
                         new Dictionary<string, object?> { ["AccountNumber"] = 1L }),
                     transaction,
@@ -286,12 +283,11 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         var failure = await StageContentionAsync(
             (transaction, suffix) => suffix == "winner"
                 ? this.Graph.CreateNodeAsync(
-                    new ConcurrentMappedAccount { Id = "mapped-winner", Email = "mapped@example.com" },
+                    new ConcurrentMappedAccount { Email = "mapped@example.com" },
                     transaction,
                     ct)
                 : this.Graph.CreateNodeAsync(
                     new DynamicNode(
-                        "mapped-loser",
                         ["concurrentmappedaccount"],
                         new Dictionary<string, object?> { ["email_address"] = "mapped@example.com" }),
                     transaction,
@@ -309,33 +305,27 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         await using (var seed = await this.Graph.GetTransactionAsync(ct))
         {
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "dynamic-grant-source", Email = "dynamic-source@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "dynamic-grant-source", Email = "dynamic-source@example.com" }, seed, ct);
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "dynamic-grant-target", Email = "dynamic-target@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "dynamic-grant-target", Email = "dynamic-target@example.com" }, seed, ct);
             await seed.CommitAsync();
         }
 
         var failure = await StageContentionAsync(
-            (transaction, suffix) => suffix == "winner"
-                ? this.Graph.CreateRelationshipAsync(
-                    new ConcurrentUniqueGrant("dynamic-grant-source", "dynamic-grant-target")
-                    {
-                        Id = "dynamic-grant-winner",
-                        GrantCode = "DYNAMIC-GRANT",
-                    },
-                    transaction,
-                    ct)
-                : this.Graph.CreateRelationshipAsync(
-                    new DynamicRelationship(
-                        "dynamic-grant-source",
-                        "dynamic-grant-target",
+            (transaction, suffix) => this.Graph.CreateRelationshipAsync<
+                ConcurrentUniqueAccount,
+                IRelationship,
+                ConcurrentUniqueAccount>(
+                this.Graph.Nodes<ConcurrentUniqueAccount>(transaction)
+                    .Where(account => account.TestKey == "dynamic-grant-source"),
+                suffix == "winner"
+                    ? new ConcurrentUniqueGrant { GrantCode = "DYNAMIC-GRANT" }
+                    : new DynamicRelationship(
                         "concurrent_unique_grant",
-                        new Dictionary<string, object?> { ["GrantCode"] = "DYNAMIC-GRANT" })
-                    {
-                        Id = "dynamic-grant-loser",
-                    },
-                    transaction,
-                    ct),
+                        new Dictionary<string, object?> { ["GrantCode"] = "DYNAMIC-GRANT" }),
+                this.Graph.Nodes<ConcurrentUniqueAccount>(transaction)
+                    .Where(account => account.TestKey == "dynamic-grant-target"),
+                cancellationToken: ct),
             ct);
 
         Assert.Contains("unique property 'GrantCode'", failure.Message, StringComparison.Ordinal);
@@ -362,20 +352,23 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
             {
                 var source = new ConcurrentUniqueAccount
                 {
-                    Id = $"subgraph-source-{suffix}",
                     Email = "subgraph-source@example.com",
                 };
                 var target = new ConcurrentUniqueAccount
                 {
-                    Id = $"subgraph-target-{suffix}",
                     Email = $"subgraph-target-{suffix}@example.com",
                 };
-                var relationship = new ConcurrentUniqueGrant(source.Id, target.Id)
+                var relationship = new ConcurrentUniqueGrant
                 {
-                    Id = $"subgraph-grant-{suffix}",
                     GrantCode = $"SUBGRAPH-{suffix}",
                 };
-                return this.Graph.CreateAsync(source, relationship, target, null, transaction, ct);
+                return this.Graph.CreateAsync(
+                    source,
+                    relationship,
+                    target,
+                    RelationshipDirection.Outgoing,
+                    transaction,
+                    ct);
             },
             ct);
 
@@ -398,14 +391,13 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         await using (var seed = await this.Graph.GetTransactionAsync(ct))
         {
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "typed-owner", Email = "owned@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { Email = "owned@example.com" }, seed, ct);
             await seed.CommitAsync();
         }
 
         await using var transaction = await this.Graph.GetTransactionAsync(ct);
         var failure = await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNodeAsync(
             new DynamicNode(
-                "dynamic-duplicate",
                 ["ConcurrentUniqueAccount"],
                 new Dictionary<string, object?> { ["Email"] = "owned@example.com", ["DisplayName"] = "d" }),
             transaction,
@@ -422,28 +414,29 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
         await using (var seed = await this.Graph.GetTransactionAsync(ct))
         {
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "dyn-source", Email = "dynsource@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "dyn-source", Email = "dynsource@example.com" }, seed, ct);
             await this.Graph.CreateNodeAsync(
-                new ConcurrentUniqueAccount { Id = "dyn-target", Email = "dyntarget@example.com" }, seed, ct);
+                new ConcurrentUniqueAccount { TestKey = "dyn-target", Email = "dyntarget@example.com" }, seed, ct);
             await this.Graph.CreateRelationshipAsync(
-                new ConcurrentUniqueGrant("dyn-source", "dyn-target") { Id = "dyn-grant", GrantCode = "DYN-1" },
-                seed,
-                ct);
+                this.Graph.Nodes<ConcurrentUniqueAccount>(seed)
+                    .Where(account => account.TestKey == "dyn-source"),
+                new ConcurrentUniqueGrant { GrantCode = "DYN-1" },
+                this.Graph.Nodes<ConcurrentUniqueAccount>(seed)
+                    .Where(account => account.TestKey == "dyn-target"),
+                cancellationToken: ct);
             await seed.CommitAsync();
         }
 
         await using var transaction = await this.Graph.GetTransactionAsync(ct);
         var failure = await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateRelationshipAsync(
+            this.Graph.Nodes<ConcurrentUniqueAccount>(transaction)
+                .Where(account => account.TestKey == "dyn-source"),
             new DynamicRelationship(
-                "dyn-source",
-                "dyn-target",
                 "CONCURRENT_UNIQUE_GRANT",
-                new Dictionary<string, object?> { ["GrantCode"] = "DYN-1" })
-            {
-                Id = "dyn-grant-duplicate",
-            },
-            transaction,
-            ct));
+                new Dictionary<string, object?> { ["GrantCode"] = "DYN-1" }),
+            this.Graph.Nodes<ConcurrentUniqueAccount>(transaction)
+                .Where(account => account.TestKey == "dyn-target"),
+            cancellationToken: ct));
 
         Assert.Contains("unique property 'GrantCode'", failure.Message, StringComparison.Ordinal);
     }
@@ -464,11 +457,11 @@ public sealed class AgeUniquenessConcurrencyTests(AgeHarness harness)
 
         await using var first = await this.Graph.GetTransactionAsync(ct);
         await this.Graph.CreateNodeAsync(
-            new ConcurrentUniqueAccount { Id = "parallel-1", Email = "one@example.com" }, first, ct);
+            new ConcurrentUniqueAccount { Email = "one@example.com" }, first, ct);
 
         await using var second = await this.Graph.GetTransactionAsync(ct);
         await this.Graph.CreateNodeAsync(
-            new ConcurrentUniqueAccount { Id = "parallel-2", Email = "two@example.com" }, second, ct);
+            new ConcurrentUniqueAccount { Email = "two@example.com" }, second, ct);
 
         await first.CommitAsync();
         await second.CommitAsync();

@@ -38,16 +38,4 @@ public sealed record DynamicNode : Node
         Properties = new Dictionary<string, object?>(properties).AsReadOnly();
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DynamicNode"/> class with specified ID, labels and properties.
-    /// </summary>
-    /// <param name="id">The unique identifier of the node.</param>
-    /// <param name="labels">The labels for the node.</param>
-    /// <param name="properties">The properties of the node.</param>
-    public DynamicNode(string id, IEnumerable<string> labels, IDictionary<string, object?> properties)
-    {
-        Id = id;
-        Labels = labels.ToList().AsReadOnly();
-        Properties = new Dictionary<string, object?>(properties).AsReadOnly();
-    }
 }

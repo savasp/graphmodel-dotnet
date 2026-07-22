@@ -11,7 +11,7 @@ internal static class SerializationHelpers
 {
     public static Dictionary<string, object?> SerializeSimpleProperties(EntityInfo entity)
     {
-        var properties = entity.SimpleProperties
+        return entity.SimpleProperties
             .Where(kv => kv.Value.Value is not null)
             .ToDictionary(
                 kv => kv.Key,
@@ -21,28 +21,5 @@ internal static class SerializationHelpers
                     SimpleCollection collection => collection.Values.Select(v => SerializationBridge.ToNeo4jValue(v.Object)),
                     _ => throw new GraphException("Unexpected value type in simple properties")
                 });
-
-        properties[nameof(Graph.INode.Labels)] = entity.ActualLabels.Count > 0 ? entity.ActualLabels : Labels.GetCompatibleLabels(entity.ActualType);
-
-        return properties;
-    }
-
-    public static bool IsLegacyStructuralProperty(EntityInfo entity, string propertyName)
-    {
-        ArgumentNullException.ThrowIfNull(entity);
-        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
-        // Dynamic property-bag entries carry no PropertyInfo; they are user data even when named
-        // like a framework structural property, so they are never stripped as legacy identity.
-        return entity.SimpleProperties.TryGetValue(propertyName, out var property) &&
-            property.PropertyInfo is { } propertyInfo &&
-            propertyInfo.Name == propertyName &&
-            propertyInfo.DeclaringType is { } declaringType &&
-            (declaringType == typeof(Graph.IEntity) ||
-             declaringType == typeof(Graph.INode) ||
-             declaringType == typeof(Graph.IRelationship) ||
-             declaringType == typeof(Graph.Node) ||
-             declaringType == typeof(Graph.Relationship) ||
-             declaringType == typeof(Graph.DynamicNode) ||
-             declaringType == typeof(Graph.DynamicRelationship));
     }
 }

@@ -189,8 +189,7 @@ public class CollectionShapeRoundTripTests
             namespace RelationshipShapes;
 
             [Relationship("TAGGED")]
-            public sealed record TaggedRelationship(string StartNodeId, string EndNodeId)
-                : Relationship(StartNodeId, EndNodeId)
+            public sealed record TaggedRelationship : Relationship
             {
                 public HashSet<int> Scores { get; set; } = new();
                 public IEnumerable<string> Tags { get; set; } = new List<string>();
@@ -199,7 +198,7 @@ public class CollectionShapeRoundTripTests
         var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
         var relationshipType = assembly.GetType("RelationshipShapes.TaggedRelationship", throwOnError: true)!;
         var serializer = CreateSerializer(assembly, "RelationshipShapes.Generated.TaggedRelationshipSerializer");
-        var relationship = Activator.CreateInstance(relationshipType, ["start", "end"])!;
+        var relationship = Activator.CreateInstance(relationshipType)!;
         relationshipType.GetProperty("Scores")!.SetValue(relationship, new HashSet<int> { 4, 8 });
         relationshipType.GetProperty("Tags")!.SetValue(relationship, new List<string> { "one", "two" });
 

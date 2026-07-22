@@ -34,13 +34,13 @@ static class Program
         var creditCardBob = new CreditCard { Number = "2345-6789-0123-4567", Expiry = "11/24" };
         var creditCardCharlie = new CreditCard { Number = "3456-7890-1234-5678", Expiry = "10/23" };
 
-        var aliceWatchedInception = new Watched(personAlice.Id, movieInception.Id) { Date = DateTime.UtcNow };
-        var aliceWatchedTheMatrix = new Watched(personAlice.Id, movieTheMatrix.Id) { Date = DateTime.UtcNow };
-        var aliceWatchedInterstellar = new Watched(personAlice.Id, movieInterstellar.Id) { Date = DateTime.UtcNow };
-        var bobWatchedTheMatrix = new Watched(personBob.Id, movieTheMatrix.Id) { Date = DateTime.UtcNow };
-        var charlieWatchedInterstellar = new Watched(personCharlie.Id, movieInterstellar.Id) { Date = DateTime.UtcNow };
+        var aliceWatchedInception = new Watched { Date = DateTime.UtcNow };
+        var aliceWatchedTheMatrix = new Watched { Date = DateTime.UtcNow };
+        var aliceWatchedInterstellar = new Watched { Date = DateTime.UtcNow };
+        var bobWatchedTheMatrix = new Watched { Date = DateTime.UtcNow };
+        var charlieWatchedInterstellar = new Watched { Date = DateTime.UtcNow };
 
-        var alicePaidForInception = new Paid(personAlice.Id, creditCardAlice.Id) { Amount = 15.99m, Date = DateTime.UtcNow, MovieName = "Inception" };
+        var alicePaidForInception = new Paid { Amount = 15.99m, Date = DateTime.UtcNow, MovieName = "Inception" };
 
         await graph.CreateNodeAsync(movieInception);
         await graph.CreateNodeAsync(movieTheMatrix);
@@ -52,12 +52,20 @@ static class Program
         await graph.CreateNodeAsync(creditCardBob);
         await graph.CreateNodeAsync(creditCardCharlie);
 
-        await graph.CreateRelationshipAsync(alicePaidForInception);
-        await graph.CreateRelationshipAsync(aliceWatchedInception);
-        await graph.CreateRelationshipAsync(aliceWatchedTheMatrix);
-        await graph.CreateRelationshipAsync(aliceWatchedInterstellar);
-        await graph.CreateRelationshipAsync(bobWatchedTheMatrix);
-        await graph.CreateRelationshipAsync(charlieWatchedInterstellar);
+        var aliceSelection = graph.Nodes<Person>().Where(person => person.Name == personAlice.Name);
+        var bobSelection = graph.Nodes<Person>().Where(person => person.Name == personBob.Name);
+        var charlieSelection = graph.Nodes<Person>().Where(person => person.Name == personCharlie.Name);
+        var inceptionSelection = graph.Nodes<Movie>().Where(movie => movie.Title == movieInception.Title);
+        var matrixSelection = graph.Nodes<Movie>().Where(movie => movie.Title == movieTheMatrix.Title);
+        var interstellarSelection = graph.Nodes<Movie>().Where(movie => movie.Title == movieInterstellar.Title);
+        var aliceCardSelection = graph.Nodes<CreditCard>().Where(card => card.Number == creditCardAlice.Number);
+
+        await graph.CreateRelationshipAsync(aliceSelection, alicePaidForInception, aliceCardSelection);
+        await graph.CreateRelationshipAsync(aliceSelection, aliceWatchedInception, inceptionSelection);
+        await graph.CreateRelationshipAsync(aliceSelection, aliceWatchedTheMatrix, matrixSelection);
+        await graph.CreateRelationshipAsync(aliceSelection, aliceWatchedInterstellar, interstellarSelection);
+        await graph.CreateRelationshipAsync(bobSelection, bobWatchedTheMatrix, matrixSelection);
+        await graph.CreateRelationshipAsync(charlieSelection, charlieWatchedInterstellar, interstellarSelection);
 
 
         var moviesAliceWatched = graph.Nodes<Person>()

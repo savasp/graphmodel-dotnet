@@ -37,7 +37,7 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
         new MapEntry("ComplexProperties", complexProperties),
     ]);
 
-    private static IEnumerable<string> LegacyCarryCandidates()
+    private static IEnumerable<string> CarryCandidates()
     {
         yield return "pathIndex";
         yield return "hopIndex";
@@ -155,7 +155,7 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
             IEnumerable<CypherExpression> trailingExpressions)
         {
             var carry = new List<string>();
-            foreach (var candidate in LegacyCarryCandidates())
+            foreach (var candidate in CarryCandidates())
             {
                 if (scope.Contains(candidate))
                 {

@@ -283,7 +283,7 @@ public class CG017_NullableComplexCollectionElementTests
                 public string Street { get; set; } = string.Empty;
             }
 
-            public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+            public record Knows : Relationship
             {
                 public List<Address?> {|#0:Addresses|} { get; set; } = new();
             }

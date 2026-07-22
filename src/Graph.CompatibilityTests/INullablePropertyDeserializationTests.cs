@@ -21,7 +21,6 @@ public interface INullablePropertyDeserializationTests : IGraphTest
         // Create a person with only the required properties, leaving nullable properties missing
         var person = new PersonWithNullableProperties
         {
-            Id = "person1",
             Name = "John Doe"
             // CompletedAt, Age, and IsActive are intentionally not set
         };
@@ -30,11 +29,12 @@ public interface INullablePropertyDeserializationTests : IGraphTest
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Retrieve the person from the database
-        var retrievedPerson = await Graph.GetNodeAsync<PersonWithNullableProperties>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrievedPerson = await Graph.Nodes<PersonWithNullableProperties>()
+            .Where(candidate => candidate.Name == person.Name)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(retrievedPerson);
-        Assert.Equal("person1", retrievedPerson.Id);
         Assert.Equal("John Doe", retrievedPerson.Name);
         Assert.Null(retrievedPerson.CompletedAt);
         Assert.Null(retrievedPerson.Age);
@@ -48,7 +48,6 @@ public interface INullablePropertyDeserializationTests : IGraphTest
         var completedAt = DateTime.UtcNow;
         var person = new PersonWithNullableProperties
         {
-            Id = "person2",
             Name = "Jane Doe",
             CompletedAt = completedAt,
             Age = 30,
@@ -59,11 +58,12 @@ public interface INullablePropertyDeserializationTests : IGraphTest
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Retrieve the person from the database
-        var retrievedPerson = await Graph.GetNodeAsync<PersonWithNullableProperties>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrievedPerson = await Graph.Nodes<PersonWithNullableProperties>()
+            .Where(candidate => candidate.Name == person.Name)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(retrievedPerson);
-        Assert.Equal("person2", retrievedPerson.Id);
         Assert.Equal("Jane Doe", retrievedPerson.Name);
         Assert.Equal(completedAt, retrievedPerson.CompletedAt);
         Assert.Equal(30, retrievedPerson.Age);
@@ -76,7 +76,6 @@ public interface INullablePropertyDeserializationTests : IGraphTest
         // Arrange
         var person = new PersonWithNullableProperties
         {
-            Id = "person3",
             Name = "Bob Smith",
             Age = 25
             // CompletedAt and IsActive are intentionally not set
@@ -86,11 +85,12 @@ public interface INullablePropertyDeserializationTests : IGraphTest
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Retrieve the person from the database
-        var retrievedPerson = await Graph.GetNodeAsync<PersonWithNullableProperties>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrievedPerson = await Graph.Nodes<PersonWithNullableProperties>()
+            .Where(candidate => candidate.Name == person.Name)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(retrievedPerson);
-        Assert.Equal("person3", retrievedPerson.Id);
         Assert.Equal("Bob Smith", retrievedPerson.Name);
         Assert.Null(retrievedPerson.CompletedAt);
         Assert.Equal(25, retrievedPerson.Age);

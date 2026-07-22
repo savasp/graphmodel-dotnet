@@ -96,7 +96,7 @@ public static class GraphDataModel
     {
         if (HasReferenceCycle(entity))
         {
-            throw new GraphException($"Reference cycle detected in the entity with ID '{entity.Id}'");
+            throw new GraphException($"Reference cycle detected in entity type '{entity.GetType().Name}'.");
         }
     }
 
@@ -180,12 +180,6 @@ public static class GraphDataModel
         // Ensure the entity is not null
         ArgumentNullException.ThrowIfNull(entity, nameof(entity));
 
-        if (string.IsNullOrEmpty(entity.Id))
-        {
-            var ex = new ArgumentException("Entity ID cannot be null or empty");
-            throw new GraphException(ex.Message, ex);
-        }
-
         // Ensure the entity has no reference cycles
         entity.EnsureNoReferenceCycle();
         entity.EnsureComplexPropertyDepth();
@@ -201,12 +195,6 @@ public static class GraphDataModel
         where T : class, IRelationship
     {
         EnforceGraphConstraintsForEntity(relationship);
-
-        if (string.IsNullOrEmpty(relationship.StartNodeId) || string.IsNullOrEmpty(relationship.EndNodeId))
-        {
-            var ex = new ArgumentException("Relationship source and target IDs cannot be null or empty");
-            throw new GraphException(ex.Message, ex);
-        }
 
         EnforceGraphConstraintsForRelationshipType<T>();
     }

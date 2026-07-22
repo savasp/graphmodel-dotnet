@@ -20,7 +20,7 @@ internal static class EntityWriter
         IReadOnlyList<NodeRecord> ComplexValueNodes,
         IReadOnlyList<RelationshipRecord> ComplexEdges)
     {
-        /// <summary>Retargets the decomposed root to an existing private key for legacy updates.</summary>
+        /// <summary>Retargets the decomposed root to an existing private key for selected updates.</summary>
         public DecomposedNode WithRootKey(Guid key)
         {
             var previous = Node.Key;
@@ -46,7 +46,6 @@ internal static class EntityWriter
 
         var node = new NodeRecord(
             Guid.NewGuid(),
-            CompatibilityId(entity),
             labels.Count > 0 ? labels[0] : entity.Label,
             labels,
             entity.ActualType,
@@ -94,7 +93,6 @@ internal static class EntityWriter
 
         return new RelationshipRecord(
             key ?? Guid.NewGuid(),
-            CompatibilityId(entity),
             entity.Label,
             startKey,
             endKey,
@@ -160,7 +158,6 @@ internal static class EntityWriter
 
         var valueNode = new NodeRecord(
             Guid.NewGuid(),
-            CompatibilityId: null,
             entity.Label,
             [entity.Label],
             entity.ActualType,
@@ -170,7 +167,6 @@ internal static class EntityWriter
         valueNodes.Add(valueNode);
         edges.Add(new RelationshipRecord(
             Guid.NewGuid(),
-            CompatibilityId: null,
             relationshipType,
             parentKey,
             valueNode.Key,
@@ -247,15 +243,4 @@ internal static class EntityWriter
         return compatible.Count > 0 ? [.. compatible] : [entity.Label];
     }
 
-    private static string? CompatibilityId(EntityInfo entity)
-    {
-        if (entity.SimpleProperties.TryGetValue("Id", out var property) &&
-            property.Value is SimpleValue { Object: string id } &&
-            !string.IsNullOrEmpty(id))
-        {
-            return id;
-        }
-
-        return null;
-    }
 }

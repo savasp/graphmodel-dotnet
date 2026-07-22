@@ -19,10 +19,10 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph;
             
             [Relationship("FOLLOWS")]
-            public record FollowsRelationship(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction);
+            public record FollowsRelationship : Relationship;
             
             [Relationship("LIKES")]
-            public record LikesRelationship(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction);
+            public record LikesRelationship : Relationship;
             """;
 
         await VerifyAnalyzerAsync(test);
@@ -35,10 +35,10 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph;
             
             [Relationship("FOLLOWS")]
-            public record FollowsRelationship(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction);
+            public record FollowsRelationship : Relationship;
             
             [Relationship("FOLLOWS")]
-            public record {|#0:DuplicateFollowsRelationship|}(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction);
+            public record {|#0:DuplicateFollowsRelationship|} : Relationship;
             """;
 
         var expected = VerifyCS.Diagnostic("CG008")
@@ -55,10 +55,10 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph;
             
             [Relationship("FOLLOWS")]
-            public record BaseFollowsRelationship(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction);
+            public record BaseFollowsRelationship : Relationship;
             
             [Relationship("FOLLOWS")]
-            public record {|#0:DerivedFollowsRelationship|}(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : BaseFollowsRelationship(StartNodeId, EndNodeId, Direction)
+            public record {|#0:DerivedFollowsRelationship|} : BaseFollowsRelationship
             {
                 public string CustomType { get; init; } = string.Empty;
             }
@@ -82,8 +82,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             
             // This relationship inherits the label from parent without specifying its own
@@ -107,8 +105,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             
             [Relationship("follows")]
@@ -116,8 +112,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             """;
 
@@ -140,8 +134,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             
             [Relationship("FOLLOWS")]
@@ -155,8 +147,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             """;
 
@@ -178,8 +168,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             
             // Relationship without attribute should not cause conflicts
@@ -187,8 +175,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             """;
 
@@ -206,8 +192,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             
             [Relationship("FOLLOWS")]
@@ -215,8 +199,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             
             [Relationship("FOLLOWS")]
@@ -224,8 +206,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             """;
 
@@ -249,8 +229,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             
             [Relationship("")]
@@ -258,8 +236,6 @@ public class CG008_DuplicateRelationshipAttributeLabelTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             """;
 

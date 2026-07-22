@@ -70,14 +70,14 @@ public class RelationshipBenchmark
 
         // Generate test data
         var personFaker = new Faker<Person>()
-            .RuleFor(p => p.Id, f => f.Random.Guid().ToString())
+            .RuleFor(p => p.TestKey, f => f.Random.Guid().ToString())
             .RuleFor(p => p.FirstName, f => f.Name.FirstName())
             .RuleFor(p => p.LastName, f => f.Name.LastName())
             .RuleFor(p => p.Email, f => f.Internet.Email())
             .RuleFor(p => p.DateOfBirth, f => f.Date.Past(50, BenchmarkReferenceDate.AddYears(-18)));
 
         var companyFaker = new Faker<Company>()
-            .RuleFor(c => c.Id, f => f.Random.Guid().ToString())
+            .RuleFor(c => c.TestKey, f => f.Random.Guid().ToString())
             .RuleFor(c => c.Name, f => f.Company.CompanyName())
             .RuleFor(c => c.Industry, f => f.Commerce.Department());
 
@@ -88,11 +88,11 @@ public class RelationshipBenchmark
         await using var transaction = await _graph.GetTransactionAsync();
         foreach (var person in _persons)
         {
-            await _graph.CreateNodeAsync(person);
+            await _graph.CreateNodeAsync(person, transaction);
         }
         foreach (var company in _companies)
         {
-            await _graph.CreateNodeAsync(company);
+            await _graph.CreateNodeAsync(company, transaction);
         }
         await transaction.CommitAsync();
     }
@@ -103,24 +103,9 @@ public class RelationshipBenchmark
         // Clean up test data
         await using var transaction = await _graph.GetTransactionAsync();
 
-        var relationships = await _graph.Relationships<WorksAt>().ToListAsync();
-        foreach (var rel in relationships)
-        {
-            await _graph.DeleteRelationshipAsync(rel.Id);
-        }
-
-        var allPersons = await _graph.Nodes<Person>().ToListAsync();
-        var allCompanies = await _graph.Nodes<Company>().ToListAsync();
-
-        foreach (var person in allPersons)
-        {
-            await _graph.DeleteNodeAsync(person.Id);
-        }
-
-        foreach (var company in allCompanies)
-        {
-            await _graph.DeleteNodeAsync(company.Id);
-        }
+        await _graph.Relationships<WorksAt>(transaction).DeleteAsync();
+        await _graph.Nodes<Person>(transaction).DeleteAsync();
+        await _graph.Nodes<Company>(transaction).DeleteAsync();
 
         await transaction.CommitAsync();
         await _graphStore.DisposeAsync();
@@ -134,38 +119,33 @@ public class RelationshipBenchmark
 
         var relationship = new WorksAt
         {
-            Id = Guid.NewGuid().ToString(),
-            StartNodeId = person.Id,
-            EndNodeId = company.Id,
             Position = "Software Developer",
             StartDate = BenchmarkReferenceDate.AddYears(-_random.Next(1, 5))
         };
 
-        await _graph.CreateRelationshipAsync(relationship);
+        await _graph.CreateRelationshipAsync(
+            _graph.Nodes<Person>().Where(candidate => candidate.TestKey == person.TestKey),
+            relationship,
+            _graph.Nodes<Company>().Where(candidate => candidate.TestKey == company.TestKey));
     }
 
     [Benchmark]
     public async Task CreateMultipleRelationships()
     {
-        var relationships = new List<WorksAt>();
         for (int i = 0; i < 10; i++)
         {
             var person = _persons[_random.Next(_persons.Count)];
             var company = _companies[_random.Next(_companies.Count)];
 
-            relationships.Add(new WorksAt
+            var relationship = new WorksAt
             {
-                Id = Guid.NewGuid().ToString(),
-                StartNodeId = person.Id,
-                EndNodeId = company.Id,
                 Position = "Developer",
                 StartDate = BenchmarkReferenceDate.AddYears(-_random.Next(1, 5))
-            });
-        }
-
-        foreach (var relationship in relationships)
-        {
-            await _graph.CreateRelationshipAsync(relationship);
+            };
+            await _graph.CreateRelationshipAsync(
+                _graph.Nodes<Person>().Where(candidate => candidate.TestKey == person.TestKey),
+                relationship,
+                _graph.Nodes<Company>().Where(candidate => candidate.TestKey == company.TestKey));
         }
     }
 
@@ -177,7 +157,7 @@ public class RelationshipBenchmark
         // Discarded on purpose: this benchmark measures traversal execution cost, not the result -
         // the assignment would otherwise be a useless-local (CodeQL cs/useless-assignment-to-local).
         _ = await _graph.Nodes<Person>()
-            .Where(p => p.Id == person.Id)
+            .Where(p => p.TestKey == person.TestKey)
             .Traverse<WorksAt, Company>()
             .ToListAsync();
     }
@@ -189,7 +169,7 @@ public class RelationshipBenchmark
 
         // Discarded on purpose - see TraverseFromPersonToCompany above.
         _ = await _graph.Nodes<Company>()
-            .Where(c => c.Id == company.Id)
+            .Where(c => c.TestKey == company.TestKey)
             .Traverse<WorksAt, Person>()
             .ToListAsync();
     }
@@ -212,6 +192,8 @@ public class RelationshipBenchmark
 [Node("Company")]
 public record Company : Node
 {
+    public string TestKey { get; set; } = string.Empty;
+
     public string Name { get; set; } = string.Empty;
     public string Industry { get; set; } = string.Empty;
 }
@@ -219,9 +201,6 @@ public record Company : Node
 [Relationship("WORKS_AT")]
 public record WorksAt : Relationship
 {
-    public WorksAt() : base(string.Empty, string.Empty) { }
-    public WorksAt(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     public string Position { get; set; } = string.Empty;
 
     [Property(Label = "start_date")]

@@ -13,29 +13,34 @@ public interface IErrorHandlingTests : IGraphTest
 
     public record TestRelationship : Relationship
     {
-        public TestRelationship() : base(string.Empty, string.Empty) { }
-        public TestRelationship(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+        public string Name { get; set; } = string.Empty;
+    }
+
+    public record NodeWithOrdinaryId : Node
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
     }
 
     [Fact]
-    public async Task GetNodeAsync_NonExistentId_ThrowsEntityNotFoundException()
+    public async Task SingleNodeAsync_EmptySelection_ThrowsInvalidOperationException()
     {
-        var nonExistentId = Guid.NewGuid().ToString("N");
-
-        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
-            await Graph.GetNodeAsync<TestNode>(nonExistentId, null, TestContext.Current.CancellationToken);
+            await Graph.Nodes<TestNode>()
+                .Where(node => node.Name == "missing")
+                .SingleAsync(TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task GetRelationshipAsync_NonExistentId_ThrowsEntityNotFoundException()
+    public async Task SingleRelationshipAsync_EmptySelection_ThrowsInvalidOperationException()
     {
-        var nonExistentId = Guid.NewGuid().ToString("N");
-
-        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
-            await Graph.GetRelationshipAsync<TestRelationship>(nonExistentId, null, TestContext.Current.CancellationToken);
+            await Graph.Relationships<TestRelationship>()
+                .Where(relationship => relationship.Name == "missing")
+                .SingleAsync(TestContext.Current.CancellationToken);
         });
     }
 
@@ -49,175 +54,111 @@ public interface IErrorHandlingTests : IGraphTest
     }
 
     [Fact]
-    public async Task CreateRelationshipAsync_NullRelationship_ThrowsArgumentException()
+    public async Task CreateAsync_NullRelationship_ThrowsArgumentNullException()
     {
-        await Assert.ThrowsAsync<ArgumentException>(async () =>
+        await Assert.ThrowsAsync<ArgumentNullException>(async () =>
         {
-            await Graph.CreateRelationshipAsync<TestRelationship>(null!, null, TestContext.Current.CancellationToken);
+            await Graph.CreateAsync(
+                new TestNode { Name = "source" },
+                (TestRelationship)null!,
+                new TestNode { Name = "target" },
+                cancellationToken: TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task UpdateNodeAsync_NonExistentNode_ThrowsEntityNotFoundException()
+    public async Task UpdateAsync_EmptyNodeSelection_AffectsZero()
     {
-        var nonExistentNode = new TestNode
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            Name = "NonExistent"
-        };
+        var affected = await Graph.Nodes<TestNode>()
+            .Where(node => node.Name == "missing")
+            .UpdateAsync(
+                setters => setters.SetProperty(node => node.Value, 1),
+                TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
-        {
-            await Graph.UpdateNodeAsync(nonExistentNode, null, TestContext.Current.CancellationToken);
-        });
+        Assert.Equal(0, affected);
     }
 
     [Fact]
-    public async Task UpdateRelationshipAsync_NonExistentRelationship_ThrowsEntityNotFoundException()
+    public async Task UpdateAsync_EmptyRelationshipSelection_AffectsZero()
     {
-        var nonExistentRel = new TestRelationship
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            StartNodeId = Guid.NewGuid().ToString("N"),
-            EndNodeId = Guid.NewGuid().ToString("N"),
-            Type = "NonExistent"
-        };
+        var affected = await Graph.Relationships<TestRelationship>()
+            .Where(relationship => relationship.Name == "missing")
+            .UpdateAsync(
+                setters => setters.SetProperty(relationship => relationship.Name, "updated"),
+                TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
-        {
-            await Graph.UpdateRelationshipAsync(nonExistentRel, null, TestContext.Current.CancellationToken);
-        });
+        Assert.Equal(0, affected);
     }
 
     [Fact]
-    public async Task CreateRelationshipAsync_NonExistentStartNode_ThrowsGraphException()
+    public async Task CreateRelationshipAsync_EmptySourceSelection_ThrowsGraphCardinalityException()
     {
         var endNode = new TestNode { Name = "EndNode" };
         await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
 
-        var relationship = new TestRelationship
-        {
-            StartNodeId = Guid.NewGuid().ToString("N"), // Non-existent
-            EndNodeId = endNode.Id,
-            Type = "TestRel"
-        };
+        var exception = await Assert.ThrowsAsync<GraphCardinalityException>(() =>
+            Graph.CreateRelationshipAsync(
+                Graph.Nodes<TestNode>().Where(node => node.Name == "missing"),
+                new TestRelationship { Name = "TestRel" },
+                Graph.Nodes<TestNode>().Where(node => node.Name == endNode.Name),
+                cancellationToken: TestContext.Current.CancellationToken));
 
-        await Assert.ThrowsAsync<GraphException>(async () =>
-        {
-            await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
-        });
+        Assert.Equal(GraphEndpointRole.Source, exception.Role);
+        Assert.Equal(GraphCardinalityFailure.Empty, exception.Failure);
     }
 
     [Fact]
-    public async Task CreateRelationshipAsync_NonExistentEndNode_ThrowsGraphException()
+    public async Task CreateRelationshipAsync_EmptyTargetSelection_ThrowsGraphCardinalityException()
     {
         var startNode = new TestNode { Name = "StartNode" };
         await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
 
-        var relationship = new TestRelationship
-        {
-            StartNodeId = startNode.Id,
-            EndNodeId = Guid.NewGuid().ToString("N"), // Non-existent
-            Type = "TestRel"
-        };
+        var exception = await Assert.ThrowsAsync<GraphCardinalityException>(() =>
+            Graph.CreateRelationshipAsync(
+                Graph.Nodes<TestNode>().Where(node => node.Name == startNode.Name),
+                new TestRelationship { Name = "TestRel" },
+                Graph.Nodes<TestNode>().Where(node => node.Name == "missing"),
+                cancellationToken: TestContext.Current.CancellationToken));
 
-        await Assert.ThrowsAsync<GraphException>(async () =>
-        {
-            await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
-        });
+        Assert.Equal(GraphEndpointRole.Target, exception.Role);
+        Assert.Equal(GraphCardinalityFailure.Empty, exception.Failure);
     }
 
     [Fact]
-    public async Task DeleteNodeAsync_NonExistentId_ThrowsEntityNotFoundException()
+    public async Task DeleteAsync_EmptyNodeSelection_AffectsZero()
     {
-        var nonExistentId = Guid.NewGuid().ToString("N");
+        var affected = await Graph.Nodes<INode>()
+            .Where(node => node.Labels.Contains("MissingNode"))
+            .DeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
-        {
-            await Graph.DeleteNodeAsync(nonExistentId, false, null, TestContext.Current.CancellationToken);
-        });
+        Assert.Equal(0, affected);
     }
 
     [Fact]
-    public async Task DeleteNodeAsync_SameIdUnderDifferentLabels_ThrowsAndLeavesNodesUntouched()
+    public async Task DeleteAsync_EmptyRelationshipSelection_AffectsZero()
     {
-        var id = Guid.NewGuid().ToString("N");
-        var person = new Person { Id = id, FirstName = "Shared", LastName = "Person" };
-        var address = new Address { Id = id, Street = "1 Graph St", City = "Neo" };
+        var affected = await Graph.Relationships<IRelationship>()
+            .Where(relationship => relationship.Type == "MISSING_RELATIONSHIP")
+            .DeleteAsync(TestContext.Current.CancellationToken);
 
-        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
-        await Graph.CreateNodeAsync(address, null, TestContext.Current.CancellationToken);
-
-        await Assert.ThrowsAsync<GraphException>(async () =>
-        {
-            await Graph.DeleteNodeAsync(id, true, null, TestContext.Current.CancellationToken);
-        });
-
-        var remainingPerson = await Graph.GetNodeAsync<Person>(id, null, TestContext.Current.CancellationToken);
-        var remainingAddress = await Graph.GetNodeAsync<Address>(id, null, TestContext.Current.CancellationToken);
-
-        Assert.Equal(person.FirstName, remainingPerson.FirstName);
-        Assert.Equal(address.Street, remainingAddress.Street);
+        Assert.Equal(0, affected);
     }
 
     [Fact]
-    public async Task DeleteRelationshipAsync_NonExistentId_ThrowsEntityNotFoundException()
+    public async Task CreateNodeAsync_OrdinaryIdProperty_RoundTripsAsDomainData()
     {
-        var nonExistentId = Guid.NewGuid().ToString("N");
-
-        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
-        {
-            await Graph.DeleteRelationshipAsync(nonExistentId, null, TestContext.Current.CancellationToken);
-        });
-    }
-
-    [Fact]
-    public async Task CreateNodeAsync_EmptyId_ThrowsArgumentException()
-    {
-        var nodeWithEmptyId = new TestNode
+        var node = new NodeWithOrdinaryId
         {
             Id = string.Empty,
-            Name = "EmptyId"
+            Name = "ordinary-id",
         };
 
-        // Should  throw an exception
-        await Assert.ThrowsAsync<ArgumentException>(async () =>
-        {
-            await Graph.CreateNodeAsync(nodeWithEmptyId, null, TestContext.Current.CancellationToken);
-        });
-    }
+        await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+        var roundTripped = await Graph.Nodes<NodeWithOrdinaryId>()
+            .Where(candidate => candidate.Name == node.Name)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
-    [Fact]
-    public async Task CreateNodeAsync_NullId_ThrowsArgumentException()
-    {
-        var nodeWithNullId = new TestNode
-        {
-            Id = null!,
-            Name = "NullId"
-        };
-
-        await Assert.ThrowsAsync<ArgumentException>(async () =>
-        {
-            await Graph.CreateNodeAsync(nodeWithNullId, null, TestContext.Current.CancellationToken);
-        });
-    }
-
-    [Fact]
-    public async Task CreateDuplicateNode_SameId_ThrowsException()
-    {
-        var node1 = new TestNode { Name = "First" };
-        await Graph.CreateNodeAsync(node1, null, TestContext.Current.CancellationToken);
-
-        var node2 = new TestNode
-        {
-            Id = node1.Id, // Same ID
-            Name = "Duplicate"
-        };
-
-        await Assert.ThrowsAsync<GraphException>(async () =>
-        {
-            await Graph.CreateNodeAsync(node2, null, TestContext.Current.CancellationToken);
-        });
+        Assert.Equal(string.Empty, roundTripped.Id);
     }
 
     [Fact]
@@ -332,18 +273,18 @@ public interface IErrorHandlingTests : IGraphTest
         await Graph.CreateNodeAsync(node1, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(node2, null, TestContext.Current.CancellationToken);
 
-        var relationship = new TestRelationship
-        {
-            StartNodeId = node1.Id,
-            EndNodeId = node2.Id,
-            Type = "TestRel"
-        };
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            Graph.Nodes<TestNode>().Where(node => node.Name == node1.Name),
+            new TestRelationship { Name = "TestRel" },
+            Graph.Nodes<TestNode>().Where(node => node.Name == node2.Name),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // Try to delete node1 without cascade - should fail
         await Assert.ThrowsAsync<GraphException>(async () =>
         {
-            await Graph.DeleteNodeAsync(node1.Id, false, null, TestContext.Current.CancellationToken);
+            await Graph.Nodes<TestNode>()
+                .Where(node => node.Name == node1.Name)
+                .DeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
         });
     }
 
@@ -409,7 +350,7 @@ public interface IErrorHandlingTests : IGraphTest
             await Graph.CreateNodeAsync(node, transaction, TestContext.Current.CancellationToken);
             await Task.Delay(100); // Simulate work
             await transaction.CommitAsync();
-            return node.Id;
+            return node.Name;
         });
 
         var task2 = Task.Run(async () =>
@@ -419,7 +360,7 @@ public interface IErrorHandlingTests : IGraphTest
             await Graph.CreateNodeAsync(node, transaction, TestContext.Current.CancellationToken);
             await Task.Delay(100); // Simulate work
             await transaction.CommitAsync();
-            return node.Id;
+            return node.Name;
         });
 
         var results = await Task.WhenAll(task1, task2);
@@ -428,8 +369,12 @@ public interface IErrorHandlingTests : IGraphTest
         Assert.NotEqual(results[0], results[1]);
 
         // Both nodes should exist
-        var node1 = await Graph.GetNodeAsync<TestNode>(results[0], null, TestContext.Current.CancellationToken);
-        var node2 = await Graph.GetNodeAsync<TestNode>(results[1], null, TestContext.Current.CancellationToken);
+        var firstName = results[0];
+        var secondName = results[1];
+        var node1 = await Graph.Nodes<TestNode>().Where(node => node.Name == firstName)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        var node2 = await Graph.Nodes<TestNode>().Where(node => node.Name == secondName)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("Transaction1", node1.Name);
         Assert.Equal("Transaction2", node2.Name);
@@ -443,7 +388,8 @@ public interface IErrorHandlingTests : IGraphTest
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<TestNode>(node.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<TestNode>().Where(candidate => candidate.Name == node.Name)
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(longString, retrieved.Name);
     }
 
@@ -455,7 +401,8 @@ public interface IErrorHandlingTests : IGraphTest
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<TestNode>(node.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<TestNode>().Where(candidate => candidate.Name == node.Name)
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(specialString, retrieved.Name);
     }
 
@@ -468,8 +415,10 @@ public interface IErrorHandlingTests : IGraphTest
         await Graph.CreateNodeAsync(node1, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(node2, null, TestContext.Current.CancellationToken);
 
-        var retrieved1 = await Graph.GetNodeAsync<TestNode>(node1.Id, null, TestContext.Current.CancellationToken);
-        var retrieved2 = await Graph.GetNodeAsync<TestNode>(node2.Id, null, TestContext.Current.CancellationToken);
+        var retrieved1 = await Graph.Nodes<TestNode>().Where(node => node.Name == node1.Name)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        var retrieved2 = await Graph.Nodes<TestNode>().Where(node => node.Name == node2.Name)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(int.MaxValue, retrieved1.Value);
         Assert.Equal(int.MinValue, retrieved2.Value);

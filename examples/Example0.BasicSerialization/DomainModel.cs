@@ -97,12 +97,5 @@ public class City
 [Relationship(Label = "FRIEND_OF")]
 public record Friend : Relationship
 {
-    public Friend() : base(string.Empty, string.Empty)
-    {
-    }
-
-    public Friend(string startNodeId, string endNodeId) : base(startNodeId, endNodeId)
-    {
-    }
     public DateTime Since { get; set; }
 }

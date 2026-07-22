@@ -32,7 +32,7 @@ public class CG011_ShouldInheritFromBaseClassTests
         var test = """
             using Cvoya.Graph;
             
-            public record TestRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+            public record TestRelationship : Relationship
             {
                 public string CustomProperty { get; init; } = string.Empty;
             }
@@ -88,11 +88,9 @@ public class CG011_ShouldInheritFromBaseClassTests
         var test = """
             using Cvoya.Graph;
             
-            public record {|#0:TestRelationship|}(string StartNodeId, string EndNodeId) : IRelationship
+            public record {|#0:TestRelationship|} : IRelationship
             {
-                public string Id { get; init; } = string.Empty;
                 public string Type { get; init; } = string.Empty;
-                public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
             }
             """;
 
@@ -177,4 +175,3 @@ public class CG011_ShouldInheritFromBaseClassTests
         await VerifyAnalyzerAsync(test);
     }
 }
-

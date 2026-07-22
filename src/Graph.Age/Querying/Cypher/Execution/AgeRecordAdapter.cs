@@ -6,6 +6,7 @@ namespace Cvoya.Graph.Age.Querying.Cypher.Execution;
 using System.Collections;
 using System.Globalization;
 using System.Text.Json;
+using Cvoya.Graph.Age.Entities;
 using Cvoya.Graph.Age.Serialization;
 using Cvoya.Graph.Serialization.Results;
 using Npgsql.Age.Types;
@@ -88,43 +89,48 @@ internal sealed class AgeRecordAdapter
 
     private GraphValue AdaptVertex(Vertex<Dictionary<string, object>> vertex)
     {
+        var isComplexValue = string.Equals(
+            vertex.Label,
+            SerializationBridge.ComplexNodeLabel,
+            StringComparison.Ordinal) &&
+            IsTrue(vertex.Properties, ComplexPropertyStorage.NodeMarkerProperty);
+        var hasHierarchy = vertex.Properties.TryGetValue("inheritance_labels", out var hierarchy);
         var labels = new List<string>();
-        if (!string.Equals(
-                vertex.Label,
-                SerializationBridge.PhysicalNodeLabel,
-                StringComparison.Ordinal) &&
+        if (!isComplexValue &&
+            (!SerializationBridge.IsEncodedRootStorageName(vertex.Label, relationship: false) || !hasHierarchy) &&
             !string.IsNullOrWhiteSpace(vertex.Label))
         {
             labels.Add(vertex.Label);
         }
 
-        if (vertex.Properties.TryGetValue("inheritance_labels", out var hierarchy))
+        if ((isComplexValue || !string.Equals(
+                vertex.Label,
+                SerializationBridge.ComplexNodeLabel,
+                StringComparison.Ordinal)) && hasHierarchy)
         {
-            labels.AddRange(ReadStrings(hierarchy));
+            labels.AddRange(ReadStrings(hierarchy!));
         }
 
         var properties = vertex.Properties
-            .Where(pair => pair.Key != "inheritance_labels")
+            .Where(pair => !IsInternalStorageProperty(pair.Key))
             .ToDictionary(pair => pair.Key, pair => AdaptValue(pair.Value), StringComparer.Ordinal);
         return GraphValue.Node(vertex.Id.Value.ToString(CultureInfo.InvariantCulture), labels.Distinct().ToArray(), properties);
     }
 
     private GraphValue AdaptEdge(Edge<Dictionary<string, object>> edge)
     {
-        var nativeType = string.Equals(
+        var isComplexProperty = string.Equals(
             edge.Label,
-            SerializationBridge.PhysicalRelationshipType,
-            StringComparison.Ordinal)
-                ? null
+            SerializationBridge.ComplexRelationshipType,
+            StringComparison.Ordinal) &&
+            IsTrue(edge.Properties, ComplexPropertyStorage.RelationshipMarkerProperty);
+        var relationshipType = (isComplexProperty ||
+            SerializationBridge.IsEncodedRootStorageName(edge.Label, relationship: true)) &&
+            edge.Properties.TryGetValue("inheritance_labels", out var hierarchy)
+                ? ReadStrings(hierarchy).FirstOrDefault()
                 : edge.Label;
-        var relationshipType = nativeType ??
-            (edge.Properties.TryGetValue(nameof(IRelationship.Type), out var logicalType)
-                ? Convert.ToString(logicalType, CultureInfo.InvariantCulture)
-                : edge.Properties.TryGetValue("inheritance_labels", out var hierarchy)
-                    ? ReadStrings(hierarchy).FirstOrDefault()
-                    : null);
         var properties = edge.Properties
-            .Where(pair => pair.Key != "inheritance_labels")
+            .Where(pair => !IsInternalStorageProperty(pair.Key))
             .ToDictionary(pair => pair.Key, pair => AdaptValue(pair.Value), StringComparer.Ordinal);
         return GraphValue.Relationship(
             edge.Id.Value.ToString(CultureInfo.InvariantCulture),
@@ -251,19 +257,26 @@ internal sealed class AgeRecordAdapter
     {
         var propertiesElement = value.GetProperty("properties");
         var physicalLabel = value.GetProperty("label").GetString()!;
-        var labels = string.Equals(
+        var isComplexValue = string.Equals(
             physicalLabel,
-            SerializationBridge.PhysicalNodeLabel,
-            StringComparison.Ordinal)
+            SerializationBridge.ComplexNodeLabel,
+            StringComparison.Ordinal) &&
+            IsTrue(propertiesElement, ComplexPropertyStorage.NodeMarkerProperty);
+        var hasHierarchy = propertiesElement.TryGetProperty("inheritance_labels", out var hierarchy);
+        var labels = isComplexValue ||
+            (SerializationBridge.IsEncodedRootStorageName(physicalLabel, relationship: false) && hasHierarchy)
                 ? []
                 : new List<string> { physicalLabel };
-        if (propertiesElement.TryGetProperty("inheritance_labels", out var hierarchy))
+        if ((isComplexValue || !string.Equals(
+                physicalLabel,
+                SerializationBridge.ComplexNodeLabel,
+                StringComparison.Ordinal)) && hasHierarchy)
         {
             labels.AddRange(ReadStrings(hierarchy));
         }
 
         var properties = propertiesElement.EnumerateObject()
-            .Where(property => property.Name != "inheritance_labels")
+            .Where(property => !IsInternalStorageProperty(property.Name))
             .ToDictionary(property => property.Name, property => AdaptJson(property.Value), StringComparer.Ordinal);
         return GraphValue.Node(JsonId(value.GetProperty("id")), labels.Distinct().ToArray(), properties);
     }
@@ -272,18 +285,18 @@ internal sealed class AgeRecordAdapter
     {
         var propertiesElement = value.GetProperty("properties");
         var physicalType = value.GetProperty("label").GetString()!;
-        var relationshipType = !string.Equals(
+        var isComplexProperty = string.Equals(
             physicalType,
-            SerializationBridge.PhysicalRelationshipType,
-            StringComparison.Ordinal)
-                ? physicalType
-                : propertiesElement.TryGetProperty(nameof(IRelationship.Type), out var logicalType)
-                    ? logicalType.GetString()
-                    : propertiesElement.TryGetProperty("inheritance_labels", out var hierarchy)
-                        ? ReadStrings(hierarchy).FirstOrDefault()
-                        : null;
+            SerializationBridge.ComplexRelationshipType,
+            StringComparison.Ordinal) &&
+            IsTrue(propertiesElement, ComplexPropertyStorage.RelationshipMarkerProperty);
+        var relationshipType = (isComplexProperty ||
+            SerializationBridge.IsEncodedRootStorageName(physicalType, relationship: true)) &&
+            propertiesElement.TryGetProperty("inheritance_labels", out var hierarchy)
+                ? ReadStrings(hierarchy).FirstOrDefault()
+                : physicalType;
         var properties = propertiesElement.EnumerateObject()
-            .Where(property => property.Name != "inheritance_labels")
+            .Where(property => !IsInternalStorageProperty(property.Name))
             .ToDictionary(property => property.Name, property => AdaptJson(property.Value), StringComparer.Ordinal);
         return GraphValue.Relationship(
             JsonId(value.GetProperty("id")),
@@ -296,6 +309,22 @@ internal sealed class AgeRecordAdapter
     private static string JsonId(JsonElement value) => value.ValueKind == JsonValueKind.String
         ? value.GetString()!
         : value.GetRawText();
+
+    private static bool IsInternalStorageProperty(string name) =>
+        name is "inheritance_labels" or
+            ComplexPropertyStorage.NodeMarkerProperty or
+            ComplexPropertyStorage.RelationshipMarkerProperty;
+
+    private static bool IsTrue(Dictionary<string, object> properties, string name) =>
+        properties.TryGetValue(name, out var value) && value switch
+        {
+            true => true,
+            JsonElement { ValueKind: JsonValueKind.True } => true,
+            _ => false,
+        };
+
+    private static bool IsTrue(JsonElement properties, string name) =>
+        properties.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
 
     private static bool TryAdaptPoint(
         Dictionary<string, object> values,

@@ -15,7 +15,7 @@ public sealed class AgeEntityProjectionPassTests
     private readonly CypherRenderer renderer = new(AgeDialect.Instance);
 
     [Fact]
-    public void ExpandsNodeHydrationToStructuredLegacyGoldenOutput()
+    public void ExpandsNodeHydrationToStableGoldenOutput()
     {
         var statement = Statement(
             MatchNode("src"),
@@ -236,7 +236,7 @@ public sealed class AgeEntityProjectionPassTests
     }
 
     [Fact]
-    public void ConvertsOnlyLegacyPathIndexesToIntegers()
+    public void ConvertsOnlyVariableLengthPathIndexesToIntegers()
     {
         var statement = Statement(
             new MatchClause(
@@ -297,7 +297,7 @@ public sealed class AgeEntityProjectionPassTests
     }
 
     [Fact]
-    public void CoalescesEmptySumToLegacyGoldenOutput()
+    public void CoalescesEmptySumToStableGoldenOutput()
     {
         var statement = Statement(
             MatchNode("src"),
@@ -363,7 +363,7 @@ public sealed class AgeEntityProjectionPassTests
     }
 
     [Fact]
-    public void ExpandsPathSegmentPropertyLoadsToStructuredLegacyGoldenOutput()
+    public void ExpandsPathSegmentPropertyLoadsToStableGoldenOutput()
     {
         var statement = Statement(
             new MatchClause(

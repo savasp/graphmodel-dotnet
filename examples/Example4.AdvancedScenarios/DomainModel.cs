@@ -23,10 +23,7 @@ public record Content : Node
 }
 
 [Relationship(Label = "CONTAINED_IN")]
-public record ContainedIn(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
-{
-    public ContainedIn() : this(string.Empty, string.Empty) { }
-}
+public record ContainedIn : Relationship;
 
 [Node(Label = "Article")]
 public record Article : Content
@@ -43,15 +40,11 @@ public record Video : Content
 }
 
 [Relationship(Label = "CONTAINS")]
-public record Contains(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
-{
-    public Contains() : this(string.Empty, string.Empty) { }
-}
+public record Contains : Relationship;
 
 [Relationship(Label = "REFERENCES")]
-public record References(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+public record References : Relationship
 {
-    public References() : this(string.Empty, string.Empty) { }
     public string Context { get; set; } = string.Empty;
 }
 
@@ -62,15 +55,13 @@ public record Tag : Node
 }
 
 [Relationship(Label = "REFERENCE")]
-public record Reference(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+public record Reference : Relationship
 {
-    public Reference() : this(string.Empty, string.Empty) { }
     public string Context { get; set; } = string.Empty;
 }
 
 [Relationship(Label = "TAGGED_WITH")]
-public record TaggedWith(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+public record TaggedWith : Relationship
 {
-    public TaggedWith() : this(string.Empty, string.Empty) { }
     public string TagName { get; set; } = string.Empty;
 }

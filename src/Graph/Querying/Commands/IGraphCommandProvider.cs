@@ -10,6 +10,9 @@ internal interface IGraphCommandProvider : IGraphQueryProvider
 
     IGraphTransaction? BoundTransaction { get; }
 
+    Task PrepareRelationshipCreationAsync(CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
     Task<TResult> InWriteTransactionAsync<TResult>(
         Func<IGraphCommandExecutionContext, CancellationToken, Task<TResult>> command,
         CancellationToken cancellationToken);

@@ -54,7 +54,6 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         await CreateComplexPropertiesCoreAsync(
             transaction,
             [(parentId, entity)],
-            assignSyntheticIds: true,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -88,14 +87,12 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         await CreateComplexPropertiesCoreAsync(
             transaction,
             [.. orderedGraphIds.Select(graphId => (graphId.ToString(System.Globalization.CultureInfo.InvariantCulture), replacementEntity))],
-            assignSyntheticIds: false,
             cancellationToken).ConfigureAwait(false);
     }
 
     private async Task CreateComplexPropertiesCoreAsync(
         AgeQueryRunner transaction,
         List<(string ParentElementId, EntityInfo Entity)> roots,
-        bool assignSyntheticIds,
         CancellationToken cancellationToken)
     {
         // Breadth-first: create all value nodes of one nesting level with a single UNWIND
@@ -104,7 +101,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
 
         for (var depth = 0; currentLevel.Count > 0; depth++)
         {
-            var pending = CollectPendingValueNodes(currentLevel, depth, assignSyntheticIds);
+            var pending = CollectPendingValueNodes(currentLevel, depth);
             currentLevel = await CreateLevelAsync(transaction, pending, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -129,10 +126,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             var pending = new List<SubgraphValueNode>();
             foreach (var (parentCorrelationToken, parentStorageLabel, entity) in currentLevel)
             {
-                var children = CollectPendingValueNodes(
-                    [(parentCorrelationToken, entity)],
-                    depth,
-                    assignSyntheticIds: false);
+                var children = CollectPendingValueNodes([(parentCorrelationToken, entity)], depth);
                 pending.AddRange(children.Select(child => new SubgraphValueNode(
                     child.ParentElementId,
                     parentStorageLabel,
@@ -153,7 +147,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             // level's parent scope is that label rather than the root's storage label.
             currentLevel = pending.Select(child => (
                 ParentCorrelationToken: child.CorrelationToken,
-                ParentStorageLabel: SerializationBridge.PhysicalNodeLabel,
+                ParentStorageLabel: SerializationBridge.ComplexNodeLabel,
                 child.Entity)).ToList();
         }
 
@@ -162,8 +156,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
 
     private List<PendingValueNode> CollectPendingValueNodes(
         List<(string ParentElementId, EntityInfo Entity)> level,
-        int depth,
-        bool assignSyntheticIds = true)
+        int depth)
     {
         var pending = new List<PendingValueNode>();
 
@@ -189,8 +182,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
                             propertyName,
                             complexProperty,
                             childEntity,
-                            sequenceNumber: 0,
-                            assignSyntheticIds));
+                            sequenceNumber: 0));
                         break;
 
                     case EntityCollection collection:
@@ -202,8 +194,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
                                 propertyName,
                                 complexProperty,
                                 item,
-                                index++,
-                                assignSyntheticIds));
+                                index++));
                         }
                         break;
 
@@ -227,20 +218,14 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         string propertyName,
         Property property,
         EntityInfo entity,
-        int sequenceNumber,
-        bool assignSyntheticIds)
+        int sequenceNumber)
     {
         var relationshipType = property.RelationshipType ?? (property.PropertyInfo is null
             ? GraphDataModel.PropertyNameToRelationshipTypeName(propertyName)
             : GraphDataModel.GetComplexPropertyRelationshipType(property.PropertyInfo));
 
         var nodeProps = SerializationHelpers.SerializeSimpleProperties(entity);
-        if (assignSyntheticIds)
-        {
-            nodeProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
-        }
-
-        nodeProps[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
+        nodeProps[ComplexPropertyStorage.NodeMarkerProperty] = true;
         nodeProps["inheritance_labels"] = entity.ActualLabels.Count > 0
             ? entity.ActualLabels
             : [entity.Label];
@@ -250,11 +235,6 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             [ComplexPropertyStorage.RelationshipMarkerProperty] = true,
             ["inheritance_labels"] = new[] { relationshipType },
         };
-        if (assignSyntheticIds)
-        {
-            relProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
-        }
-
         return new PendingValueNode(parentElementId, relationshipType, entity, nodeProps, relProps);
     }
 
@@ -303,7 +283,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             UNWIND $rows AS row
             MATCH (parent)
             WHERE id(parent) = toInteger(row.parentId)
-            CREATE (parent)-[r:{SerializationBridge.PhysicalRelationshipType}]->(complex:{SerializationBridge.PhysicalNodeLabel})
+            CREATE (parent)-[r:{SerializationBridge.ComplexRelationshipType}]->(complex:{SerializationBridge.ComplexNodeLabel})
             {relationshipSet}
             {nodeSet}
             RETURN row.rowId AS rowId, id(complex) AS nodeId";

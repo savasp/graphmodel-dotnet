@@ -50,11 +50,6 @@ public interface ITypedPropertyLabelEscapingTests : IGraphTest
     [Relationship("TypedHostilePropertyLabelRelationship")]
     public record RelationshipWithHostilePropertyLabels : Relationship
     {
-        public RelationshipWithHostilePropertyLabels() : base(string.Empty, string.Empty) { }
-
-        public RelationshipWithHostilePropertyLabels(string startNodeId, string endNodeId)
-            : base(startNodeId, endNodeId) { }
-
         [Property(Label = "relationship, rank (order by)")]
         public int Rank { get; set; }
 
@@ -88,23 +83,27 @@ public interface ITypedPropertyLabelEscapingTests : IGraphTest
         };
         await Graph.CreateNodeAsync(node, null, cancellationToken);
 
-        var created = await Graph.GetNodeAsync<NodeWithHostilePropertyLabels>(node.Id, null, cancellationToken);
+        var selectedNode = Graph.Nodes<NodeWithHostilePropertyLabels>()
+            .Where(candidate => candidate.LastName == node.LastName && candidate.ReservedWord == node.ReservedWord);
+        var created = await selectedNode.SingleAsync(cancellationToken);
         Assert.Equal("Smith", created.LastName);
         Assert.Equal(7, created.Rank);
         Assert.Equal("reserved", created.ReservedWord);
         Assert.Equal("initial", created.Note);
         Assert.Equal("98101", created.Details.PostalCode);
 
-        node.Note = "updated`value";
-        node.Rank = 9;
-        await Graph.UpdateNodeAsync(node, null, cancellationToken);
+        await selectedNode.UpdateAsync(
+            setters => setters
+                .SetProperty(candidate => candidate.Note, "updated`value")
+                .SetProperty(candidate => candidate.Rank, 9),
+            cancellationToken);
 
-        var updated = await Graph.GetNodeAsync<NodeWithHostilePropertyLabels>(node.Id, null, cancellationToken);
+        var updated = await selectedNode.SingleAsync(cancellationToken);
         Assert.Equal("updated`value", updated.Note);
         Assert.Equal(9, updated.Rank);
 
         var sentinelStillPresent = await Graph.Nodes<Person>()
-            .Where(p => p.Id == sentinel.Id)
+            .Where(p => p.TestKey == sentinel.TestKey)
             .CountAsync(cancellationToken);
         Assert.Equal(1, sentinelStillPresent);
     }
@@ -172,27 +171,29 @@ public interface ITypedPropertyLabelEscapingTests : IGraphTest
         await Graph.CreateNodeAsync(start, null, cancellationToken);
         await Graph.CreateNodeAsync(end, null, cancellationToken);
 
-        var first = new RelationshipWithHostilePropertyLabels(start.Id, end.Id)
+        var first = new RelationshipWithHostilePropertyLabels
         {
             Rank = 2,
             ReservedWord = "include",
             Note = "first",
         };
-        var second = new RelationshipWithHostilePropertyLabels(start.Id, end.Id)
+        var second = new RelationshipWithHostilePropertyLabels
         {
             Rank = 1,
             ReservedWord = "include",
             Note = "second",
         };
-        await Graph.CreateRelationshipAsync(first, null, cancellationToken);
-        await Graph.CreateRelationshipAsync(second, null, cancellationToken);
+        await Graph.ConnectAsync(start, first, end, cancellationToken: cancellationToken);
+        await Graph.ConnectAsync(start, second, end, cancellationToken: cancellationToken);
 
-        first.Note = "updated";
-        await Graph.UpdateRelationshipAsync(first, null, cancellationToken);
-        var updated = await Graph.GetRelationshipAsync<RelationshipWithHostilePropertyLabels>(
-            first.Id,
-            null,
+        var selectedRelationship = Graph.Relationships<RelationshipWithHostilePropertyLabels>()
+            .Where(relationship => relationship.Note == "first");
+        await selectedRelationship.UpdateAsync(
+            setters => setters.SetProperty(relationship => relationship.Note, "updated"),
             cancellationToken);
+        var updated = await Graph.Relationships<RelationshipWithHostilePropertyLabels>()
+            .Where(relationship => relationship.Note == "updated")
+            .SingleAsync(cancellationToken);
         Assert.Equal("updated", updated.Note);
 
         var ranks = await Graph.Relationships<RelationshipWithHostilePropertyLabels>()

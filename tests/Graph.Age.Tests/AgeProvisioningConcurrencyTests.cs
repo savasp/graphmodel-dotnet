@@ -313,13 +313,15 @@ public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graph
         var person = new Person { FirstName = "Provisioned", LastName = "Store" };
         await store.Graph.CreateNodeAsync(person, null, cancellationToken);
 
-        var loaded = await store.Graph.GetNodeAsync<Person>(person.Id, null, cancellationToken);
+        var loaded = await store.Graph.Nodes<Person>()
+            .Where(candidate => candidate.TestKey == person.TestKey)
+            .SingleAsync(cancellationToken);
         Assert.Equal("Provisioned", loaded.FirstName);
 
         var queried = await store.Graph.Nodes<Person>()
             .Where(candidate => candidate.LastName == "Store")
             .ToListAsync(cancellationToken);
-        Assert.Contains(queried, candidate => candidate.Id == person.Id);
+        Assert.Contains(queried, candidate => candidate.TestKey == person.TestKey);
 
         Assert.Equal(
             ["Person"],
@@ -337,7 +339,7 @@ public sealed class AgeProvisioningConcurrencyTests(AgeGraphCleanupFixture graph
                     command.Parameters.AddWithValue("name", graphName);
                     command.Parameters.AddWithValue(
                         "labels",
-                        new[] { "Person", SerializationBridge.PhysicalNodeLabel, SerializationBridge.PhysicalRelationshipType });
+                        new[] { "Person", SerializationBridge.ComplexNodeLabel, SerializationBridge.ComplexRelationshipType });
                 },
                 cancellationToken));
 

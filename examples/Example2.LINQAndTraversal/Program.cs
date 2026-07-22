@@ -56,11 +56,26 @@ try
     await graph.CreateNodeAsync(eve);
 
     // Create relationships
-    await graph.CreateRelationshipAsync(new Knows(alice.Id, bob.Id) { Since = DateTime.UtcNow.AddYears(-5) });
-    await graph.CreateRelationshipAsync(new Knows(alice.Id, charlie.Id) { Since = DateTime.UtcNow.AddYears(-3) });
-    await graph.CreateRelationshipAsync(new Knows(bob.Id, diana.Id) { Since = DateTime.UtcNow.AddYears(-2) });
-    await graph.CreateRelationshipAsync(new Knows(charlie.Id, eve.Id) { Since = DateTime.UtcNow.AddYears(-1) });
-    await graph.CreateRelationshipAsync(new Knows(diana.Id, eve.Id) { Since = DateTime.UtcNow.AddMonths(-6) });
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Person>().Where(person => person.Name == alice.Name),
+        new Knows { Since = DateTime.UtcNow.AddYears(-5) },
+        graph.Nodes<Person>().Where(person => person.Name == bob.Name));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Person>().Where(person => person.Name == alice.Name),
+        new Knows { Since = DateTime.UtcNow.AddYears(-3) },
+        graph.Nodes<Person>().Where(person => person.Name == charlie.Name));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Person>().Where(person => person.Name == bob.Name),
+        new Knows { Since = DateTime.UtcNow.AddYears(-2) },
+        graph.Nodes<Person>().Where(person => person.Name == diana.Name));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Person>().Where(person => person.Name == charlie.Name),
+        new Knows { Since = DateTime.UtcNow.AddYears(-1) },
+        graph.Nodes<Person>().Where(person => person.Name == eve.Name));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Person>().Where(person => person.Name == diana.Name),
+        new Knows { Since = DateTime.UtcNow.AddMonths(-6) },
+        graph.Nodes<Person>().Where(person => person.Name == eve.Name));
 
     Console.WriteLine("✓ Created 5 people and their relationships\n");
 
@@ -94,13 +109,13 @@ try
     Console.WriteLine("\n3. Graph Traversal Examples...");
 
     // Depth 0: Just the node
-    alice = await graph.GetNodeAsync<Person>(alice.Id);
+    alice = await graph.Nodes<Person>().Where(person => person.Name == alice.Name).SingleAsync();
     Console.WriteLine($"\nAlice with depth 0:");
     Console.WriteLine($"  - Name: {alice.Name}");
 
     // Depth 1: Node with immediate relationships
     var aliceKnowsDepth1 = await graph.Nodes<Person>()
-        .Where(p => p.Id == alice.Id)
+        .Where(p => p.Name == alice.Name)
         .Traverse<Knows, Person>()
         .ToListAsync();
 
@@ -110,7 +125,7 @@ try
 
     // Depth 2: Two levels of relationships
     var aliceKnowsDepth2 = await graph.Nodes<Person>()
-        .Where(p => p.Id == alice.Id)
+        .Where(p => p.Name == alice.Name)
         .Traverse<Knows, Person>(2)
         .ToListAsync();
 
@@ -149,23 +164,23 @@ try
 
     foreach (var person1 in allPeople)
     {
-        foreach (var person2 in allPeople.Where(p => p.Id != person1.Id && string.Compare(p.Id, person1.Id, StringComparison.Ordinal) > 0))
+        foreach (var person2 in allPeople.Where(p => string.Compare(p.Name, person1.Name, StringComparison.Ordinal) > 0))
         {
             // Get people that person1 knows
             var person1Knows = await graph.Nodes<Person>()
-                .Where(p => p.Id == person1.Id)
+                .Where(p => p.Name == person1.Name)
                 .Traverse<Knows, Person>()
                 .ToListAsync();
 
             // Get people that person2 knows
             var person2Knows = await graph.Nodes<Person>()
-                .Where(p => p.Id == person2.Id)
+                .Where(p => p.Name == person2.Name)
                 .Traverse<Knows, Person>()
                 .ToListAsync();
 
             // Find mutual connections
             var mutual = person1Knows
-                .Where(p1k => person2Knows.Any(p2k => p2k.Id == p1k.Id))
+                .Where(p1k => person2Knows.Any(p2k => p2k.Name == p1k.Name))
                 .ToList();
 
             if (mutual.Count > 0)
@@ -190,16 +205,16 @@ try
 
     // Get Alice's connections
     var aliceConnections = await graph.Nodes<Person>()
-        .Where(p => p.Id == alice.Id)
+        .Where(p => p.Name == alice.Name)
         .Traverse<Knows, Person>()
-        .Select(p => p.Id)
+        .Select(p => p.Name)
         .ToListAsync();
 
     // Find Bob's connections that are also in Alice's connections
     var mutualBetweenAliceAndBob = await graph.Nodes<Person>()
-        .Where(p => p.Id == bob.Id)
+        .Where(p => p.Name == bob.Name)
         .Traverse<Knows, Person>()
-        .Where(p => aliceConnections.Contains(p.Id))
+        .Where(p => aliceConnections.Contains(p.Name))
         .ToListAsync();
 
     if (mutualBetweenAliceAndBob.Count > 0)
@@ -221,10 +236,10 @@ try
 
     // Group by person to get their connections
     var connectionsByPerson = allConnections
-        .GroupBy(path => path.StartNode.Id)
+        .GroupBy(path => path.StartNode.Name)
         .ToDictionary(
             g => g.Key,
-            g => g.Select(path => path.EndNode.Id).ToHashSet()
+            g => g.Select(path => path.EndNode.Name).ToHashSet()
         );
 
     // Calculate mutual connection counts for each pair
@@ -232,10 +247,10 @@ try
 
     foreach (var person1 in allPeople)
     {
-        foreach (var person2 in allPeople.Where(p => string.Compare(p.Id, person1.Id, StringComparison.Ordinal) > 0))
+        foreach (var person2 in allPeople.Where(p => string.Compare(p.Name, person1.Name, StringComparison.Ordinal) > 0))
         {
-            if (connectionsByPerson.TryGetValue(person1.Id, out var p1Connections) &&
-                connectionsByPerson.TryGetValue(person2.Id, out var p2Connections))
+            if (connectionsByPerson.TryGetValue(person1.Name, out var p1Connections) &&
+                connectionsByPerson.TryGetValue(person2.Name, out var p2Connections))
             {
                 var mutualCount = p1Connections.Intersect(p2Connections).Count();
                 if (mutualCount > 0)

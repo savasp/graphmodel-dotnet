@@ -8,7 +8,4 @@ using Cvoya.Graph;
 [Relationship("MemoryToMemorySourceNode")]
 public record MemoryToMemorySourceNode : Relationship
 {
-    public MemoryToMemorySourceNode() : base(string.Empty, string.Empty) { }
-
-    public MemoryToMemorySourceNode(string memoryId, string memorySourceNodeId) : base(memoryId, memorySourceNodeId) { }
 }

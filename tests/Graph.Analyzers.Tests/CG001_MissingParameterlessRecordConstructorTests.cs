@@ -112,8 +112,6 @@ public class CG001_MissingParameterlessRecordConstructorTests
                 public string Id { get; init; } = string.Empty;
                 public string Type { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public string CustomProperty { get; set; } = string.Empty;
             }
             """;
@@ -137,7 +135,7 @@ public class CG001_MissingParameterlessRecordConstructorTests
         var test = """
             using Cvoya.Graph;
             
-            public record TestRelationship(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction)
+            public record TestRelationship : Relationship
             {
                 public string CustomProperty { get; set; } = string.Empty;
             }

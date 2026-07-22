@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-WHERE NOT ((src.FirstName IS NULL OR size(src.FirstName) = 0))
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND NOT ((src.FirstName IS NULL OR size(src.FirstName) = 0))
 OPTIONAL MATCH src_path = (src)-[rels*1..5]->(prop)
 WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)
 WITH src,

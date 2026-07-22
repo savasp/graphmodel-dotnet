@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH (src:CustomPropertyLabelNode)
-WHERE src.last_name = $p0
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND src.last_name = $p0
 RETURN {
                 Node: src,
                 ComplexProperties: []

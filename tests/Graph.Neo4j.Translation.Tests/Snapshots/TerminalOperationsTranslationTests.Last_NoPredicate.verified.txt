@@ -1,5 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true })
 ORDER BY src.LastName DESC
 LIMIT 1
 OPTIONAL MATCH src_path = (src)-[rels*1..5]->(prop)

@@ -47,6 +47,11 @@ public sealed class ComplexPropertyMutationFragmentTests
             ["HOME ADDRESS"],
             ["old scalar"]);
 
+        Assert.StartsWith(
+            "SET target.__graphModelComplexMutationLock = true\n" +
+            "REMOVE target.__graphModelComplexMutationLock",
+            fragment.Cypher,
+            StringComparison.Ordinal);
         Assert.Contains(
             $"__complexOwnerRelationship.{ComplexPropertyStorage.RelationshipMarkerProperty} = true",
             fragment.Cypher,
@@ -64,8 +69,8 @@ public sealed class ComplexPropertyMutationFragmentTests
 
         var nodeProperties = Assert.IsType<Dictionary<string, object?>>(fragment.Parameters["__complexNodeProperties0"]);
         var relationshipProperties = Assert.IsType<Dictionary<string, object>>(fragment.Parameters["__complexRelationshipProperties0"]);
-        Assert.DoesNotContain(nameof(IEntity.Id), nodeProperties.Keys);
-        Assert.DoesNotContain(nameof(IEntity.Id), relationshipProperties.Keys);
+        Assert.DoesNotContain("Id", nodeProperties.Keys);
+        Assert.DoesNotContain("Id", relationshipProperties.Keys);
         Assert.True((bool)relationshipProperties[ComplexPropertyStorage.RelationshipMarkerProperty]);
         Assert.Equal(0, relationshipProperties["SequenceNumber"]);
     }

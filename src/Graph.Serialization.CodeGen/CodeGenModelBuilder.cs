@@ -458,12 +458,7 @@ internal sealed class CodeGenModelBuilder
     {
         var parameterName = parameter.Name;
 
-        return parameterName.ToLowerInvariant() switch
-        {
-            "startnodeid" => "StartNodeId",
-            "endnodeid" => "EndNodeId",
-            _ => Utils.GetPropertyNameFromParameter(parameter)
-        };
+        return Utils.GetPropertyNameFromParameter(parameter);
     }
 
     private static string FindPropertyLabelForParameter(

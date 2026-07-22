@@ -1,9 +1,10 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-WHERE src.FirstName = $p0
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND src.FirstName = $p0
 OPTIONAL MATCH (src:Person|Manager)-[r:KNOWS]->(tgt:Person|Manager)
+WHERE (r IS NULL OR r.__graphModelComplexProperty IS NULL)
 LIMIT 5
-RETURN src.Id AS SourceId, CASE WHEN tgt IS NULL THEN null ELSE tgt.Id END AS TargetId
+RETURN src.TestKey AS SourceKey, CASE WHEN tgt IS NULL THEN null ELSE tgt.TestKey END AS TargetKey
 
 == Parameters ==
 p0 = "Alice"

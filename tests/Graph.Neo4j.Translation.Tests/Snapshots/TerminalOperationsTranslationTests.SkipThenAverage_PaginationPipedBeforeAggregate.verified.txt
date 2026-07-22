@@ -1,5 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true })
 WITH src
 SKIP 5
 RETURN avg(src.Age)

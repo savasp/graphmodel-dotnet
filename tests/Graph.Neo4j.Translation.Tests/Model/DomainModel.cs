@@ -11,6 +11,8 @@ namespace Cvoya.Graph.Neo4j.Translation.Tests.Model;
 [Node("Person")]
 public record Person : Node
 {
+    public string TestKey { get; set; } = string.Empty;
+
     public string FirstName { get; set; } = string.Empty;
 
     public string LastName { get; set; } = string.Empty;
@@ -97,13 +99,17 @@ public record Region
 }
 
 [Relationship("KNOWS")]
-public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+public record Knows : Relationship
 {
+    public string GroupKey { get; set; } = string.Empty;
+
+    public string AlternateGroupKey { get; set; } = string.Empty;
+
     public int Since { get; set; }
 }
 
 [Relationship("WORKS_AT")]
-public record WorksAt(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+public record WorksAt : Relationship
 {
     public string Title { get; set; } = string.Empty;
 
@@ -134,10 +140,16 @@ public abstract record SpacedLabelNode : Node
 /// one type name, not split it (#214).
 /// </summary>
 [Relationship("PIPE|SEPARATED")]
-public record PipeTypedRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+public record PipeTypedRelationship : Relationship
+{
+    public string Marker { get; set; } = string.Empty;
+}
 
 /// <summary>
 /// A relationship whose type contains a backtick, the escape character itself (#214).
 /// </summary>
 [Relationship("BACK`TICK")]
-public record BacktickTypedRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+public record BacktickTypedRelationship : Relationship
+{
+    public string Marker { get; set; } = string.Empty;
+}

@@ -248,10 +248,10 @@ public class RuntimeLabelCollisionTests : IDisposable
             using Cvoya.Graph;
 
             [Relationship("RLC_EXPLICIT_A")]
-            public sealed record ExplicitLabelRelA(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public sealed record ExplicitLabelRelA : Relationship;
 
             [Relationship("RLC_EXPLICIT_A")]
-            public sealed record ExplicitLabelRelADuplicate(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public sealed record ExplicitLabelRelADuplicate : Relationship;
             """;
 
         RuntimeLabelCollisionFixtureAssembly.Run(
@@ -275,10 +275,10 @@ public class RuntimeLabelCollisionTests : IDisposable
             using Cvoya.Graph;
 
             [Relationship("RLC_UNIQUE_1")]
-            public sealed record UniqueRelOne(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public sealed record UniqueRelOne : Relationship;
 
             [Relationship("RLC_UNIQUE_2")]
-            public sealed record UniqueRelTwo(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public sealed record UniqueRelTwo : Relationship;
             """;
 
         RuntimeLabelCollisionFixtureAssembly.Run(
@@ -294,9 +294,9 @@ public class RuntimeLabelCollisionTests : IDisposable
             using Cvoya.Graph;
 
             [Relationship("RLC_INHERITING_BASE")]
-            public record InheritingBaseRel(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public record InheritingBaseRel : Relationship;
 
-            public sealed record InheritingDerivedRel(string StartNodeId, string EndNodeId) : InheritingBaseRel(StartNodeId, EndNodeId);
+            public sealed record InheritingDerivedRel : InheritingBaseRel;
             """;
 
         RuntimeLabelCollisionFixtureAssembly.Run(
@@ -312,10 +312,10 @@ public class RuntimeLabelCollisionTests : IDisposable
             using Cvoya.Graph;
 
             [Relationship("RLC_OWN_LABEL_BASE")]
-            public record OwnLabelBaseRel(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public record OwnLabelBaseRel : Relationship;
 
             [Relationship("RLC_OWN_LABEL_BASE")]
-            public sealed record OwnLabelDerivedRelSameLabel(string StartNodeId, string EndNodeId) : OwnLabelBaseRel(StartNodeId, EndNodeId);
+            public sealed record OwnLabelDerivedRelSameLabel : OwnLabelBaseRel;
             """;
 
         RuntimeLabelCollisionFixtureAssembly.Run(
@@ -336,7 +336,7 @@ public class RuntimeLabelCollisionTests : IDisposable
             public sealed record SharedNameEntity : Node;
 
             [Relationship("RLC_SharedName")]
-            public sealed record SharedNameRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public sealed record SharedNameRelationship : Relationship;
             """;
 
         RuntimeLabelCollisionFixtureAssembly.Run(
@@ -700,10 +700,10 @@ public class RuntimeLabelCollisionTests : IDisposable
             using Cvoya.Graph;
 
             [Relationship("Labels_RLC_REVERSE_EXPLICIT_REL")]
-            public sealed record ReverseExplicitRelA(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public sealed record ReverseExplicitRelA : Relationship;
 
             [Relationship("Labels_RLC_REVERSE_EXPLICIT_REL")]
-            public sealed record ReverseExplicitRelB(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public sealed record ReverseExplicitRelB : Relationship;
             """;
 
         RuntimeLabelCollisionFixtureAssembly.Run(
@@ -729,11 +729,11 @@ public class RuntimeLabelCollisionTests : IDisposable
             using Cvoya.Graph;
 
             [Relationship("Labels_RLC_REVERSE_REL")]
-            public sealed record ReverseLookupRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public sealed record ReverseLookupRelationship : Relationship;
 
             public sealed record ReverseLookupFallbackNode : Node;
 
-            public sealed record ReverseLookupFallbackRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public sealed record ReverseLookupFallbackRelationship : Relationship;
             """;
 
         RuntimeLabelCollisionFixtureAssembly.Run(
@@ -762,7 +762,7 @@ public class RuntimeLabelCollisionTests : IDisposable
             public sealed record ReverseSharedNameNode : Node;
 
             [Relationship("Labels_RLC_ReverseSharedName")]
-            public sealed record ReverseSharedNameRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            public sealed record ReverseSharedNameRelationship : Relationship;
             """;
 
         RuntimeLabelCollisionFixtureAssembly.Run(
@@ -794,7 +794,7 @@ public class RuntimeLabelCollisionTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Labels_SharedName_WarmOrderDoesNotChangeKindAwareOrLegacyResolution(bool relationshipFirst)
+    public void Labels_SharedName_WarmOrderDoesNotChangeKindAwareOrUntypedResolution(bool relationshipFirst)
     {
         Labels.ClearCachesForTesting();
 
@@ -1076,11 +1076,11 @@ public class RuntimeLabelCollisionTests : IDisposable
     private sealed record LabelsSharedNameNode : Node;
 
     [Relationship("Labels_RLC_SharedName")]
-    private sealed record LabelsSharedNameRelationship(string Start, string End) : Relationship(Start, End);
+    private sealed record LabelsSharedNameRelationship : Relationship;
 
     private sealed record LabelsKindOnlyNode : Node;
 
-    private sealed record LabelsKindOnlyRelationship(string Start, string End) : Relationship(Start, End);
+    private sealed record LabelsKindOnlyRelationship : Relationship;
 
     private sealed record LabelsGenericCollisionNode<T> : Node;
 
@@ -1189,7 +1189,7 @@ public class RuntimeLabelCollisionTests : IDisposable
     }
 
     [Fact]
-    public void ToDynamicNode_PropertyLabelCollidingWithBaseMetadata_Throws()
+    public void ToDynamicNode_IdLabelIsOrdinaryDomainData()
     {
         const string source = """
             using Cvoya.Graph;
@@ -1208,11 +1208,9 @@ public class RuntimeLabelCollisionTests : IDisposable
             {
                 var node = Assert.IsAssignableFrom<INode>(Activator.CreateInstance(types[0]));
 
-                var exception = Assert.Throws<GraphException>(() => node.ToDynamic());
+                var dynamicNode = node.ToDynamic();
 
-                Assert.Contains("Id", exception.Message, StringComparison.Ordinal);
-                Assert.Contains("ExternalId", exception.Message, StringComparison.Ordinal);
-                Assert.Contains("Cvoya.Graph.Node.Id", exception.Message, StringComparison.Ordinal);
+                Assert.Equal(string.Empty, dynamicNode.Properties["Id"]);
             });
     }
 

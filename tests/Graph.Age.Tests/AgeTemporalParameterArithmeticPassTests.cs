@@ -17,7 +17,7 @@ public sealed class AgeTemporalParameterArithmeticPassTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void FoldsTemporalParameterArithmeticToLegacyGoldenOutput(bool useString)
+    public void FoldsTemporalParameterArithmeticToStableGoldenOutput(bool useString)
     {
         var timestamp = new DateTime(2026, 7, 11, 8, 0, 0, DateTimeKind.Utc);
         var statement = Statement(

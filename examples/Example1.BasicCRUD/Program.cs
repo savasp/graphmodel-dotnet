@@ -76,22 +76,29 @@ try
     // Create relationships
     Console.WriteLine("2. Creating relationships...");
 
-    var aliceWorksFor = new WorksFor(alice.Id, techCorp.Id)
+    var aliceWorksFor = new WorksFor
     {
         Position = "Senior Software Engineer",
         StartDate = new DateTime(2022, 3, 15),
         Salary = 95000
     };
 
-    var bobWorksFor = new WorksFor(bob.Id, techCorp.Id)
+    var bobWorksFor = new WorksFor
     {
         Position = "Marketing Manager",
         StartDate = new DateTime(2021, 8, 1),
         Salary = 75000
     };
 
-    await graph.CreateRelationshipAsync(aliceWorksFor);
-    await graph.CreateRelationshipAsync(bobWorksFor);
+    var companySelection = graph.Nodes<Company>().Where(company => company.Name == techCorp.Name);
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Person>().Where(person => person.Email == alice.Email),
+        aliceWorksFor,
+        companySelection);
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Person>().Where(person => person.Email == bob.Email),
+        bobWorksFor,
+        companySelection);
 
     Console.WriteLine($"✓ Created relationship: {alice.Name} works for {techCorp.Name}");
     Console.WriteLine($"✓ Created relationship: {bob.Name} works for {techCorp.Name}\n");
@@ -143,24 +150,25 @@ try
     // Update Alice's age and department
     if (foundAlice != null)
     {
-        foundAlice.Age = 31; // Update age
-        foundAlice.Department = "Engineering"; // Update department
-        await graph.UpdateNodeAsync(foundAlice);
-        Console.WriteLine($"✓ Updated Alice's age to {foundAlice.Age} and department to {foundAlice.Department}");
+        await graph.Nodes<Person>()
+            .Where(person => person.Email == foundAlice.Email)
+            .UpdateAsync(setters => setters
+                .SetProperty(person => person.Age, 31)
+                .SetProperty(person => person.Department, "Engineering"));
+        Console.WriteLine("✓ Updated Alice's age to 31 and department to Engineering");
     }
 
     // Update Bob's salary
-    var bobRelationship = await graph.Nodes<Person>()
+    var bobRelationship = graph.Nodes<Person>()
         .PathSegments<Person, WorksFor, Company>()
         .Where(r => r.StartNode.Name == "Bob Smith")
-        .Select(r => r.Relationship)
-        .FirstOrDefaultAsync();
+        .Select(r => r.Relationship);
 
-    if (bobRelationship != null)
+    if (await bobRelationship.AnyAsync())
     {
-        bobRelationship.Salary = 80000; // Update salary
-        await graph.UpdateRelationshipAsync(bobRelationship);
-        Console.WriteLine($"✓ Updated Bob's salary to ${bobRelationship.Salary:N0}");
+        await bobRelationship.UpdateAsync(
+            setters => setters.SetProperty(relationship => relationship.Salary, 80000));
+        Console.WriteLine("✓ Updated Bob's salary to $80,000");
     }
 
     // ==== VERIFY UPDATES ====
@@ -191,7 +199,9 @@ try
     Console.WriteLine($"✓ Created temporary employee: {tempPerson.Name}");
 
     // Delete the temporary person
-    await graph.DeleteNodeAsync(tempPerson.Id);
+    await graph.Nodes<Person>()
+        .Where(person => person.Email == tempPerson.Email)
+        .DeleteAsync();
     Console.WriteLine($"✓ Deleted temporary employee: {tempPerson.Name}");
 
     // Verify deletion

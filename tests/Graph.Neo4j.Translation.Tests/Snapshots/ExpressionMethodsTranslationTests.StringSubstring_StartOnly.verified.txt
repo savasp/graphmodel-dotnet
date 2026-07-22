@@ -1,5 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true })
 RETURN substring(src.FirstName, $p0)
 
 == Parameters ==

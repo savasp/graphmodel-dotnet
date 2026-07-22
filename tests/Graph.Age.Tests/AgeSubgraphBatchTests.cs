@@ -6,8 +6,6 @@ namespace Cvoya.Graph.Age.Tests;
 using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.CompatibilityTests;
-using Cvoya.Graph.Querying;
-using Cvoya.Graph.Querying.Commands;
 using Npgsql;
 using Npgsql.Age;
 
@@ -33,187 +31,20 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
                 () => Interlocked.Increment(ref batchExecutions)));
 
         // Warm lazy schema initialization and the measured graph path before resetting the seam.
-        await CreateNestedSubgraphAsync(store.Graph);
+        await CreateNestedSubgraphAsync(store.Graph, "warm");
         Interlocked.Exchange(ref batchExecutions, 0);
 
-        var (source, target) = await CreateNestedSubgraphAsync(store.Graph);
+        var (source, target) = await CreateNestedSubgraphAsync(store.Graph, "measured");
 
         Assert.Equal(1, Volatile.Read(ref batchExecutions));
-        var fetchedSource = await store.Graph.GetNodeAsync<Class1>(
-            source.Id,
-            null,
-            TestContext.Current.CancellationToken);
-        var fetchedTarget = await store.Graph.GetNodeAsync<Class1>(
-            target.Id,
-            null,
-            TestContext.Current.CancellationToken);
-        Assert.Equal("source nested", fetchedSource.A?.B?.Property1);
-        Assert.Equal("target nested", fetchedTarget.A?.B?.Property1);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task CreateAsync_LaterBatchValidationFailure_RollsBackEveryWrite(bool callerOwnsTransaction)
-    {
-        await using var dataSource = CreateDataSource();
-        await using var store = await graphCleanup.CreateStoreAsync(
-            dataSource,
-            "cvoya_subgraph_batch",
-            TestContext.Current.CancellationToken);
-        var graph = store.Graph;
-        var cancellationToken = TestContext.Current.CancellationToken;
-
-        var existingSource = new Person { FirstName = "Existing source" };
-        var existingTarget = new Person { FirstName = "Existing target" };
-        await graph.CreateNodeAsync(existingSource, null, cancellationToken);
-        await graph.CreateNodeAsync(existingTarget, null, cancellationToken);
-        var existingRelationship = new Knows(existingSource, existingTarget);
-        await graph.CreateRelationshipAsync(existingRelationship, null, cancellationToken);
-
-        var newSource = new Person { FirstName = "Rolled back source" };
-        var newTarget = new Person { FirstName = "Rolled back target" };
-        var duplicateRelationship = new Knows(newSource, newTarget)
-        {
-            Id = existingRelationship.Id,
-        };
-
-        if (callerOwnsTransaction)
-        {
-            await using var transaction = await graph.GetTransactionAsync(cancellationToken);
-            await Assert.ThrowsAsync<GraphException>(() => graph.CreateAsync(
-                newSource,
-                duplicateRelationship,
-                newTarget,
-                null,
-                transaction,
-                cancellationToken));
-
-            var survivor = new Person { FirstName = "After savepoint rollback" };
-            await graph.CreateNodeAsync(survivor, transaction, cancellationToken);
-            await transaction.CommitAsync();
-            Assert.Equal(
-                survivor.Id,
-                (await graph.GetNodeAsync<Person>(survivor.Id, null, cancellationToken)).Id);
-        }
-        else
-        {
-            await Assert.ThrowsAsync<GraphException>(() => graph.CreateAsync(
-                newSource,
-                duplicateRelationship,
-                newTarget,
-                null,
-                null,
-                cancellationToken));
-        }
-
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            graph.GetNodeAsync<Person>(newSource.Id, null, cancellationToken));
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            graph.GetNodeAsync<Person>(newTarget.Id, null, cancellationToken));
-        Assert.Equal(
-            existingRelationship.Id,
-            (await graph.GetRelationshipAsync<Knows>(existingRelationship.Id, null, cancellationToken)).Id);
-    }
-
-    [Fact]
-    public async Task CreateAsync_CreateOnly_SameEndpointIds_ThrowsAndCreatesNothing()
-    {
-        await using var dataSource = CreateDataSource();
-        await using var store = await graphCleanup.CreateStoreAsync(
-            dataSource,
-            "cvoya_subgraph_batch",
-            TestContext.Current.CancellationToken);
-        var node = new Person { FirstName = "Self" };
-        var relationship = new Knows(node, node);
-
-        // Create-only creates both endpoints, so a shared id would leave two roots answering to it.
-        var exception = await Assert.ThrowsAsync<GraphException>(() => store.Graph.CreateAsync(
-            node,
-            relationship,
-            node,
-            null,
-            null,
-            TestContext.Current.CancellationToken));
-
-        Assert.Equal("Create-only subgraph endpoints must have distinct IDs.", exception.Message);
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            store.Graph.GetNodeAsync<Person>(node.Id, null, TestContext.Current.CancellationToken));
-        Assert.Empty(await store.Graph.Nodes<Person>().ToListAsync(TestContext.Current.CancellationToken));
-        Assert.Empty(await store.Graph.Relationships<Knows>()
-            .ToListAsync(TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
-    public async Task CreateAsync_CreateMissingEndpoints_DuplicateRelationshipId_ThrowsAndCreatesNothing()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        await using var dataSource = CreateDataSource();
-        await using var store = await graphCleanup.CreateStoreAsync(
-            dataSource,
-            "cvoya_subgraph_batch",
-            cancellationToken);
-        var graph = store.Graph;
-
-        var existingSource = new Person { FirstName = "Existing source" };
-        var existingTarget = new Person { FirstName = "Existing target" };
-        await graph.CreateNodeAsync(existingSource, null, cancellationToken);
-        await graph.CreateNodeAsync(existingTarget, null, cancellationToken);
-        var existingRelationship = new Knows(existingSource, existingTarget);
-        await graph.CreateRelationshipAsync(existingRelationship, null, cancellationToken);
-
-        var newSource = new Person { FirstName = "Merged source" };
-        var newTarget = new Person { FirstName = "Merged target" };
-        var duplicateRelationship = new Knows(newSource, newTarget)
-        {
-            Id = existingRelationship.Id,
-        };
-
-        var exception = await Assert.ThrowsAsync<GraphException>(() => graph.CreateAsync(
-            newSource,
-            duplicateRelationship,
-            newTarget,
-            new GraphOperationOptions { CreateMissingEndpoints = true },
-            null,
-            cancellationToken));
-
-        Assert.Equal($"Relationship with ID '{existingRelationship.Id}' already exists.", exception.Message);
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            graph.GetNodeAsync<Person>(newSource.Id, null, cancellationToken));
-        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
-            graph.GetNodeAsync<Person>(newTarget.Id, null, cancellationToken));
-        Assert.Single(await graph.Relationships<Knows>().ToListAsync(cancellationToken));
-    }
-
-    [Fact]
-    public async Task CreateAsync_CreateMissingEndpoints_SupportsSelfRelationship()
-    {
-        await using var dataSource = CreateDataSource();
-        await using var store = await graphCleanup.CreateStoreAsync(
-            dataSource,
-            "cvoya_subgraph_batch",
-            TestContext.Current.CancellationToken);
-        var node = new Person { FirstName = "Self" };
-        var relationship = new Knows(node, node);
-
-        await store.Graph.CreateAsync(
-            node,
-            relationship,
-            node,
-            new GraphOperationOptions { CreateMissingEndpoints = true },
-            null,
-            TestContext.Current.CancellationToken);
-
-        Assert.Equal(
-            node.Id,
-            (await store.Graph.GetNodeAsync<Person>(node.Id, null, TestContext.Current.CancellationToken)).Id);
-        Assert.Equal(
-            relationship.Id,
-            (await store.Graph.GetRelationshipAsync<Knows>(
-                relationship.Id,
-                null,
-                TestContext.Current.CancellationToken)).Id);
-        Assert.Single(await store.Graph.Nodes<Person>().ToListAsync(TestContext.Current.CancellationToken));
+        var fetchedSource = await store.Graph.Nodes<Class1>()
+            .Where(node => node.Property1 == source.Property1)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        var fetchedTarget = await store.Graph.Nodes<Class1>()
+            .Where(node => node.Property1 == target.Property1)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("measured source nested", fetchedSource.A?.B?.Property1);
+        Assert.Equal("measured target nested", fetchedTarget.A?.B?.Property1);
     }
 
     [Fact]
@@ -238,20 +69,20 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
         await store.Graph.CreateNodeAsync(selectedSource, cancellationToken: cancellationToken);
         await store.Graph.CreateNodeAsync(selectedTarget, cancellationToken: cancellationToken);
         var selectedQuery = store.Graph.Nodes<Person>()
-            .Where(person => person.Id == selectedSource.Id);
+            .Where(person => person.TestKey == selectedSource.TestKey);
         var selectedTargetQuery = store.Graph.Nodes<Person>()
-            .Where(person => person.Id == selectedTarget.Id);
-        await CreateSelectedSelectedCommandAsync(
+            .Where(person => person.TestKey == selectedTarget.TestKey);
+        await store.Graph.CreateRelationshipAsync(
             selectedQuery,
-            new Knows(string.Empty, string.Empty),
+            new Knows(),
             selectedTargetQuery,
-            cancellationToken);
+            cancellationToken: cancellationToken);
         var hybridTarget = CreateNestedNode("hybrid");
-        await CreateSelectedNewCommandAsync(
+        await store.Graph.CreateAsync(
             selectedQuery,
-            new Knows(string.Empty, string.Empty),
+            new Knows(),
             hybridTarget,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         var collectionEndpoint = new Class2
         {
@@ -270,32 +101,27 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
                 },
             },
         };
-        await CreateAllNewCommandAsync(
-            store.Graph,
+        await store.Graph.CreateAsync(
             collectionEndpoint,
-            new Knows(string.Empty, string.Empty),
+            new Knows(),
             collectionEndpoint,
-            GraphRelationshipCreationMode.Standard,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         var selfLoop = CreateNestedNode("self loop");
-        await CreateAllNewCommandAsync(
-            store.Graph,
+        await store.Graph.CreateSelfLoopAsync(
             selfLoop,
-            new Knows(string.Empty, string.Empty),
-            selfLoop,
-            GraphRelationshipCreationMode.SelfLoop,
-            cancellationToken);
+            new Knows(),
+            cancellationToken: cancellationToken);
 
         Assert.Equal(3, Volatile.Read(ref batchExecutions));
         Assert.Equal(
             2,
             await store.Graph.Nodes<Class2>()
-                .Where(node => node.Id == collectionEndpoint.Id)
+                .Where(node => node.Property1 == collectionEndpoint.Property1)
                 .CountAsync(cancellationToken));
-        Assert.Equal("hybrid nested", (await store.Graph.GetNodeAsync<Class1>(
-            hybridTarget.Id,
-            cancellationToken: cancellationToken)).A?.B?.Property1);
+        Assert.Equal("hybrid nested", (await store.Graph.Nodes<Class1>()
+            .Where(node => node.Property1 == hybridTarget.Property1)
+            .SingleAsync(cancellationToken)).A?.B?.Property1);
         await AssertNoTransientCorrelationOrSyntheticComplexIdsAsync(store.Graph, cancellationToken);
     }
 
@@ -336,19 +162,18 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
                     : command));
         var source = CreateNestedNode($"failed {failedCommand} source");
         var target = CreateNestedNode($"failed {failedCommand} target");
-        var relationship = new Knows(string.Empty, string.Empty);
+        var relationship = new Knows();
 
         if (callerOwnsTransaction)
         {
             await using var transaction = await store.Graph.GetTransactionAsync(cancellationToken);
-            await Assert.ThrowsAsync<GraphException>(() => CreateAllNewCommandAsync(
-                store.Graph,
+            await Assert.ThrowsAsync<GraphException>(() => store.Graph.CreateAsync(
                 source,
                 relationship,
                 target,
-                GraphRelationshipCreationMode.Standard,
-                cancellationToken,
-                transaction));
+                RelationshipDirection.Outgoing,
+                transaction,
+                cancellationToken));
 
             await store.Graph.CreateNodeAsync(
                 new Person { FirstName = "caller transaction remains usable" },
@@ -358,13 +183,11 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
         }
         else
         {
-            await Assert.ThrowsAsync<GraphException>(() => CreateAllNewCommandAsync(
-                store.Graph,
+            await Assert.ThrowsAsync<GraphException>(() => store.Graph.CreateAsync(
                 source,
                 relationship,
                 target,
-                GraphRelationshipCreationMode.Standard,
-                cancellationToken));
+                cancellationToken: cancellationToken));
         }
 
         Assert.Empty(await store.Graph.Nodes<Class1>().ToListAsync(cancellationToken));
@@ -386,13 +209,11 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
         await Task.WhenAll(Enumerable.Range(0, operationCount).Select(_ =>
         {
             var equalEndpoint = CreateNestedNode("parallel equal");
-            return CreateAllNewCommandAsync(
-                store.Graph,
+            return store.Graph.CreateAsync(
                 equalEndpoint,
-                new Knows(string.Empty, string.Empty),
+                new Knows(),
                 equalEndpoint,
-                GraphRelationshipCreationMode.Standard,
-                cancellationToken);
+                cancellationToken: cancellationToken);
         }));
 
         Assert.Equal(operationCount * 2, await store.Graph.Nodes<Class1>().CountAsync(cancellationToken));
@@ -400,34 +221,34 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
         await AssertNoTransientCorrelationOrSyntheticComplexIdsAsync(store.Graph, cancellationToken);
     }
 
-    private static async Task<(Class1 Source, Class1 Target)> CreateNestedSubgraphAsync(IGraph graph)
+    private static async Task<(Class1 Source, Class1 Target)> CreateNestedSubgraphAsync(
+        IGraph graph,
+        string prefix)
     {
         var source = new Class1
         {
-            Property1 = "source",
+            Property1 = $"{prefix} source",
             A = new ComplexClassA
             {
-                Property1 = "source level one",
-                B = new ComplexClassB { Property1 = "source nested" },
+                Property1 = $"{prefix} source level one",
+                B = new ComplexClassB { Property1 = $"{prefix} source nested" },
             },
         };
         var target = new Class1
         {
-            Property1 = "target",
+            Property1 = $"{prefix} target",
             A = new ComplexClassA
             {
-                Property1 = "target level one",
-                B = new ComplexClassB { Property1 = "target nested" },
+                Property1 = $"{prefix} target level one",
+                B = new ComplexClassB { Property1 = $"{prefix} target nested" },
             },
         };
-        var relationship = new Knows(source, target);
+        var relationship = new Knows();
         await graph.CreateAsync(
             source,
             relationship,
             target,
-            null,
-            null,
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
         return (source, target);
     }
 
@@ -440,103 +261,6 @@ public sealed class AgeSubgraphBatchTests(AgeGraphCleanupFixture graphCleanup)
             B = new ComplexClassB { Property1 = $"{value} nested" },
         },
     };
-
-    private static async Task CreateSelectedNewCommandAsync<TSource>(
-        IGraphQueryable<TSource> source,
-        IRelationship relationship,
-        INode target,
-        CancellationToken cancellationToken)
-        where TSource : class, INode
-    {
-        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(source.Provider);
-        await provider.InWriteTransactionAsync(
-            async (context, token) =>
-            {
-                var selected = await GraphCommandSelection.SelectExactOneAsync(
-                    context,
-                    new GraphElementSelectionModel(
-                        GraphQueryModelBuilder.Build(source.Expression),
-                        GraphElementSelectionMode.ExactOne),
-                    source.Expression,
-                    GraphEndpointRole.Source,
-                    token);
-                await context.CreateRelationshipAsync(
-                    new SelectedGraphCommandEndpoint(selected),
-                    relationship,
-                    new NewGraphCommandEndpoint(target),
-                    RelationshipDirection.Outgoing,
-                    GraphRelationshipCreationMode.Standard,
-                    token);
-                return true;
-            },
-            cancellationToken);
-    }
-
-    private static async Task CreateSelectedSelectedCommandAsync<TSource, TTarget>(
-        IGraphQueryable<TSource> source,
-        IRelationship relationship,
-        IGraphQueryable<TTarget> target,
-        CancellationToken cancellationToken)
-        where TSource : class, INode
-        where TTarget : class, INode
-    {
-        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(source.Provider);
-        await provider.InWriteTransactionAsync(
-            async (context, token) =>
-            {
-                var selectedSource = await GraphCommandSelection.SelectExactOneAsync(
-                    context,
-                    new GraphElementSelectionModel(
-                        GraphQueryModelBuilder.Build(source.Expression),
-                        GraphElementSelectionMode.ExactOne),
-                    source.Expression,
-                    GraphEndpointRole.Source,
-                    token);
-                var selectedTarget = await GraphCommandSelection.SelectExactOneAsync(
-                    context,
-                    new GraphElementSelectionModel(
-                        GraphQueryModelBuilder.Build(target.Expression),
-                        GraphElementSelectionMode.ExactOne),
-                    target.Expression,
-                    GraphEndpointRole.Target,
-                    token);
-                await context.CreateRelationshipAsync(
-                    new SelectedGraphCommandEndpoint(selectedSource),
-                    relationship,
-                    new SelectedGraphCommandEndpoint(selectedTarget),
-                    RelationshipDirection.Outgoing,
-                    GraphRelationshipCreationMode.Standard,
-                    token);
-                return true;
-            },
-            cancellationToken);
-    }
-
-    private static async Task CreateAllNewCommandAsync(
-        IGraph graph,
-        INode source,
-        IRelationship relationship,
-        INode target,
-        GraphRelationshipCreationMode mode,
-        CancellationToken cancellationToken,
-        IGraphTransaction? transaction = null)
-    {
-        var provider = Assert.IsAssignableFrom<IGraphCommandProvider>(
-            graph.Nodes<INode>(transaction).Provider);
-        await provider.InWriteTransactionAsync(
-            async (context, token) =>
-            {
-                await context.CreateRelationshipAsync(
-                    new NewGraphCommandEndpoint(source),
-                    relationship,
-                    new NewGraphCommandEndpoint(target),
-                    RelationshipDirection.Outgoing,
-                    mode,
-                    token);
-                return true;
-            },
-            cancellationToken);
-    }
 
     private static async Task AssertNoTransientCorrelationOrSyntheticComplexIdsAsync(
         IGraph graph,

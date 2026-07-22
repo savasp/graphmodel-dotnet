@@ -8,6 +8,8 @@ public interface IAttributeValidationTests : IGraphTest
     [Node("CustomPersonLabel")]
     public record PersonWithCustomLabel : Node
     {
+        public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
+
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
     }
@@ -24,6 +26,8 @@ public interface IAttributeValidationTests : IGraphTest
 
     public record PersonWithoutLabel : Node
     {
+        public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
+
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
     }
@@ -86,8 +90,6 @@ public interface IAttributeValidationTests : IGraphTest
     [Relationship("CUSTOM_WORKS_WITH")]
     public record CustomWorksWith : Relationship
     {
-        public CustomWorksWith() : base(string.Empty, string.Empty) { }
-        public CustomWorksWith(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
 
         [Property(Label = "start_date")]
         public DateTime StartDate { get; set; } = DateTime.UtcNow;
@@ -98,8 +100,6 @@ public interface IAttributeValidationTests : IGraphTest
 
     public record WorksWithoutLabel : Relationship
     {
-        public WorksWithoutLabel() : base(string.Empty, string.Empty) { }
-        public WorksWithoutLabel(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
 
         public DateTime Since { get; set; } = DateTime.UtcNow;
     }
@@ -178,8 +178,6 @@ public interface IAttributeValidationTests : IGraphTest
     [Relationship("SCOPED_DOMAIN_KEY_REL_A")]
     public record ScopedDomainKeyRelationshipA : Relationship
     {
-        public ScopedDomainKeyRelationshipA() : base(string.Empty, string.Empty) { }
-        public ScopedDomainKeyRelationshipA(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
 
         [Property(IsKey = true)]
         public string DomainKey { get; set; } = string.Empty;
@@ -188,8 +186,6 @@ public interface IAttributeValidationTests : IGraphTest
     [Relationship("SCOPED_DOMAIN_KEY_REL_B")]
     public record ScopedDomainKeyRelationshipB : Relationship
     {
-        public ScopedDomainKeyRelationshipB() : base(string.Empty, string.Empty) { }
-        public ScopedDomainKeyRelationshipB(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
 
         [Property(IsKey = true)]
         public string DomainKey { get; set; } = string.Empty;
@@ -303,8 +299,6 @@ public interface IAttributeValidationTests : IGraphTest
     [Relationship("RelationshipWithKeyProperties")]
     public record RelationshipWithKeyProperties : Relationship
     {
-        public RelationshipWithKeyProperties() : base(string.Empty, string.Empty) { }
-        public RelationshipWithKeyProperties(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
 
         [Property(IsKey = true)]
         public string RelationshipId { get; set; } = string.Empty;
@@ -319,8 +313,6 @@ public interface IAttributeValidationTests : IGraphTest
     [Relationship("RelationshipWithValidationProperties")]
     public record RelationshipWithValidationProperties : Relationship
     {
-        public RelationshipWithValidationProperties() : base(string.Empty, string.Empty) { }
-        public RelationshipWithValidationProperties(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
         public double Strength { get; set; }
 
         [Property(MinLength = 1, MaxLength = 1000)]
@@ -404,14 +396,20 @@ public interface IAttributeValidationTests : IGraphTest
         await Graph.CreateNodeAsync(first, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(second, null, TestContext.Current.CancellationToken);
 
+        var firstSelection = Graph.Nodes<ScopedDomainKeyNodeA>()
+            .Where(node => node.DomainKey == first.DomainKey);
+        var secondSelection = Graph.Nodes<ScopedDomainKeyNodeB>()
+            .Where(node => node.DomainKey == second.DomainKey);
         await Graph.CreateRelationshipAsync(
-            new ScopedDomainKeyRelationshipA(first.Id, second.Id) { DomainKey = "same-value" },
-            null,
-            TestContext.Current.CancellationToken);
+            firstSelection,
+            new ScopedDomainKeyRelationshipA { DomainKey = "same-value" },
+            secondSelection,
+            cancellationToken: TestContext.Current.CancellationToken);
         await Graph.CreateRelationshipAsync(
-            new ScopedDomainKeyRelationshipB(first.Id, second.Id) { DomainKey = "same-value" },
-            null,
-            TestContext.Current.CancellationToken);
+            firstSelection,
+            new ScopedDomainKeyRelationshipB { DomainKey = "same-value" },
+            secondSelection,
+            cancellationToken: TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -428,7 +426,9 @@ public interface IAttributeValidationTests : IGraphTest
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Verify the node was created successfully
-        var retrieved = await Graph.GetNodeAsync<PersonWithIndexedProperties>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<PersonWithIndexedProperties>()
+            .Where(candidate => candidate.Email == person.Email)
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("test@example.com", retrieved.Email);
         Assert.Equal("123-456-7890", retrieved.PhoneNumber);
     }
@@ -459,7 +459,9 @@ public interface IAttributeValidationTests : IGraphTest
 
         await Graph.CreateNodeAsync(validPerson, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<PersonWithRequiredProperties>(validPerson.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<PersonWithRequiredProperties>()
+            .Where(candidate => candidate.FirstName == validPerson.FirstName)
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("John", retrieved.FirstName);
         Assert.Equal("Doe", retrieved.LastName);
         Assert.Equal("Robert", retrieved.MiddleName);
@@ -539,7 +541,9 @@ public interface IAttributeValidationTests : IGraphTest
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Verify the node was created successfully and all properties are set
-        var retrieved = await Graph.GetNodeAsync<PersonWithFullTextSearchProperties>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<PersonWithFullTextSearchProperties>()
+            .Where(candidate => candidate.Email == person.Email)
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(person.FirstName, retrieved.FirstName);
         Assert.Equal(person.LastName, retrieved.LastName);
         Assert.Equal(person.Email, retrieved.Email);
@@ -548,11 +552,11 @@ public interface IAttributeValidationTests : IGraphTest
 
         // Now, if we search for "John", we should find this person
         var searchResults = await Graph.SearchNodes<PersonWithFullTextSearchProperties>("John").ToListAsync(TestContext.Current.CancellationToken);
-        Assert.Contains(searchResults, p => p.Id == person.Id);
+        Assert.Contains(searchResults, candidate => candidate.Email == person.Email);
 
         // Searching for "Confidential" should not return this person since InternalNotes is excluded from indexing
         searchResults = await Graph.SearchNodes<PersonWithFullTextSearchProperties>("Confidential").ToListAsync(TestContext.Current.CancellationToken);
-        Assert.DoesNotContain(searchResults, p => p.Id == person.Id);
+        Assert.DoesNotContain(searchResults, candidate => candidate.Email == person.Email);
     }
 
     [Fact]
@@ -582,7 +586,9 @@ public interface IAttributeValidationTests : IGraphTest
 
         await Graph.CreateNodeAsync(validPerson, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<PersonWithValidationProperties>(validPerson.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<PersonWithValidationProperties>()
+            .Where(candidate => candidate.Email == validPerson.Email)
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("John", retrieved.FirstName);
         Assert.Equal("Doe", retrieved.LastName);
         Assert.Equal("john.doe@example.com", retrieved.Email);
@@ -646,7 +652,9 @@ public interface IAttributeValidationTests : IGraphTest
 
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<PersonWithMixedProperties>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<PersonWithMixedProperties>()
+            .Where(candidate => candidate.EmployeeId == person.EmployeeId)
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("EMP001", retrieved.EmployeeId);
         Assert.Equal("John", retrieved.FirstName);
         Assert.Equal("Doe", retrieved.LastName);
@@ -684,24 +692,24 @@ public interface IAttributeValidationTests : IGraphTest
 
         var relationship = new RelationshipWithKeyProperties
         {
-            StartNodeId = person1.Id,
-            EndNodeId = person2.Id,
             RelationshipId = "REL001",
             TypeCode = "FRIEND",
             CreatedAt = DateTime.UtcNow
         };
 
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(
+            person1, relationship, person2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetRelationshipAsync<RelationshipWithKeyProperties>(relationship.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Relationships<RelationshipWithKeyProperties>()
+            .Where(candidate => candidate.RelationshipId == relationship.RelationshipId &&
+                candidate.TypeCode == relationship.TypeCode)
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("REL001", retrieved.RelationshipId);
         Assert.Equal("FRIEND", retrieved.TypeCode);
 
         // Try to create another relationship with the same composite key
         var relationship2 = new RelationshipWithKeyProperties
         {
-            StartNodeId = person1.Id,
-            EndNodeId = person2.Id,
             RelationshipId = "REL001", // Same relationship ID
             TypeCode = "FRIEND", // Same type code
             CreatedAt = DateTime.UtcNow
@@ -710,7 +718,8 @@ public interface IAttributeValidationTests : IGraphTest
         // This should throw an exception due to composite key constraint violation
         await Assert.ThrowsAsync<GraphException>(async () =>
         {
-            await Graph.CreateRelationshipAsync(relationship2, null, TestContext.Current.CancellationToken);
+            await Graph.ConnectAsync(
+                person1, relationship2, person2, cancellationToken: TestContext.Current.CancellationToken);
         });
     }
 
@@ -726,8 +735,6 @@ public interface IAttributeValidationTests : IGraphTest
         // Test validation failure
         var invalidRelationship = new RelationshipWithValidationProperties
         {
-            StartNodeId = person1.Id,
-            EndNodeId = person2.Id,
             Strength = 15.0, // Too high (max 10.0)
             Notes = "" // Too short (min length 1)
         };
@@ -735,21 +742,22 @@ public interface IAttributeValidationTests : IGraphTest
         // This should throw validation exceptions
         await Assert.ThrowsAsync<GraphException>(async () =>
         {
-            await Graph.CreateRelationshipAsync(invalidRelationship, null, TestContext.Current.CancellationToken);
+            await Graph.ConnectAsync(
+                person1, invalidRelationship, person2, cancellationToken: TestContext.Current.CancellationToken);
         });
 
         // Test with valid data
         var validRelationship = new RelationshipWithValidationProperties
         {
-            StartNodeId = person1.Id,
-            EndNodeId = person2.Id,
             Strength = 7.5, // Valid strength
             Notes = "Good working relationship" // Valid notes
         };
 
-        await Graph.CreateRelationshipAsync(validRelationship, null, TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(
+            person1, validRelationship, person2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetRelationshipAsync<RelationshipWithValidationProperties>(validRelationship.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Relationships<RelationshipWithValidationProperties>()
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(7.5, retrieved.Strength);
         Assert.Equal("Good working relationship", retrieved.Notes);
     }
@@ -815,11 +823,7 @@ public interface IAttributeValidationTests : IGraphTest
         Assert.False(nodeSchema.HasKey());
         Assert.Empty(nodeSchema.GetKeyProperties());
 
-        var idSchema = nodeSchema.Properties[nameof(IEntity.Id)];
-        Assert.False(idSchema.IsKey);
-        Assert.False(idSchema.IsUnique);
-        Assert.False(idSchema.IsRequired);
-        Assert.False(idSchema.IsIndexed);
+        Assert.DoesNotContain("Id", nodeSchema.Properties.Keys);
 
         // Check default values for properties without explicit attributes
         var addressSchema = nodeSchema.Properties["Address"];
@@ -869,7 +873,7 @@ public interface IAttributeValidationTests : IGraphTest
 
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<PersonWithCustomLabel>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.FindNodeByTestKeyAsync<PersonWithCustomLabel>(person.TestKey, null, TestContext.Current.CancellationToken);
         Assert.Equal("John", retrieved.FirstName);
         Assert.Equal("Doe", retrieved.LastName);
     }
@@ -886,7 +890,8 @@ public interface IAttributeValidationTests : IGraphTest
 
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<PersonWithExplicitLabel>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<PersonWithExplicitLabel>()
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("Jane", retrieved.FirstName);
         Assert.Equal("Smith", retrieved.LastName);
         Assert.Equal("Engineering", retrieved.Department);
@@ -903,7 +908,7 @@ public interface IAttributeValidationTests : IGraphTest
 
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<PersonWithoutLabel>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.FindNodeByTestKeyAsync<PersonWithoutLabel>(person.TestKey, null, TestContext.Current.CancellationToken);
         Assert.Equal("Bob", retrieved.FirstName);
         Assert.Equal("Johnson", retrieved.LastName);
     }
@@ -951,8 +956,11 @@ public interface IAttributeValidationTests : IGraphTest
         Assert.NotNull(alice);
         Assert.Equal("Alice", alice.FirstName);
 
-        var raw = await Graph.GetDynamicNodeAsync(
-            people[0].Id, null, TestContext.Current.CancellationToken);
+        var raw = Assert.Single(
+            await Graph.DynamicNodes()
+                .OfLabel("IndexedPerson")
+                .ToListAsync(TestContext.Current.CancellationToken),
+            candidate => Equals(candidate.Properties["email"], people[0].Email));
         Assert.Equal("Alice", raw.Properties["first_name"]);
         Assert.Equal("Brown", raw.Properties["last_name"]);
         Assert.False(raw.Properties.ContainsKey(nameof(PersonWithCustomPropertyLabels.FirstName)));
@@ -975,22 +983,24 @@ public interface IAttributeValidationTests : IGraphTest
         await Graph.CreateNodeAsync(inherited, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(owner, null, TestContext.Current.CancellationToken);
 
-        var inheritedRaw = await Graph.GetDynamicNodeAsync(
-            inherited.Id, null, TestContext.Current.CancellationToken);
+        var inheritedRaw = await Graph.DynamicNodes()
+            .OfLabel("InheritedCustomPropertyLabelNode")
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("base value", inheritedRaw.Properties["inherited_name"]);
         Assert.False(inheritedRaw.Properties.ContainsKey(nameof(CustomPropertyLabelBase.InheritedName)));
 
-        var ownerRaw = await Graph.GetDynamicNodeAsync(
-            owner.Id, null, TestContext.Current.CancellationToken);
+        var ownerRaw = await Graph.DynamicNodes()
+            .OfLabel("CustomLabelComplexOwner")
+            .SingleAsync(TestContext.Current.CancellationToken);
         var details = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(
             ownerRaw.Properties[nameof(CustomLabelComplexOwner.Details)]);
         Assert.Equal("nested value", details["display_name"]);
         Assert.False(details.ContainsKey(nameof(CustomLabeledDetails.DisplayName)));
 
-        var inheritedRoundTrip = await Graph.GetNodeAsync<InheritedCustomPropertyLabelNode>(
-            inherited.Id, null, TestContext.Current.CancellationToken);
-        var ownerRoundTrip = await Graph.GetNodeAsync<CustomLabelComplexOwner>(
-            owner.Id, null, TestContext.Current.CancellationToken);
+        var inheritedRoundTrip = await Graph.Nodes<InheritedCustomPropertyLabelNode>()
+            .SingleAsync(TestContext.Current.CancellationToken);
+        var ownerRoundTrip = await Graph.Nodes<CustomLabelComplexOwner>()
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(inherited.InheritedName, inheritedRoundTrip.InheritedName);
         Assert.Equal(inherited.Rank, inheritedRoundTrip.Rank);
         Assert.Equal(owner.Details, ownerRoundTrip.Details);
@@ -1022,7 +1032,8 @@ public interface IAttributeValidationTests : IGraphTest
 
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<PersonWithIgnoredProperties>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<PersonWithIgnoredProperties>()
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("Charlie", retrieved.FirstName);
         Assert.Equal("Davis", retrieved.LastName);
@@ -1043,21 +1054,19 @@ public interface IAttributeValidationTests : IGraphTest
 
         var relationship = new CustomWorksWith
         {
-            StartNodeId = person1.Id,
-            EndNodeId = person2.Id,
             StartDate = DateTime.UtcNow.AddMonths(-6),
             ProjectName = "Project Alpha"
         };
 
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(
+            person1, relationship, person2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetRelationshipAsync<CustomWorksWith>(relationship.Id, null, TestContext.Current.CancellationToken);
-        Assert.Equal(person1.Id, retrieved.StartNodeId);
-        Assert.Equal(person2.Id, retrieved.EndNodeId);
+        var retrieved = await Graph.Relationships<CustomWorksWith>()
+            .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("Project Alpha", retrieved.ProjectName);
 
-        var raw = await Graph.GetDynamicRelationshipAsync(
-            relationship.Id, null, TestContext.Current.CancellationToken);
+        var raw = await Graph.FindDynamicRelationshipByTestKeyAsync(
+            "CUSTOM_WORKS_WITH", null, TestContext.Current.CancellationToken);
         Assert.NotNull(raw.Properties["start_date"]);
         Assert.Equal("Project Alpha", raw.Properties["project_name"]);
         Assert.False(raw.Properties.ContainsKey(nameof(CustomWorksWith.StartDate)));
@@ -1075,16 +1084,15 @@ public interface IAttributeValidationTests : IGraphTest
 
         var relationship = new WorksWithoutLabel
         {
-            StartNodeId = person1.Id,
-            EndNodeId = person2.Id,
             Since = DateTime.UtcNow.AddYears(-1)
         };
 
-        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(
+            person1, relationship, person2, cancellationToken: TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetRelationshipAsync<WorksWithoutLabel>(relationship.Id, null, TestContext.Current.CancellationToken);
-        Assert.Equal(person1.Id, retrieved.StartNodeId);
-        Assert.Equal(person2.Id, retrieved.EndNodeId);
+        var retrieved = await Graph.Relationships<WorksWithoutLabel>()
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(relationship.Since, retrieved.Since);
     }
 
     [Fact]
@@ -1100,7 +1108,9 @@ public interface IAttributeValidationTests : IGraphTest
 
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<PersonWithCustomPropertyLabels>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<PersonWithCustomPropertyLabels>()
+            .Where(candidate => candidate.Email == person.Email)
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         // Properties with custom names should still be retrievable
         Assert.Equal("Test", retrieved.FirstName);
@@ -1199,16 +1209,16 @@ public interface IAttributeValidationTests : IGraphTest
 
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        // Update with new values
-        person.FirstName = "Updated";
-        person.LastName = "Name";
-        person.InternalNote = "Still ignored";
-        person.CreatedAt = DateTime.UtcNow;
+        var affected = await Graph.Nodes<PersonWithIgnoredProperties>()
+            .Where(candidate => candidate.FirstName == "Original")
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.FirstName, "Updated"),
+                TestContext.Current.CancellationToken);
 
-        await Graph.UpdateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.Nodes<PersonWithIgnoredProperties>()
+            .SingleAsync(TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<PersonWithIgnoredProperties>(person.Id, null, TestContext.Current.CancellationToken);
-
+        Assert.Equal(1, affected);
         Assert.Equal("Updated", retrieved.FirstName);
         Assert.Equal("Name", retrieved.LastName);
 

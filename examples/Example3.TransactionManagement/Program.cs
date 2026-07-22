@@ -41,8 +41,15 @@ try
     await graph.CreateNodeAsync(alice);
     await graph.CreateNodeAsync(bob);
 
-    await graph.CreateRelationshipAsync(new BankAccount(alice.Id, bank.Id));
-    await graph.CreateRelationshipAsync(new BankAccount(bob.Id, bank.Id));
+    var bankSelection = graph.Nodes<Bank>().Where(candidate => candidate.Name == bank.Name);
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Account>().Where(account => account.AccountNumber == alice.AccountNumber),
+        new BankAccount(),
+        bankSelection);
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Account>().Where(account => account.AccountNumber == bob.AccountNumber),
+        new BankAccount(),
+        bankSelection);
 
     Console.WriteLine($"✓ Created bank: {bank.Name}");
     Console.WriteLine($"✓ Created account for {alice.Owner}: ${alice.Balance}");
@@ -56,27 +63,30 @@ try
         try
         {
             // Get fresh copies within transaction
-            var aliceAccount = await graph.GetNodeAsync<Account>(alice.Id, transaction: transaction);
-            var bobAccount = await graph.GetNodeAsync<Account>(bob.Id, transaction: transaction);
+            var aliceSelection = graph.Nodes<Account>(transaction)
+                .Where(account => account.AccountNumber == alice.AccountNumber);
+            var bobSelection = graph.Nodes<Account>(transaction)
+                .Where(account => account.AccountNumber == bob.AccountNumber);
+            var aliceAccount = await aliceSelection.SingleAsync();
+            var bobAccount = await bobSelection.SingleAsync();
 
             var transferAmount = 200m;
             Console.WriteLine($"Transferring ${transferAmount} from Alice to Bob...");
 
             // Update balances
-            aliceAccount.Balance -= transferAmount;
-            bobAccount.Balance += transferAmount;
-
-            await graph.UpdateNodeAsync(aliceAccount, transaction: transaction);
-            await graph.UpdateNodeAsync(bobAccount, transaction: transaction);
+            await aliceSelection.UpdateAsync(
+                setters => setters.SetProperty(account => account.Balance, aliceAccount.Balance - transferAmount));
+            await bobSelection.UpdateAsync(
+                setters => setters.SetProperty(account => account.Balance, bobAccount.Balance + transferAmount));
 
             // Record transfer
-            var transfer = new Transfer(aliceAccount.Id, bobAccount.Id)
+            var transfer = new Transfer
             {
                 Amount = transferAmount,
                 Timestamp = DateTime.UtcNow,
                 Description = "Payment for services"
             };
-            await graph.CreateRelationshipAsync(transfer, transaction: transaction);
+            await graph.CreateRelationshipAsync(aliceSelection, transfer, bobSelection);
 
             // Commit transaction
             await transaction.CommitAsync();
@@ -90,8 +100,12 @@ try
     }
 
     // Verify balances after successful transaction
-    var aliceAfter = await graph.GetNodeAsync<Account>(alice.Id);
-    var bobAfter = await graph.GetNodeAsync<Account>(bob.Id);
+    var aliceAfter = await graph.Nodes<Account>()
+        .Where(account => account.AccountNumber == alice.AccountNumber)
+        .SingleAsync();
+    var bobAfter = await graph.Nodes<Account>()
+        .Where(account => account.AccountNumber == bob.AccountNumber)
+        .SingleAsync();
     Console.WriteLine($"✓ Alice's balance: ${aliceAfter.Balance} (was $1000)");
     Console.WriteLine($"✓ Bob's balance: ${bobAfter.Balance} (was $500)\n");
 
@@ -102,8 +116,12 @@ try
     {
         try
         {
-            var aliceAccount = await graph.GetNodeAsync<Account>(alice.Id, transaction: transaction);
-            var bobAccount = await graph.GetNodeAsync<Account>(bob.Id, transaction: transaction);
+            var aliceSelection = graph.Nodes<Account>(transaction)
+                .Where(account => account.AccountNumber == alice.AccountNumber);
+            var bobSelection = graph.Nodes<Account>(transaction)
+                .Where(account => account.AccountNumber == bob.AccountNumber);
+            var aliceAccount = await aliceSelection.SingleAsync();
+            var bobAccount = await bobSelection.SingleAsync();
 
             var transferAmount = 1000m; // More than Alice has
             Console.WriteLine($"Attempting to transfer ${transferAmount} from Alice to Bob...");
@@ -115,11 +133,10 @@ try
             }
 
             // This won't be reached due to exception above
-            aliceAccount.Balance -= transferAmount;
-            bobAccount.Balance += transferAmount;
-
-            await graph.UpdateNodeAsync(aliceAccount, transaction: transaction);
-            await graph.UpdateNodeAsync(bobAccount, transaction: transaction);
+            await aliceSelection.UpdateAsync(
+                setters => setters.SetProperty(account => account.Balance, aliceAccount.Balance - transferAmount));
+            await bobSelection.UpdateAsync(
+                setters => setters.SetProperty(account => account.Balance, bobAccount.Balance + transferAmount));
             await transaction.CommitAsync();
         }
         catch (Exception ex)
@@ -131,8 +148,12 @@ try
     }
 
     // Verify balances remain unchanged after rollback
-    var aliceAfterFailed = await graph.GetNodeAsync<Account>(alice.Id);
-    var bobAfterFailed = await graph.GetNodeAsync<Account>(bob.Id);
+    var aliceAfterFailed = await graph.Nodes<Account>()
+        .Where(account => account.AccountNumber == alice.AccountNumber)
+        .SingleAsync();
+    var bobAfterFailed = await graph.Nodes<Account>()
+        .Where(account => account.AccountNumber == bob.AccountNumber)
+        .SingleAsync();
     Console.WriteLine($"✓ Alice's balance: ${aliceAfterFailed.Balance} (unchanged)");
     Console.WriteLine($"✓ Bob's balance: ${bobAfterFailed.Balance} (unchanged)\n");
 
@@ -151,37 +172,47 @@ try
                 Balance = 0
             };
             await graph.CreateNodeAsync(charlie, transaction: transaction);
-            await graph.CreateRelationshipAsync(new BankAccount(charlie.Id, bank.Id), transaction: transaction);
+            var charlieSelection = graph.Nodes<Account>(transaction)
+                .Where(account => account.AccountNumber == charlie.AccountNumber);
+            await graph.CreateRelationshipAsync(
+                charlieSelection,
+                new BankAccount(),
+                graph.Nodes<Bank>(transaction).Where(candidate => candidate.Name == bank.Name));
 
             // Transfer from multiple sources to Charlie
-            var aliceAccount = await graph.GetNodeAsync<Account>(alice.Id, transaction: transaction);
-            var bobAccount = await graph.GetNodeAsync<Account>(bob.Id, transaction: transaction);
+            var aliceSelection = graph.Nodes<Account>(transaction)
+                .Where(account => account.AccountNumber == alice.AccountNumber);
+            var bobSelection = graph.Nodes<Account>(transaction)
+                .Where(account => account.AccountNumber == bob.AccountNumber);
+            var aliceAccount = await aliceSelection.SingleAsync();
+            var bobAccount = await bobSelection.SingleAsync();
 
             var aliceContribution = 50m;
             var bobContribution = 50m;
 
-            aliceAccount.Balance -= aliceContribution;
-            bobAccount.Balance -= bobContribution;
             charlie.Balance = aliceContribution + bobContribution;
 
-            await graph.UpdateNodeAsync(aliceAccount, transaction: transaction);
-            await graph.UpdateNodeAsync(bobAccount, transaction: transaction);
-            await graph.UpdateNodeAsync(charlie, transaction: transaction);
+            await aliceSelection.UpdateAsync(
+                setters => setters.SetProperty(account => account.Balance, aliceAccount.Balance - aliceContribution));
+            await bobSelection.UpdateAsync(
+                setters => setters.SetProperty(account => account.Balance, bobAccount.Balance - bobContribution));
+            await charlieSelection.UpdateAsync(
+                setters => setters.SetProperty(account => account.Balance, charlie.Balance));
 
             // Record transfers
-            await graph.CreateRelationshipAsync(new Transfer(aliceAccount.Id, charlie.Id)
+            await graph.CreateRelationshipAsync(aliceSelection, new Transfer
             {
                 Amount = aliceContribution,
                 Timestamp = DateTime.UtcNow,
                 Description = "Welcome gift"
-            }, transaction: transaction);
+            }, charlieSelection);
 
-            await graph.CreateRelationshipAsync(new Transfer(bobAccount.Id, charlie.Id)
+            await graph.CreateRelationshipAsync(bobSelection, new Transfer
             {
                 Amount = bobContribution,
                 Timestamp = DateTime.UtcNow,
                 Description = "Welcome gift"
-            }, transaction: transaction);
+            }, charlieSelection);
 
             await transaction.CommitAsync();
             Console.WriteLine("✓ Complex transaction completed successfully");

@@ -50,8 +50,6 @@ public class GeneratedIdentifierAndIdentityConventionTests
         [Relationship("physical_keyword_links")]
         public sealed record KeywordLink(
             string Id,
-            string StartNodeId,
-            string EndNodeId,
             RelationshipDirection Direction,
             string @class,
             string result) : IRelationship
@@ -109,15 +107,11 @@ public class GeneratedIdentifierAndIdentityConventionTests
             public string Id { get; init; } = "initializer-id";
             public string Type { get; set; } = string.Empty;
             public RelationshipDirection Direction { get; init; } = RelationshipDirection.Incoming;
-            public string StartNodeId { get; init; } = "initializer-start";
-            public string EndNodeId { get; init; } = "initializer-end";
         }
 
         [Relationship("physical_bound_link")]
         public sealed record BoundLink(
             string Id,
-            string StartNodeId,
-            string EndNodeId,
             RelationshipDirection Direction) : IRelationship
         {
             public string Type { get; init; } = string.Empty;
@@ -181,7 +175,7 @@ public class GeneratedIdentifierAndIdentityConventionTests
 
         var link = Activator.CreateInstance(
             linkType,
-            ["link-id", "start", "end", RelationshipDirection.Incoming, "class", "result"])!;
+            ["link-id", RelationshipDirection.Incoming, "class", "result"])!;
         Set(linkType, link, "event", "event");
         Set(linkType, link, "naïve", "unicode");
 
@@ -263,9 +257,9 @@ public class GeneratedIdentifierAndIdentityConventionTests
         var relationship = serializer.Deserialize(EmptyEntity(relationshipType, $"physical_{typeName}"));
 
         Assert.Equal(string.Empty, Get(relationshipType, relationship, "Id"));
-        Assert.Equal(string.Empty, Get(relationshipType, relationship, "StartNodeId"));
-        Assert.Equal(string.Empty, Get(relationshipType, relationship, "EndNodeId"));
         Assert.Equal(default(RelationshipDirection), Get(relationshipType, relationship, "Direction"));
+        Assert.Null(relationshipType.GetProperty("StartNodeId"));
+        Assert.Null(relationshipType.GetProperty("EndNodeId"));
     }
 
     private static EntityInfo EmptyEntity(Type type, string label) => new(

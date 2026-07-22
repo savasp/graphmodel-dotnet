@@ -15,6 +15,8 @@ public class ToDynamicExtensionsTests
     /// </summary>
     public record DynamicTestNode : Node
     {
+        public string Id { get; init; } = string.Empty;
+
         public string Name { get; init; } = string.Empty;
         public int Age { get; init; }
         public string Email { get; init; } = string.Empty;
@@ -23,8 +25,12 @@ public class ToDynamicExtensionsTests
     /// <summary>
     /// Test relationship record for testing ToDynamic functionality.
     /// </summary>
-    public record DynamicTestRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+    public record DynamicTestRelationship : Relationship
     {
+        public string Id { get; init; } = string.Empty;
+
+        public string Direction { get; init; } = string.Empty;
+
         public string Description { get; init; } = string.Empty;
         public DateTime CreatedAt { get; init; }
         public bool IsActive { get; init; }
@@ -40,7 +46,7 @@ public class ToDynamicExtensionsTests
     private sealed record AttributedNode : Node;
 
     [Relationship("ISSUE_385_ATTRIBUTED_RELATIONSHIP")]
-    private sealed record AttributedRelationship(string Start, string End) : Relationship(Start, End);
+    private sealed record AttributedRelationship : Relationship;
 
     private sealed record IndexedNode : Node
     {
@@ -62,7 +68,7 @@ public class ToDynamicExtensionsTests
         {
             get
             {
-                _ = Id;
+                _ = Labels;
                 throw new InvalidOperationException("Modeled property could not be read.");
             }
         }
@@ -76,7 +82,7 @@ public class ToDynamicExtensionsTests
         public string EndNodeId { get; init; } = string.Empty;
     }
 
-    private sealed record CrossEntityMetadataNamesRelationship(string Start, string End) : Relationship(Start, End)
+    private sealed record CrossEntityMetadataNamesRelationship : Relationship
     {
         public string Labels { get; init; } = string.Empty;
     }
@@ -97,7 +103,7 @@ public class ToDynamicExtensionsTests
 
         // Assert
         Assert.NotNull(dynamicNode);
-        Assert.Equal(testNode.Id, dynamicNode.Id);
+        Assert.Equal(testNode.Id, dynamicNode.Properties[nameof(DynamicTestNode.Id)]);
         Assert.Equal(Labels.GetCompatibleLabels(testNode.GetType()), dynamicNode.Labels);
         Assert.Equal("John Doe", dynamicNode.Properties["Name"]);
         Assert.Equal(30, dynamicNode.Properties["Age"]);
@@ -119,8 +125,10 @@ public class ToDynamicExtensionsTests
     public void ToDynamicRelationship_ConvertsStronglyTypedRelationshipToDynamicRelationship()
     {
         // Arrange
-        var testRelationship = new DynamicTestRelationship("node1", "node2")
+        var testRelationship = new DynamicTestRelationship
         {
+            Id = "relationship-1",
+            Direction = "domain-direction",
             Description = "Test relationship",
             CreatedAt = FixedCreatedAt,
             IsActive = true
@@ -131,11 +139,9 @@ public class ToDynamicExtensionsTests
 
         // Assert
         Assert.NotNull(dynamicRelationship);
-        Assert.Equal(testRelationship.Id, dynamicRelationship.Id);
         Assert.Equal(Labels.GetLabelFromType(testRelationship.GetType()), dynamicRelationship.Type);
-        Assert.Equal(testRelationship.Direction, dynamicRelationship.Direction);
-        Assert.Equal(testRelationship.StartNodeId, dynamicRelationship.StartNodeId);
-        Assert.Equal(testRelationship.EndNodeId, dynamicRelationship.EndNodeId);
+        Assert.Equal(testRelationship.Id, dynamicRelationship.Properties[nameof(DynamicTestRelationship.Id)]);
+        Assert.Equal(testRelationship.Direction, dynamicRelationship.Properties[nameof(DynamicTestRelationship.Direction)]);
         Assert.Equal("Test relationship", dynamicRelationship.Properties["Description"]);
         Assert.True((bool)dynamicRelationship.Properties["IsActive"]!);
     }
@@ -145,7 +151,7 @@ public class ToDynamicExtensionsTests
     {
         // Arrange
         var testNode = new DynamicTestNode { Name = "Alice", Age = 25, Email = "alice@example.com" };
-        var testRelationship = new DynamicTestRelationship("node1", "node2") { Description = "Test", IsActive = true };
+        var testRelationship = new DynamicTestRelationship { Description = "Test", IsActive = true };
 
         // Act
         INode nodeInterface = testNode;
@@ -167,7 +173,7 @@ public class ToDynamicExtensionsTests
     public void ToDynamic_DerivesAttributedMetadataFromRuntimeTypes()
     {
         INode node = new AttributedNode();
-        IRelationship relationship = new AttributedRelationship("node1", "node2");
+        IRelationship relationship = new AttributedRelationship();
 
         var dynamicNode = node.ToDynamic();
         var dynamicRelationship = relationship.ToDynamic();
@@ -181,7 +187,7 @@ public class ToDynamicExtensionsTests
     {
         IReadOnlyList<string> labels = ["CUSTOM_PRIMARY", "CUSTOM_SECONDARY"];
         var node = new DynamicTestNode { Labels = labels, Name = "Ada" };
-        var relationship = new DynamicTestRelationship(node.Id, "node2")
+        var relationship = new DynamicTestRelationship
         {
             Type = "CUSTOM_RELATIONSHIP_TYPE",
             Description = "Preserved",
@@ -234,7 +240,7 @@ public class ToDynamicExtensionsTests
     public void ToDynamicRelationship_WithSpecificType_ConvertsCorrectly()
     {
         // Arrange
-        var testRelationship = new DynamicTestRelationship("node1", "node2")
+        var testRelationship = new DynamicTestRelationship
         {
             Description = "Specific test",
             IsActive = false
@@ -250,7 +256,7 @@ public class ToDynamicExtensionsTests
     }
 
     [Fact]
-    public void ToDynamic_ExcludesBaseProperties()
+    public void ToDynamic_ExcludesGraphMetadataProperties()
     {
         // Arrange
         var testNode = new DynamicTestNode { Name = "Test", Age = 42, Email = "test@example.com" };
@@ -260,7 +266,6 @@ public class ToDynamicExtensionsTests
 
         // Assert
         // Base properties should not be included in the Properties dictionary
-        Assert.False(dynamicNode.Properties.ContainsKey(nameof(IEntity.Id)));
         Assert.False(dynamicNode.Properties.ContainsKey(nameof(INode.Labels)));
 
         // Custom properties should be included
@@ -279,7 +284,7 @@ public class ToDynamicExtensionsTests
             StartNodeId = "modeled start",
             EndNodeId = "modeled end",
         };
-        var relationship = new CrossEntityMetadataNamesRelationship("node1", "node2")
+        var relationship = new CrossEntityMetadataNamesRelationship
         {
             Labels = "modeled labels",
         };

@@ -79,4 +79,11 @@ public interface ICypherDialect
 
     /// <summary>Gets the stored marker property that identifies owned complex-property relationships.</summary>
     string ComplexPropertyRelationshipMarker { get; }
+
+    /// <summary>
+    /// Gets whether the shared planner must exclude marker-owned complex-value storage from
+    /// ordinary roots and traversals. Dialects that perform this isolation in a lowering pass
+    /// should leave the default value unchanged.
+    /// </summary>
+    bool RequiresPlannerComplexStorageIsolation => false;
 }

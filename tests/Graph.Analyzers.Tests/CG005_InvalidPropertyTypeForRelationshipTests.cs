@@ -23,8 +23,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public string Type { get; set; } = string.Empty;
                 public int Weight { get; set; }
                 public bool IsActive { get; set; }
@@ -50,8 +48,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public List<string> Tags { get; set; } = new();
                 public string[] Categories { get; set; } = Array.Empty<string>();
                 public HashSet<int> Scores { get; set; } = new();
@@ -80,8 +76,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public Priority CurrentPriority { get; set; }
                 public List<Priority> PriorityHistory { get; set; } = new();
             }
@@ -106,8 +100,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public Address {|#0:Location|} { get; set; } = new();
             }
             """;
@@ -136,8 +128,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public List<Metadata> {|#0:MetadataList|} { get; set; } = new();
             }
             """;
@@ -160,8 +150,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public Task {|#0:AsyncOperation|} { get; set; } = null!;
             }
             """;
@@ -184,8 +172,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public Action {|#0:Callback|} { get; set; } = null!;
             }
             """;
@@ -265,8 +251,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public Queue<int> {|#0:Pending|} { get; set; } = new();
             }
             """;
@@ -289,8 +273,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public Point Location { get; set; } = new();
                 public Point? MaybeLocation { get; set; }
                 public List<Point> Waypoints { get; set; } = new();
@@ -314,8 +296,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public System.Drawing.Point {|#0:Location|} { get; set; }
                 public System.Drawing.Point? {|#1:MaybeLocation|} { get; set; }
                 public List<System.Drawing.Point> {|#2:Locations|} { get; set; } = new();
@@ -343,8 +323,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public int? Weight { get; set; }
                 public DateTime? CreatedAt { get; set; }
                 public bool? IsActive { get; set; }
@@ -371,8 +349,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public Address {|#0:Location|} { get; set; } = new();
                 public Task {|#1:Operation|} { get; set; } = null!;
                 public Action {|#2:Callback|} { get; set; } = null!;
@@ -426,8 +402,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             
             public class DerivedRelationship : BaseRelationship
@@ -459,8 +433,6 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public Tag[] {|#0:Tags|} { get; set; } = Array.Empty<Tag>();
             }
             """;

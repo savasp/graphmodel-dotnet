@@ -74,13 +74,16 @@ try
     Console.WriteLine("2. Creating multiple relationship types...");
 
     // Blog contains article
-    await graph.CreateRelationshipAsync(new Contains(techBlog.Id, aiArticle.Id));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Blog>().Where(blog => blog.Url == techBlog.Url),
+        new Contains(),
+        graph.Nodes<Article>().Where(article => article.Url == aiArticle.Url));
 
     // Article references video
-    await graph.CreateRelationshipAsync(new References(aiArticle.Id, mlVideo.Id)
-    {
-        Context = "See this video for visual explanation"
-    });
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Article>().Where(article => article.Url == aiArticle.Url),
+        new References { Context = "See this video for visual explanation" },
+        graph.Nodes<Video>().Where(video => video.Url == mlVideo.Url));
 
     // Create tags
     var aiTag = new Tag { Name = "Artificial Intelligence" };
@@ -90,9 +93,18 @@ try
     await graph.CreateNodeAsync(mlTag);
 
     // Tag content
-    await graph.CreateRelationshipAsync(new TaggedWith(aiArticle.Id, aiTag.Id) { TagName = "AI" });
-    await graph.CreateRelationshipAsync(new TaggedWith(aiArticle.Id, mlTag.Id) { TagName = "ML" });
-    await graph.CreateRelationshipAsync(new TaggedWith(mlVideo.Id, mlTag.Id) { TagName = "ML" });
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Article>().Where(article => article.Url == aiArticle.Url),
+        new TaggedWith { TagName = "AI" },
+        graph.Nodes<Tag>().Where(tag => tag.Name == aiTag.Name));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Article>().Where(article => article.Url == aiArticle.Url),
+        new TaggedWith { TagName = "ML" },
+        graph.Nodes<Tag>().Where(tag => tag.Name == mlTag.Name));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Video>().Where(video => video.Url == mlVideo.Url),
+        new TaggedWith { TagName = "ML" },
+        graph.Nodes<Tag>().Where(tag => tag.Name == mlTag.Name));
 
     Console.WriteLine("✓ Created relationships between content");
     Console.WriteLine("✓ Created and applied tags\n");
@@ -168,9 +180,11 @@ try
 
     foreach (var video in popularVideos)
     {
-        video.Views += 100; // Boost views
-        await graph.UpdateNodeAsync(video);
-        Console.WriteLine($"✓ Boosted views for '{video.Title}' to {video.Views:N0}");
+        var updatedViews = video.Views + 100;
+        await graph.Nodes<Video>()
+            .Where(candidate => candidate.Url == video.Url)
+            .UpdateAsync(setters => setters.SetProperty(candidate => candidate.Views, updatedViews));
+        Console.WriteLine($"✓ Boosted views for '{video.Title}' to {updatedViews:N0}");
     }
 
     Console.WriteLine("\n=== Example 4 Complete ===");

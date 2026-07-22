@@ -211,8 +211,11 @@ try
 
     // Serialize a relationship
     Console.WriteLine("3. Creating a relationship between Alice and Bob...");
-    var aliceFriendBob = new Friend(alice.Id, bob.Id) { Since = new DateTime(2021, 1, 1) };
-    await graph.CreateRelationshipAsync(aliceFriendBob);
+    var aliceFriendBob = new Friend { Since = new DateTime(2021, 1, 1) };
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Person>().Where(person => person.Email == alice.Email),
+        aliceFriendBob,
+        graph.Nodes<Person>().Where(person => person.Email == bob.Email));
 
     Console.WriteLine($"✓ Created relationship between {alice.Name} and {bob.Name}");
     Console.WriteLine($"  Since: {aliceFriendBob.Since}");
@@ -238,13 +241,16 @@ try
     Console.WriteLine($"✓ Created dynamic node: {person1.Properties["Name"]} with role {person1.Properties["Role"]}");
     Console.WriteLine($"✓ Created dynamic node: {person2.Properties["Name"]} with role {person2.Properties["Role"]}");
 
-    var managesRel = new DynamicRelationship(person1.Id, person2.Id, "MANAGES", new Dictionary<string, object?>
+    var managesRel = new DynamicRelationship("MANAGES", new Dictionary<string, object?>
     {
         { "Since", new DateTime(2023, 1, 1) },
         { "Notes", "Promising intern" }
     });
 
-    await graph.CreateRelationshipAsync(managesRel);
+    await graph.CreateRelationshipAsync(
+        graph.DynamicNodes().OfLabel("Manager"),
+        managesRel,
+        graph.DynamicNodes().OfLabel("Intern"));
     Console.WriteLine($"✓ Created dynamic relationship: {person1.Properties["Name"]} MANAGES {person2.Properties["Name"]} since {managesRel.Properties["Since"]}\n");
 
 

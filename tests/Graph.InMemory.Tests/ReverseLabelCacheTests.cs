@@ -43,24 +43,18 @@ public sealed class ReverseLabelCacheTests
         await store.Graph.CreateNodeAsync(node, cancellationToken: cancellationToken);
         await store.Graph.CreateNodeAsync(endpoint, cancellationToken: cancellationToken);
 
-        var relationship = new DynamicRelationship(
-            node.Id,
-            endpoint.Id,
-            sharedName,
-            new Dictionary<string, object?>());
-        await store.Graph.CreateRelationshipAsync(relationship, cancellationToken: cancellationToken);
-
-        var typedNode = await store.Graph.GetNodeAsync<TNode>(node.Id, cancellationToken: cancellationToken);
-        var typedRelationship = await store.Graph.GetRelationshipAsync<TRelationship>(
-            relationship.Id,
+        var relationship = new DynamicRelationship(sharedName, new Dictionary<string, object?>());
+        await store.Graph.CreateRelationshipAsync(
+            store.Graph.DynamicNodes().OfLabel(sharedName),
+            relationship,
+            store.Graph.DynamicNodes().OfLabel($"{sharedName}_Endpoint"),
             cancellationToken: cancellationToken);
 
+        var typedNode = await store.Graph.Nodes<TNode>().SingleAsync(cancellationToken);
+        var typedRelationship = await store.Graph.Relationships<TRelationship>().SingleAsync(cancellationToken);
+
         Assert.IsType<TNode>(typedNode);
-        Assert.Equal(node.Id, typedNode.Id);
         Assert.IsType<TRelationship>(typedRelationship);
-        Assert.Equal(relationship.Id, typedRelationship.Id);
-        Assert.Equal(node.Id, typedRelationship.StartNodeId);
-        Assert.Equal(endpoint.Id, typedRelationship.EndNodeId);
     }
 }
 
@@ -70,7 +64,6 @@ internal sealed record NodeFirstSharedNode : Node;
 [Relationship("InMemory_SharedLabel_NodeFirst")]
 internal sealed record NodeFirstSharedRelationship : Relationship
 {
-    public NodeFirstSharedRelationship() : base(string.Empty, string.Empty) { }
 }
 
 [Node("InMemory_SharedLabel_RelationshipFirst")]
@@ -79,5 +72,4 @@ internal sealed record RelationshipFirstSharedNode : Node;
 [Relationship("InMemory_SharedLabel_RelationshipFirst")]
 internal sealed record RelationshipFirstSharedRelationship : Relationship
 {
-    public RelationshipFirstSharedRelationship() : base(string.Empty, string.Empty) { }
 }

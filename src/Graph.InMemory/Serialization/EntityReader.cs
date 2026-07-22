@@ -38,11 +38,10 @@ internal sealed class EntityReader(EntityFactory entityFactory)
     /// <summary>Materializes a relationship record as the given target type.</summary>
     public object MaterializeRelationship(
         RelationshipRecord record,
-        Type targetType,
-        bool includeLegacyEndpointState = false)
+        Type targetType)
     {
         var actualType = ResolveRelationshipType(record, targetType);
-        var info = BuildRelationshipInfo(record, actualType, includeLegacyEndpointState);
+        var info = BuildRelationshipInfo(record, actualType);
         return _entityFactory.Deserialize(info);
     }
 
@@ -162,8 +161,7 @@ internal sealed class EntityReader(EntityFactory entityFactory)
     /// <summary>Rebuilds the serialized form of a relationship record.</summary>
     public static EntityInfo BuildRelationshipInfo(
         RelationshipRecord record,
-        Type actualType,
-        bool includeLegacyEndpointState = false)
+        Type actualType)
     {
         var simpleProperties = SnapshotToProperties(record.Properties);
         simpleProperties[nameof(IRelationship.Type)] = new Property(
@@ -171,16 +169,6 @@ internal sealed class EntityReader(EntityFactory entityFactory)
             nameof(IRelationship.Type),
             IsNullable: false,
             new SimpleValue(record.Type, typeof(string)));
-
-        // Record identity and endpoint keys are never materialized. Transitional direct-ID writes
-        // already retain their legacy members as modeled properties; bare relationship queries
-        // deliberately omit the endpoint tuple.
-        if (!includeLegacyEndpointState && typeof(Relationship).IsAssignableFrom(actualType))
-        {
-            simpleProperties.Remove(nameof(IRelationship.StartNodeId));
-            simpleProperties.Remove(nameof(IRelationship.EndNodeId));
-            simpleProperties.Remove(nameof(Relationship.Direction));
-        }
 
         return new EntityInfo(actualType, record.Type, [], simpleProperties, new Dictionary<string, Property>());
     }

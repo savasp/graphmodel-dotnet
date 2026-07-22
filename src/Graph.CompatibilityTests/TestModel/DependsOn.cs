@@ -8,9 +8,6 @@ using Cvoya.Graph;
 [Relationship(Label = "DEPENDS_ON")]
 public record DependsOn : Relationship
 {
-    public DependsOn() : base(string.Empty, string.Empty) { }
-    public DependsOn(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     [Property(IsRequired = true)]
     public string DependencyType { get; init; } = string.Empty;
 

@@ -39,20 +39,25 @@ public sealed class TransactionOwnershipTests(Neo4jHarness harness) : Neo4jTest(
         Assert.Contains("different Neo4j graph store", exception.Message, StringComparison.Ordinal);
 
         await Assert.ThrowsAsync<GraphException>(
-            () => second.Graph.GetNodeAsync<Person>(seeded.Id, transaction, cancellationToken));
+            () => second.Graph.Nodes<Person>(transaction)
+                .Where(person => person.TestKey == seeded.TestKey)
+                .SingleAsync(cancellationToken));
         await Assert.ThrowsAsync<GraphException>(
             () => second.Graph.Nodes<Person>(transaction).ToListAsync(cancellationToken));
 
         // Rejected before any work: nothing was written through the borrowed transaction, and the
         // transaction itself is still usable on the graph that created it.
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => first.Graph.GetNodeAsync<Person>(intruder.Id, transaction, cancellationToken));
+        Assert.Null(await first.Graph.Nodes<Person>(transaction)
+            .Where(person => person.TestKey == intruder.TestKey)
+            .SingleOrDefaultAsync(cancellationToken));
 
         var committed = new Person { FirstName = "Neo4jOwnership", LastName = "Committed" };
         await first.Graph.CreateNodeAsync(committed, transaction, cancellationToken);
         await transaction.CommitAsync();
 
-        var persisted = await first.Graph.GetNodeAsync<Person>(committed.Id, null, cancellationToken);
+        var persisted = await first.Graph.Nodes<Person>()
+            .Where(person => person.TestKey == committed.TestKey)
+            .SingleAsync(cancellationToken);
         Assert.Equal("Committed", persisted.LastName);
     }
 
@@ -74,12 +79,12 @@ public sealed class TransactionOwnershipTests(Neo4jHarness harness) : Neo4jTest(
         var staged = new Person { FirstName = "Neo4jOwnership", LastName = "RolledBack" };
         await second.Graph.CreateNodeAsync(staged, transaction, cancellationToken);
 
-        await Assert.ThrowsAsync<GraphException>(
-            () => first.Graph.DeleteNodeAsync(staged.Id, false, transaction, cancellationToken));
+        Assert.Throws<GraphException>(() => first.Graph.Nodes<Person>(transaction));
 
         await transaction.RollbackAsync();
 
-        await Assert.ThrowsAsync<EntityNotFoundException>(
-            () => second.Graph.GetNodeAsync<Person>(staged.Id, null, cancellationToken));
+        Assert.Null(await second.Graph.Nodes<Person>()
+            .Where(person => person.TestKey == staged.TestKey)
+            .SingleOrDefaultAsync(cancellationToken));
     }
 }

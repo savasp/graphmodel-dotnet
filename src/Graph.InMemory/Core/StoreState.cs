@@ -23,13 +23,6 @@ internal sealed record StoreState(
         ImmutableDictionary<Guid, RelationshipRecord>.Empty);
 
     /// <summary>
-    /// Gets the user-deletable root records (everything except decomposed complex-property value
-    /// nodes) carrying the given caller-visible id.
-    /// </summary>
-    public IReadOnlyList<NodeRecord> RootNodes(string id) =>
-        [.. Nodes.Values.Where(n => !n.IsComplexValue && n.CompatibilityId == id)];
-
-    /// <summary>
     /// Gets the internal complex-property edges leaving the given parent record, for the given
     /// relationship type, ordered by collection sequence number.
     /// </summary>
@@ -134,47 +127,6 @@ internal sealed record StoreState(
         }
 
         return new StoreState(nodes, relationships);
-    }
-
-    /// <summary>
-    /// Deletes the node resolved by the transitional public-ID API, applying the public cascade
-    /// contract: a missing or ambiguous ID throws and leaves everything untouched, user
-    /// relationships block the delete unless <paramref name="cascadeDelete"/> is set, and the
-    /// complex-property subtree always goes with the node.
-    /// </summary>
-    public StoreState DeleteNode(string id, bool cascadeDelete)
-    {
-        var roots = RootNodes(id);
-        if (roots.Count == 0)
-        {
-            throw new EntityNotFoundException($"Node with ID {id} not found for deletion");
-        }
-
-        if (roots.Count > 1)
-        {
-            throw new GraphException(
-                $"Node ID {id} matches {roots.Count} nodes; refusing an ambiguous delete.");
-        }
-
-        var root = roots[0];
-        var userRelationships = Relationships.Values
-            .Where(r => !r.IsComplexProperty && (r.StartKey == root.Key || r.EndKey == root.Key))
-            .ToList();
-
-        if (userRelationships.Count > 0 && !cascadeDelete)
-        {
-            throw new GraphException(
-                $"Node with ID {id} has {userRelationships.Count} relationship(s); delete them first or use cascade delete.");
-        }
-
-        var state = RemoveComplexSubtree(root.Key);
-        var relationships = state.Relationships;
-        foreach (var relationship in userRelationships)
-        {
-            relationships = relationships.Remove(relationship.Key);
-        }
-
-        return new StoreState(state.Nodes.Remove(root.Key), relationships);
     }
 
     /// <summary>Deletes one frozen set of nodes addressed by private record key.</summary>
@@ -282,29 +234,6 @@ internal sealed record StoreState(
 
         var updated = existing with { Properties = replacement.Properties };
         return this with { Relationships = Relationships.SetItem(existing.Key, updated) };
-    }
-
-    /// <summary>
-    /// Deletes the user relationship resolved by the transitional public-ID API. A missing or
-    /// ambiguous ID throws and leaves the state untouched.
-    /// </summary>
-    public StoreState DeleteRelationship(string id)
-    {
-        var matches = Relationships.Values
-            .Where(relationship => !relationship.IsComplexProperty && relationship.CompatibilityId == id)
-            .ToArray();
-        if (matches.Length == 0)
-        {
-            throw new EntityNotFoundException($"Relationship with ID {id} not found for deletion");
-        }
-
-        if (matches.Length > 1)
-        {
-            throw new GraphException(
-                $"Relationship ID {id} matches {matches.Length} relationships; refusing an ambiguous delete.");
-        }
-
-        return this with { Relationships = Relationships.Remove(matches[0].Key) };
     }
 
     private StoreState RemoveComplexSubtree(Guid parentKey)

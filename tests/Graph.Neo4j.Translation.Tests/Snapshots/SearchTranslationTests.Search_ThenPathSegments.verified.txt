@@ -1,8 +1,8 @@
 == Cypher ==
 CALL db.index.fulltext.queryNodes('node_fulltext_index', $p0) YIELD node AS n
 MATCH (n)-[r:KNOWS]->(tgt:Person|Manager)
-WHERE ('Person' IN labels(n) OR 'Manager' IN labels(n)) AND r.Since >= $p1
-RETURN n.Id AS StartId, tgt.Id AS EndId
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(n) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND ('Person' IN labels(n) OR 'Manager' IN labels(n)) AND r.Since >= $p1 AND r.__graphModelComplexProperty IS NULL
+RETURN n.TestKey AS StartKey, tgt.TestKey AS EndKey
 
 == Parameters ==
 p0 = "alice"

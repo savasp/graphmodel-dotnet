@@ -22,7 +22,7 @@ public class CrudOperationsBenchmark
     private Neo4jGraphStore _graphStore = null!;
     private IGraph _graph = null!;
     private List<Person> _testPersons = null!;
-    private List<string> _personIds = null!;
+    private List<string> _personKeys = null!;
 
     [GlobalSetup]
     public async Task Setup()
@@ -64,20 +64,20 @@ public class CrudOperationsBenchmark
 
         // Generate test data
         var faker = new Faker<Person>()
-            .RuleFor(p => p.Id, f => f.Random.Guid().ToString())
+            .RuleFor(p => p.TestKey, f => f.Random.Guid().ToString())
             .RuleFor(p => p.FirstName, f => f.Name.FirstName())
             .RuleFor(p => p.LastName, f => f.Name.LastName())
             .RuleFor(p => p.Email, f => f.Internet.Email())
             .RuleFor(p => p.DateOfBirth, f => f.Date.Past(50, BenchmarkReferenceDate.AddYears(-18)));
 
         _testPersons = faker.Generate(1000);
-        _personIds = _testPersons.Select(p => p.Id).ToList();
+        _personKeys = _testPersons.Select(p => p.TestKey).ToList();
 
         // Pre-populate some data
         await using var transaction = await _graph.GetTransactionAsync();
         foreach (var person in _testPersons.Take(500))
         {
-            await _graph.CreateNodeAsync(person);
+            await _graph.CreateNodeAsync(person, transaction);
         }
         await transaction.CommitAsync();
     }
@@ -87,11 +87,7 @@ public class CrudOperationsBenchmark
     {
         // Clean up test data
         await using var transaction = await _graph.GetTransactionAsync();
-        var allPersons = await _graph.Nodes<Person>().ToListAsync();
-        foreach (var person in allPersons)
-        {
-            await _graph.DeleteNodeAsync(person.Id);
-        }
+        await _graph.Nodes<Person>(transaction).DeleteAsync();
         await transaction.CommitAsync();
 
         await _graphStore.DisposeAsync();
@@ -109,7 +105,7 @@ public class CrudOperationsBenchmark
     {
         var persons = _testPersons.Take(10).Select(p => new Person
         {
-            Id = Guid.NewGuid().ToString(),
+            TestKey = Guid.NewGuid().ToString(),
             FirstName = p.FirstName,
             LastName = p.LastName,
             Email = p.Email,
@@ -125,8 +121,8 @@ public class CrudOperationsBenchmark
     [Benchmark]
     public async Task ReadSingleNode()
     {
-        var id = _personIds[_random.Next(_personIds.Count)];
-        _ = await _graph.GetNodeAsync<Person>(id);
+        var key = _personKeys[_random.Next(_personKeys.Count)];
+        _ = await _graph.Nodes<Person>().Where(person => person.TestKey == key).SingleAsync();
     }
 
     [Benchmark]
@@ -157,19 +153,20 @@ public class CrudOperationsBenchmark
     [Benchmark]
     public async Task UpdateNode()
     {
-        var id = _personIds[_random.Next(_personIds.Count)];
-        var person = await _graph.GetNodeAsync<Person>(id);
-        if (person != null)
-        {
-            person.Email = $"updated_{BenchmarkReferenceDate.Ticks}@example.com";
-            await _graph.UpdateNodeAsync(person);
-        }
+        var key = _personKeys[_random.Next(_personKeys.Count)];
+        await _graph.Nodes<Person>()
+            .Where(person => person.TestKey == key)
+            .UpdateAsync(setters => setters.SetProperty(
+                person => person.Email,
+                $"updated_{BenchmarkReferenceDate.Ticks}@example.com"));
     }
 }
 
 [Node("Person")]
 public record Person : Node
 {
+    public string TestKey { get; set; } = string.Empty;
+
     [Property(Label = "first_name")]
     public string FirstName { get; set; } = string.Empty;
 

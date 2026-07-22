@@ -41,9 +41,9 @@ public sealed class InMemorySerializationIdentityTests
             .MaterializeNode<DynamicNode>(decomposed.Node, state);
         var payload = Assert.IsType<Dictionary<string, object?>>(materialized.Properties["PAYLOAD"]);
 
-        Assert.Null(decomposed.Node.CompatibilityId);
-        Assert.All(decomposed.ComplexValueNodes, node => Assert.Null(node.CompatibilityId));
-        Assert.All(decomposed.ComplexEdges, edge => Assert.Null(edge.CompatibilityId));
+        Assert.NotEqual(Guid.Empty, decomposed.Node.Key);
+        Assert.All(decomposed.ComplexValueNodes, node => Assert.NotEqual(Guid.Empty, node.Key));
+        Assert.All(decomposed.ComplexEdges, edge => Assert.NotEqual(Guid.Empty, edge.Key));
         Assert.Equal("user-id", payload["Id"]);
         Assert.Equal("user-start", payload["StartNodeId"]);
         Assert.Equal("user-end", payload["EndNodeId"]);
@@ -65,16 +65,13 @@ public sealed class InMemorySerializationIdentityTests
             Guid.NewGuid(),
             RelationshipDirection.Outgoing);
 
-        var roundTripped = EntityReader.BuildRelationshipInfo(
-            record,
-            typeof(DynamicRelationship),
-            includeLegacyEndpointState: true);
+        var roundTripped = EntityReader.BuildRelationshipInfo(record, typeof(DynamicRelationship));
 
-        Assert.Null(record.CompatibilityId);
-        Assert.DoesNotContain(nameof(IEntity.Id), roundTripped.SimpleProperties.Keys);
-        Assert.DoesNotContain(nameof(IRelationship.StartNodeId), roundTripped.SimpleProperties.Keys);
-        Assert.DoesNotContain(nameof(IRelationship.EndNodeId), roundTripped.SimpleProperties.Keys);
-        Assert.DoesNotContain(nameof(Relationship.Direction), roundTripped.SimpleProperties.Keys);
+        Assert.NotEqual(Guid.Empty, record.Key);
+        Assert.DoesNotContain("Id", roundTripped.SimpleProperties.Keys);
+        Assert.DoesNotContain("StartNodeId", roundTripped.SimpleProperties.Keys);
+        Assert.DoesNotContain("EndNodeId", roundTripped.SimpleProperties.Keys);
+        Assert.DoesNotContain("Direction", roundTripped.SimpleProperties.Keys);
     }
 
     private static Property Simple(string name, string value) =>

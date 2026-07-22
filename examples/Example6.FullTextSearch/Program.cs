@@ -117,50 +117,68 @@ try
     await graph.CreateNodeAsync(gnome);
 
     // Create relationships
-    var tolkienWroteHobbit = new Wrote(tolkien.Id, hobbit.Id)
+    var tolkienWroteHobbit = new Wrote
     {
         WrittenDate = new DateTime(1937, 9, 21),
         WritingStyle = "Narrative prose with detailed world-building and mythology"
     };
 
-    var asimovWroteFoundation = new Wrote(asimov.Id, foundation.Id)
+    var asimovWroteFoundation = new Wrote
     {
         WrittenDate = new DateTime(1951, 5, 1),
         WritingStyle = "Hard science fiction with mathematical concepts"
     };
 
-    var dahlWroteCharlie = new Wrote(dahl.Id, charlie.Id)
+    var dahlWroteCharlie = new Wrote
     {
         WrittenDate = new DateTime(1964, 1, 17),
         WritingStyle = "Whimsical children's literature with dark undertones"
     };
 
-    var allenPublishedHobbit = new Published(allen.Id, hobbit.Id)
+    var allenPublishedHobbit = new Published
     {
         PublishedDate = new DateTime(1937, 9, 21),
         Edition = "First Edition",
         MarketingCampaign = "Literary fiction targeting adult readers"
     };
 
-    var gnomePublishedFoundation = new Published(gnome.Id, foundation.Id)
+    var gnomePublishedFoundation = new Published
     {
         PublishedDate = new DateTime(1951, 5, 1),
         Edition = "Hardcover First Edition",
         MarketingCampaign = "Science fiction specialty market campaign"
     };
 
-    var authorsCollaboration = new Collaborated(tolkien.Id, asimov.Id)
+    var authorsCollaboration = new Collaborated
     {
         ProjectType = "Academic discussion",
         Description = "Imaginary collaboration on fantasy versus science fiction themes"
     };
 
-    await graph.CreateRelationshipAsync(tolkienWroteHobbit);
-    await graph.CreateRelationshipAsync(asimovWroteFoundation);
-    await graph.CreateRelationshipAsync(dahlWroteCharlie);
-    await graph.CreateRelationshipAsync(allenPublishedHobbit);
-    await graph.CreateRelationshipAsync(gnomePublishedFoundation);
-    await graph.CreateRelationshipAsync(authorsCollaboration);
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Author>().Where(author => author.Name == tolkien.Name),
+        tolkienWroteHobbit,
+        graph.Nodes<Book>().Where(book => book.Title == hobbit.Title));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Author>().Where(author => author.Name == asimov.Name),
+        asimovWroteFoundation,
+        graph.Nodes<Book>().Where(book => book.Title == foundation.Title));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Author>().Where(author => author.Name == dahl.Name),
+        dahlWroteCharlie,
+        graph.Nodes<Book>().Where(book => book.Title == charlie.Title));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Publisher>().Where(publisher => publisher.Name == allen.Name),
+        allenPublishedHobbit,
+        graph.Nodes<Book>().Where(book => book.Title == hobbit.Title));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Publisher>().Where(publisher => publisher.Name == gnome.Name),
+        gnomePublishedFoundation,
+        graph.Nodes<Book>().Where(book => book.Title == foundation.Title));
+    await graph.CreateRelationshipAsync(
+        graph.Nodes<Author>().Where(author => author.Name == tolkien.Name),
+        authorsCollaboration,
+        graph.Nodes<Author>().Where(author => author.Name == asimov.Name));
 
     Console.WriteLine("✓ Created authors, books, publishers and their relationships");
 

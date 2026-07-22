@@ -1,7 +1,8 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-WHERE src.FirstName = $p0
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND src.FirstName = $p0
 OPTIONAL MATCH (src:Person|Manager)-[r:KNOWS]-(tgt:Person|Manager)
+WHERE (r IS NULL OR r.__graphModelComplexProperty IS NULL)
 RETURN { Node: src, ComplexProperties: reduce(flat = [], propertyPath IN [
             (src)-[propertyRelationships*1..5]->(propertyNode)
             WHERE ALL(propertyRelationship IN propertyRelationships WHERE propertyRelationship.__graphModelComplexProperty = true) |

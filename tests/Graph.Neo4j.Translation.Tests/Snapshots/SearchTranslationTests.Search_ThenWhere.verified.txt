@@ -1,6 +1,6 @@
 == Cypher ==
 CALL db.index.fulltext.queryNodes('node_fulltext_index', $p0) YIELD node AS n
-WHERE ('Person' IN labels(n) OR 'Manager' IN labels(n)) AND n.Age > $p1
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(n) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND ('Person' IN labels(n) OR 'Manager' IN labels(n)) AND n.Age > $p1
 OPTIONAL MATCH src_path = (n)-[rels*1..5]->(prop)
 WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)
 WITH n,

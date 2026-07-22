@@ -29,10 +29,6 @@ record CreditCard : Node
 
 record Paid : Relationship
 {
-    public Paid() : base(string.Empty, string.Empty) { }
-
-    public Paid(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     public decimal Amount { get; set; }
     public DateTime Date { get; set; }
 
@@ -42,9 +38,5 @@ record Paid : Relationship
 
 record Watched : Relationship
 {
-    public Watched() : base(string.Empty, string.Empty) { }
-
-    public Watched(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     public DateTime Date { get; set; }
 }

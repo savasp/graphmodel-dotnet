@@ -46,8 +46,6 @@ public class CG014_EntityTypeMustBeReferenceTypeTests
                 public string Id { get; init; }
                 public string Type { get; init; }
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; }
-                public string EndNodeId { get; init; }
             }
             """;
 

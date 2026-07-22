@@ -39,8 +39,22 @@ public sealed class AgeRecordAdapterTests
         Assert.DoesNotContain("CvoyaNode", adapted.Labels);
     }
 
+    [Theory]
+    [InlineData("CvoyaN_NOT_AN_ENCODED_LABEL")]
+    [InlineData("CvoyaN_0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF")]
+    public void NativeVertexWithEncodedStyleLabelRemainsVisibleWithoutMetadata(string label)
+    {
+        var value = new Agtype(
+            $"{{\"id\":844424930131969,\"label\":\"{label}\",\"properties\":{{\"FirstName\":\"Raw\"}}}}::vertex");
+        var record = new AgeRecord(new Dictionary<string, object?> { ["value"] = value });
+
+        var adapted = new AgeRecordAdapter().Adapt(record)["value"];
+
+        Assert.Equal([label], adapted.Labels);
+    }
+
     [Fact]
-    public void LegacyVertexSuppressesPhysicalCvoyaLabel()
+    public void UnmarkedRetiredStorageVertexRemainsNative()
     {
         var value = new Agtype(
             """{"id":844424930131969,"label":"CvoyaNode","properties":{"inheritance_labels":["Person"]}}::vertex""");
@@ -48,13 +62,13 @@ public sealed class AgeRecordAdapterTests
 
         var adapted = new AgeRecordAdapter().Adapt(record)["value"];
 
-        Assert.Equal(["Person"], adapted.Labels);
+        Assert.Equal(["CvoyaNode"], adapted.Labels);
     }
 
     [Theory]
     [InlineData("KNOWS", "IGNORED", "KNOWS")]
-    [InlineData("CvoyaRelationship", "KNOWS", "KNOWS")]
-    public void RelationshipTypePrefersNativeTypeAndFallsBackForLegacy(
+    [InlineData("CvoyaRelationship", "KNOWS", "CvoyaRelationship")]
+    public void UnmarkedRelationshipUsesNativeType(
         string physicalType,
         string storedType,
         string expectedType)
@@ -67,6 +81,19 @@ public sealed class AgeRecordAdapterTests
         var adapted = new AgeRecordAdapter().Adapt(record)["value"];
 
         Assert.Equal(expectedType, adapted.RelationshipType);
+    }
+
+    [Fact]
+    public void MarkedComplexRelationshipUsesStoredHierarchyType()
+    {
+        var value = new Agtype(
+            """{"id":1125899906842625,"label":"CvoyaRelationship","start_id":844424930131969,"end_id":844424930131970,"properties":{"__graphModelComplexProperty":true,"inheritance_labels":["Address"]}}::edge""");
+        var record = new AgeRecord(new Dictionary<string, object?> { ["value"] = value });
+
+        var adapted = new AgeRecordAdapter().Adapt(record)["value"];
+
+        Assert.Equal("Address", adapted.RelationshipType);
+        Assert.DoesNotContain("__graphModelComplexProperty", adapted.Entries);
     }
 
     [Theory]

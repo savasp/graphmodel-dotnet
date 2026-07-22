@@ -13,16 +13,14 @@ using System;
 /// Use this attribute on classes implementing INode to define how the node is labeled in the graph storage
 /// system. A node type maps to exactly one label. If the attribute is omitted (or its <see cref="Label"/> is
 /// left unset), the class name is used. The label must be unique (case-insensitive) across every node type
-/// loaded in the process; <see cref="SchemaRegistry"/> enforces this. The label is also the portability key:
-/// each stored entity records its concrete .NET type, but when that type is not loadable in the reading
-/// process the provider falls back to the label to find a compatible local type.
+/// loaded in the process; <see cref="SchemaRegistry"/> enforces this. The label is also the portability key
+/// used to resolve a compatible local type when materializing provider-native graph rows.
 /// </remarks>
 /// <example>
 /// <code>
 /// [Node("Person")]
-/// public class Person : INode
+/// public class Person : Node
 /// {
-///     public string Id { get; set; } = Guid.NewGuid().ToString();
 ///     public string Name { get; set; } = string.Empty;
 /// }
 /// </code>

@@ -241,55 +241,6 @@ internal class Neo4jSchemaManager
         _logger.LogDebugNeo4jSchemaManager216(type);
     }
 
-    // Transitional compatibility only. New native-bound command paths do not target or correlate
-    // through these properties. Keep automatic Id constraints isolated so the coordinated legacy
-    // API removal can delete them without touching explicit domain key/unique constraints.
-    private async Task CreateLegacyAutomaticNodeIdConstraintAsync(
-        string label,
-        SchemaSnapshot? existingSchema,
-        CancellationToken cancellationToken)
-    {
-        var idConstraintName = $"unique_{label}_Id".ToLowerInvariant();
-        var created = await CreateSchemaObjectAsync(
-            new Neo4jSchemaObjectCreation(
-                new Neo4jSchemaObjectDescriptor(
-                    idConstraintName,
-                    Neo4jSchemaObjectKind.NodeUniquenessConstraint,
-                    Neo4jSchemaEntityType.Node,
-                    [label],
-                    ["Id"]),
-                $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(idConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE n.Id IS UNIQUE"),
-            existingSchema,
-            cancellationToken).ConfigureAwait(false);
-        if (created)
-        {
-            _logger.LogDebugNeo4jSchemaManager239(label);
-        }
-    }
-
-    private async Task CreateLegacyAutomaticRelationshipIdConstraintAsync(
-        string type,
-        SchemaSnapshot? existingSchema,
-        CancellationToken cancellationToken)
-    {
-        var idConstraintName = $"unique_rel_{type}_Id".ToLowerInvariant();
-        var created = await CreateSchemaObjectAsync(
-            new Neo4jSchemaObjectCreation(
-                new Neo4jSchemaObjectDescriptor(
-                    idConstraintName,
-                    Neo4jSchemaObjectKind.RelationshipUniquenessConstraint,
-                    Neo4jSchemaEntityType.Relationship,
-                    [type],
-                    ["Id"]),
-                $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(idConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.Id IS UNIQUE"),
-            existingSchema,
-            cancellationToken).ConfigureAwait(false);
-        if (created)
-        {
-            _logger.LogDebugNeo4jSchemaManager348(type);
-        }
-    }
-
     private async Task CreateNodeConstraintsAsync(
         string label,
         EntitySchemaInfo schema,
@@ -301,11 +252,6 @@ internal class Neo4jSchemaManager
 
         try
         {
-            await CreateLegacyAutomaticNodeIdConstraintAsync(
-                label,
-                existingSchema,
-                cancellationToken).ConfigureAwait(false);
-
             var keyPropertyNames = schema.GetKeyProperties().Select(property => property.Name).ToList();
             if (keyPropertyNames.Count > 0)
             {
@@ -419,11 +365,6 @@ internal class Neo4jSchemaManager
 
         try
         {
-            await CreateLegacyAutomaticRelationshipIdConstraintAsync(
-                type,
-                existingSchema,
-                cancellationToken).ConfigureAwait(false);
-
             var keyPropertyNames = schema.GetKeyProperties().Select(property => property.Name).ToList();
             if (keyPropertyNames.Count > 0)
             {

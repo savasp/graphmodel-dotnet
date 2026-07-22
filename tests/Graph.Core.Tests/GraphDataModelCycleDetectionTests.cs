@@ -50,35 +50,7 @@ public class GraphDataModelCycleDetectionTests
         entity.Child = entity;
 
         var exception = Assert.Throws<GraphException>(entity.EnsureNoReferenceCycle);
-        Assert.Contains(entity.Id, exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void EnforceGraphConstraintsForEntity_ThrowsGraphExceptionForEmptyId()
-    {
-        var entity = new ConstraintNode { Id = string.Empty };
-
-        var exception = Assert.Throws<GraphException>(() => GraphDataModel.EnforceGraphConstraintsForEntity(entity));
-
-        Assert.Contains("Entity ID cannot be null or empty", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void EnforceGraphConstraintsForRelationship_ThrowsGraphExceptionForMissingEndpoint()
-    {
-        var relationship = new ConstraintRelationship(string.Empty, "target");
-
-        var exception = Assert.Throws<GraphException>(() => GraphDataModel.EnforceGraphConstraintsForRelationship(relationship));
-
-        Assert.Contains("Relationship source and target IDs cannot be null or empty", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void EnforceGraphConstraintsForRelationship_AllowsValidRelationship()
-    {
-        var relationship = new ConstraintRelationship("source", "target");
-
-        GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
+        Assert.Contains(nameof(CycleEntity), exception.Message, StringComparison.Ordinal);
     }
 
     private static CycleNode CreateAcyclicNode() => new()
@@ -182,7 +154,4 @@ public class GraphDataModelCycleDetectionTests
         public CycleEntity? Child { get; set; }
     }
 
-    private sealed record ConstraintNode : Node;
-
-    private sealed record ConstraintRelationship(string Start, string End) : Relationship(Start, End);
 }

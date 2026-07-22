@@ -8,20 +8,10 @@ namespace Cvoya.Graph;
 /// This serves as a foundation for creating domain-specific node entities.
 /// </summary>
 /// <remarks>
-/// Use this class as a base class for your domain models to get automatic ID generation
-/// and basic node functionality.
+/// Use this class as a base class for domain node models.
 /// </remarks>
 public abstract record Node : INode
 {
-    /// <summary>
-    /// Gets or sets the unique identifier of this node.
-    /// Automatically initialized with a new GUID string when a node is created.
-    /// </summary>
-    /// <remarks>
-    /// The default format used is the "N" format (32 digits without hyphens).
-    /// </remarks>
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
     /// <summary>
     /// Gets or sets the labels for this node as they are stored in the graph database.
     /// </summary>

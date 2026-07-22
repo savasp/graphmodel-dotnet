@@ -17,7 +17,7 @@ public sealed class AgeInlineComplexPropertyProjectionPassTests
     private readonly CypherRenderer renderer = new(AgeDialect.Instance);
 
     [Fact]
-    public void ExpandsLoadedEntityIntoStructuredLegacyGoldenOutput()
+    public void ExpandsLoadedEntityIntoStableGoldenOutput()
     {
         var statement = Statement(
             MatchPath(),

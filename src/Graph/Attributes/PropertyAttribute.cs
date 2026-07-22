@@ -15,7 +15,7 @@ namespace Cvoya.Graph;
 /// </remarks>
 /// <example>
 /// <code>
-/// // Keyless domain entity. The inherited Id member is not a domain key.
+/// // Keyless domain entity.
 /// [Node("Person")]
 /// public sealed record Person : Node
 /// {

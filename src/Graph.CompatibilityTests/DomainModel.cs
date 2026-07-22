@@ -6,6 +6,8 @@ namespace Cvoya.Graph.CompatibilityTests;
 // Example domain models
 public record Person : Node
 {
+    public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
+
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public int Age { get; set; } = 30;
@@ -30,11 +32,9 @@ public record AtomicMutationNode : Node
 }
 
 [Node("AtomicOrdinaryIdNode")]
-#pragma warning disable CG002, CG011 // This direct implementation separates transitional identity from a domain property named Id.
+#pragma warning disable CG002, CG011 // This direct implementation verifies a domain property named Id.
 public record AtomicOrdinaryIdNode : INode
 {
-    string IEntity.Id { get; init; } = Guid.NewGuid().ToString("N");
-
     IReadOnlyList<string> INode.Labels => [];
 
     public IReadOnlyList<string> Labels { get; set; } = [];
@@ -55,6 +55,8 @@ public record Manager : Person
 // 3-level polymorphic node hierarchy for base/derived deserialization scenarios (see #136).
 public record Animal : Node
 {
+    public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
+
     public string Name { get; set; } = string.Empty;
 }
 
@@ -95,12 +97,16 @@ public class HandlerDescription
 
 public record Kennel : Node
 {
+    public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
+
     public string Name { get; set; } = string.Empty;
     public List<AnimalDescription> Animals { get; set; } = new();
 }
 
 public record Address : Node
 {
+    public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
+
     public string Street { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
 }
@@ -135,11 +141,7 @@ public record PersonWithOptionalProfile : Node
 [Relationship(Label = "FRIENDOF")]
 public record Friend : Relationship
 {
-    public Friend() : base(string.Empty, string.Empty) { }
-
-    public Friend(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
-    public Friend(INode source, INode target) : base(source.Id, target.Id) { }
+    public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
 
     public DateTime Since { get; set; } = DateTime.UtcNow;
 }
@@ -147,10 +149,7 @@ public record Friend : Relationship
 [Relationship(Label = "KNOWS")]
 public record Knows : Relationship
 {
-    public Knows() : base(string.Empty, string.Empty) { }
-    public Knows(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
-    public Knows(INode source, INode target) : base(source.Id, target.Id) { }
+    public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
 
     public DateTime Since { get; set; } = DateTime.UtcNow;
 }
@@ -158,10 +157,6 @@ public record Knows : Relationship
 [Relationship(Label = "ATOMIC_MUTATION_RELATIONSHIP")]
 public record AtomicMutationRelationship : Relationship
 {
-    public AtomicMutationRelationship() : base(string.Empty, string.Empty) { }
-
-    public AtomicMutationRelationship(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-
     [Property(IsUnique = true)]
     public string Code { get; set; } = string.Empty;
 
@@ -171,18 +166,14 @@ public record AtomicMutationRelationship : Relationship
 [Relationship(Label = "WORKS_REALLY_WELL_WITH")]
 public record KnowsWell : Knows
 {
-    public KnowsWell() { }
-    public KnowsWell(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-    public KnowsWell(INode source, INode target) : base(source, target) { }
     public string HowWell { get; set; } = string.Empty;
 }
 
 [Relationship(Label = "LIVES_AT")]
 public record LivesAt : Relationship
 {
-    public LivesAt() : base(string.Empty, string.Empty) { }
-    public LivesAt(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
-    public LivesAt(INode source, INode target) : base(source.Id, target.Id) { }
+    public string TestKey { get; set; } = Guid.NewGuid().ToString("N");
+
     public DateTime MovedInDate { get; set; } = DateTime.UtcNow;
 }
 

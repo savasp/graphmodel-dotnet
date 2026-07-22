@@ -39,7 +39,8 @@ public interface IHostileDynamicIdentifierTests : IGraphTest
 
             // Accepted: the label must have been stored as the literal string, not executed,
             // and the sentinel node created before it must be untouched.
-            var retrieved = await Graph.GetDynamicNodeAsync(hostileNode.Id, null, TestContext.Current.CancellationToken);
+            var retrieved = await Graph.DynamicNodes().OfLabel(hostileLabel)
+                .SingleAsync(TestContext.Current.CancellationToken);
             Assert.Contains(hostileLabel, retrieved.Labels);
         }
         catch (GraphException)
@@ -48,7 +49,7 @@ public interface IHostileDynamicIdentifierTests : IGraphTest
         }
 
         var sentinelStillPresent = await Graph.Nodes<Person>()
-            .Where(p => p.Id == sentinel.Id)
+            .Where(p => p.TestKey == sentinel.TestKey)
             .CountAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, sentinelStillPresent);
     }
@@ -69,16 +70,20 @@ public interface IHostileDynamicIdentifierTests : IGraphTest
 
         var hostileType = "KNOWS`]-(a) DETACH DELETE a //";
         var hostileRelationship = new DynamicRelationship(
-            start.Id,
-            end.Id,
             hostileType,
             new Dictionary<string, object?> { ["marker"] = "hostile-type-backtick" });
 
         try
         {
-            await Graph.CreateRelationshipAsync(hostileRelationship, null, TestContext.Current.CancellationToken);
+            await Graph.CreateRelationshipAsync(
+                Graph.SelectNode(start),
+                hostileRelationship,
+                Graph.SelectNode(end),
+                cancellationToken: TestContext.Current.CancellationToken);
 
-            var retrieved = await Graph.GetDynamicRelationshipAsync(hostileRelationship.Id, null, TestContext.Current.CancellationToken);
+            var retrieved = await Graph.DynamicRelationships()
+                .Where(relationship => relationship.Type == hostileType)
+                .SingleAsync(TestContext.Current.CancellationToken);
             Assert.Equal(hostileType, retrieved.Type);
         }
         catch (GraphException)
@@ -88,10 +93,10 @@ public interface IHostileDynamicIdentifierTests : IGraphTest
 
         // Neither endpoint node was affected by the attempted break-out.
         var startStillPresent = await Graph.Nodes<Person>()
-            .Where(p => p.Id == start.Id)
+            .Where(p => p.TestKey == start.TestKey)
             .CountAsync(TestContext.Current.CancellationToken);
         var endStillPresent = await Graph.Nodes<Person>()
-            .Where(p => p.Id == end.Id)
+            .Where(p => p.TestKey == end.TestKey)
             .CountAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(1, startStillPresent);
@@ -121,7 +126,8 @@ public interface IHostileDynamicIdentifierTests : IGraphTest
         {
             await Graph.CreateNodeAsync(hostileNode, null, TestContext.Current.CancellationToken);
 
-            var retrieved = await Graph.GetDynamicNodeAsync(hostileNode.Id, null, TestContext.Current.CancellationToken);
+            var retrieved = await Graph.DynamicNodes().OfLabel(hostileLabel)
+                .SingleAsync(TestContext.Current.CancellationToken);
             Assert.Contains(hostileLabel, retrieved.Labels);
         }
         catch (GraphException)
@@ -130,7 +136,7 @@ public interface IHostileDynamicIdentifierTests : IGraphTest
         }
 
         var sentinelStillPresent = await Graph.Nodes<Person>()
-            .Where(p => p.Id == sentinel.Id)
+            .Where(p => p.TestKey == sentinel.TestKey)
             .CountAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, sentinelStillPresent);
     }
@@ -147,13 +153,13 @@ public interface IHostileDynamicIdentifierTests : IGraphTest
         await Graph.CreateNodeAsync(start, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(end, null, TestContext.Current.CancellationToken);
 
-        var relationship = new DynamicRelationship(
-            start.Id,
-            end.Id,
-            string.Empty,
-            new Dictionary<string, object?>());
+        var relationship = new DynamicRelationship(string.Empty, new Dictionary<string, object?>());
 
         await Assert.ThrowsAsync<GraphException>(
-            () => Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken));
+            () => Graph.CreateRelationshipAsync(
+                Graph.SelectNode(start),
+                relationship,
+                Graph.SelectNode(end),
+                cancellationToken: TestContext.Current.CancellationToken));
     }
 }

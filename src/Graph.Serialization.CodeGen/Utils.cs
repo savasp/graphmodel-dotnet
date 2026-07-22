@@ -325,11 +325,6 @@ internal static class Utils
     {
         var propertyType = property.Type;
 
-        // Relationship endpoints remain strings in the current runtime contract. Id and Direction
-        // are deliberately classified only from their declared types, like every domain property.
-        if (property.Name is "StartNodeId" or "EndNodeId")
-            return false;
-
         // A property is complex if it's not simple and not a collection of simple types
         return !GraphDataModel.IsSimple(propertyType) &&
                !GraphDataModel.IsCollectionOfSimple(propertyType);

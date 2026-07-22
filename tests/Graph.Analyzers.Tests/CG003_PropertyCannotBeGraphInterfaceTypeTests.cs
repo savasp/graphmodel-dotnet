@@ -104,8 +104,6 @@ public class CG003_PropertyCannotBeGraphInterfaceTypeTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
             }
             
             public class TestNode : Node
@@ -221,8 +219,6 @@ public class CG003_PropertyCannotBeGraphInterfaceTypeTests
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 public INode {|#0:StartNode|} { get; set; } = null!;
             }
             """;

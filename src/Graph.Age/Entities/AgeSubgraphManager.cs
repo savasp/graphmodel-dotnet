@@ -35,50 +35,12 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         public bool IsNew => Entity is not null;
     }
 
-    public Task CreateSubgraphAsync<TSource, TRelationship, TTarget>(
-        TSource source,
-        TRelationship relationship,
-        TTarget target,
-        AgeGraphTransaction transaction,
-        CancellationToken cancellationToken)
-        where TSource : class, Graph.INode
-        where TRelationship : class, Graph.IRelationship
-        where TTarget : class, Graph.INode =>
-        CreateSubgraphAsync(
-            new NewGraphCommandEndpoint(source),
-            relationship,
-            new NewGraphCommandEndpoint(target),
-            LegacyRelationshipEndpoints.LegacyDirection(relationship),
-            GraphRelationshipCreationMode.Standard,
-            persistLegacyDirection: true,
-            transaction,
-            cancellationToken);
-
-    internal Task CreateSubgraphAsync(
+    internal async Task CreateSubgraphAsync(
         GraphCommandEndpoint source,
         Graph.IRelationship relationship,
         GraphCommandEndpoint target,
         RelationshipDirection direction,
         GraphRelationshipCreationMode mode,
-        AgeGraphTransaction transaction,
-        CancellationToken cancellationToken) =>
-        CreateSubgraphAsync(
-            source,
-            relationship,
-            target,
-            direction,
-            mode,
-            persistLegacyDirection: false,
-            transaction,
-            cancellationToken);
-
-    private async Task CreateSubgraphAsync(
-        GraphCommandEndpoint source,
-        Graph.IRelationship relationship,
-        GraphCommandEndpoint target,
-        RelationshipDirection direction,
-        GraphRelationshipCreationMode mode,
-        bool persistLegacyDirection,
         AgeGraphTransaction transaction,
         CancellationToken cancellationToken)
     {
@@ -98,7 +60,9 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
 
         cancellationToken.ThrowIfCancellationRequested();
         var relationshipEntity = SerializeRelationship(relationship);
-        var relationshipStorageType = StorageName(relationshipEntity, relationship: true);
+        var relationshipStorageType = SerializationBridge.GetRootStorageName(
+            relationshipEntity.Label,
+            relationship: true);
         var correlationPropertyName = CreateCorrelationPropertyName();
         var sourcePlan = PlanEndpoint(source, GraphEndpointRole.Source);
         var targetPlan = mode == GraphRelationshipCreationMode.SelfLoop
@@ -130,11 +94,9 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             CreateCorrelationToken);
         var commands = BuildCommands(
             sourcePlan,
-            relationship,
             targetPlan,
             direction,
             mode,
-            persistLegacyDirection,
             relationshipEntity,
             relationshipStorageType,
             sourceChecks,
@@ -167,10 +129,10 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         if (valueNodeLevels.Count > 0)
         {
             await transaction.Runner
-                .EnsureLabelAsync(SerializationBridge.PhysicalNodeLabel, relationship: false, cancellationToken)
+                .EnsureLabelAsync(SerializationBridge.ComplexNodeLabel, relationship: false, cancellationToken)
                 .ConfigureAwait(false);
             await transaction.Runner
-                .EnsureLabelAsync(SerializationBridge.PhysicalRelationshipType, relationship: true, cancellationToken)
+                .EnsureLabelAsync(SerializationBridge.ComplexRelationshipType, relationship: true, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -215,7 +177,7 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             node,
             entity,
             CreateCorrelationToken(),
-            StorageName(entity, relationship: false));
+            StorageName(entity));
     }
 
     private static EndpointPlan PlanSelfLoopTarget(
@@ -278,11 +240,9 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
 
     private static List<AgeBatchCommand> BuildCommands(
         EndpointPlan source,
-        Graph.IRelationship relationship,
         EndpointPlan target,
         RelationshipDirection direction,
         GraphRelationshipCreationMode mode,
-        bool persistLegacyDirection,
         EntityInfo relationshipEntity,
         string relationshipStorageType,
         IReadOnlyList<AgeUniquenessCheck> sourceChecks,
@@ -312,11 +272,9 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
 
         commands.Add(BuildRelationshipCommand(
             source,
-            relationship,
             target,
             direction,
             mode,
-            persistLegacyDirection,
             relationshipEntity,
             relationshipStorageType,
             correlationPropertyName));
@@ -352,7 +310,6 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             ["correlationToken"] = endpoint.CorrelationToken,
         };
         var properties = AgeNodeManager.BuildNodeProperties(endpoint.Entity!);
-        AddLegacyNodeIdentity(endpoint.Entity!, endpoint.StorageLabel!, properties);
         var setClause = AgeCypherProperties.BuildSetClause(
             "node",
             properties,
@@ -407,9 +364,9 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             "row.relationshipProperties",
             relationshipPropertyNames);
         var correlationProperty = CypherIdentifier.Escape(correlationPropertyName, "correlation property name");
-        var complexLabel = CypherIdentifier.Escape(SerializationBridge.PhysicalNodeLabel, "complex value label");
+        var complexLabel = CypherIdentifier.Escape(SerializationBridge.ComplexNodeLabel, "complex value label");
         var complexRelationship = CypherIdentifier.Escape(
-            SerializationBridge.PhysicalRelationshipType,
+            SerializationBridge.ComplexRelationshipType,
             "complex property relationship type");
 
         return CountCommand(
@@ -431,11 +388,9 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
 
     private static AgeBatchCommand BuildRelationshipCommand(
         EndpointPlan source,
-        Graph.IRelationship relationship,
         EndpointPlan target,
         RelationshipDirection direction,
         GraphRelationshipCreationMode mode,
-        bool persistLegacyDirection,
         EntityInfo entity,
         string storageType,
         string correlationPropertyName)
@@ -464,19 +419,6 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
                 correlationPropertyName,
                 parameters);
         var properties = AgeRelationshipManager.BuildRelationshipProperties(entity);
-        if (persistLegacyDirection)
-        {
-            properties[nameof(Graph.DynamicRelationship.Direction)] = effectiveDirection.ToString();
-        }
-
-        if (string.Equals(storageType, SerializationBridge.PhysicalRelationshipType, StringComparison.Ordinal))
-        {
-            properties[nameof(Graph.IRelationship.Type)] = entity.Label;
-            properties[AgeElementMatcher.InheritanceLabelsProperty] =
-                new[] { Labels.GetLabelFromType(entity.ActualType) };
-            properties[SerializationBridge.MetadataPropertyName] =
-                SerializationBridge.CreateScalarMetadata(entity.ActualType);
-        }
 
         var setClause = AgeCypherProperties.BuildSetClause(
             "relationship",
@@ -535,23 +477,8 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             "cleanedCount");
     }
 
-    private static string StorageName(EntityInfo entity, bool relationship) =>
-        CypherIdentifier.IsNativeLabelName(entity.Label)
-            ? entity.Label
-            : relationship
-                ? SerializationBridge.PhysicalRelationshipType
-                : SerializationBridge.PhysicalNodeLabel;
-
-    private static void AddLegacyNodeIdentity(
-        EntityInfo entity,
-        string storageLabel,
-        Dictionary<string, object?> properties)
-    {
-        if (string.Equals(storageLabel, SerializationBridge.PhysicalNodeLabel, StringComparison.Ordinal))
-        {
-            properties[AgeElementMatcher.InheritanceLabelsProperty] = AgeNodeManager.LegacyLogicalLabels(entity);
-        }
-    }
+    private static string StorageName(EntityInfo entity) =>
+        SerializationBridge.GetRootStorageName(entity.Label, relationship: false);
 
     private static AgeBatchCommand CountCommand(
         string name,
