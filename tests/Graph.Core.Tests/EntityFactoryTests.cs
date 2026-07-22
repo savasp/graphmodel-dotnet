@@ -101,6 +101,16 @@ public class EntityFactoryTests
     }
 
     [Fact]
+    public void CanDeserialize_NullType_ThrowsArgumentNullException()
+    {
+        var factory = new EntityFactory();
+
+        var exception = Assert.Throws<ArgumentNullException>(() => factory.CanDeserialize(null!));
+
+        Assert.Equal("type", exception.ParamName);
+    }
+
+    [Fact]
     public void CanDeserialize_SupportedTypesHaveMatchingDeserializationStrategy()
     {
         var factory = new EntityFactory();
