@@ -18,9 +18,16 @@ public class EntityFactoryTests
     public static TheoryData<Type, bool> CanDeserializeCases => new()
     {
         { typeof(FactoryNode), true },
+        { typeof(FactoryRelationship), true },
         { typeof(DynamicNode), true },
         { typeof(DynamicRelationship), true },
-        { typeof(UnregisteredNode), true },
+        { typeof(UnregisteredNode), false },
+        { typeof(UnregisteredRelationship), false },
+        { typeof(IEntity), false },
+        { typeof(INode), false },
+        { typeof(IRelationship), false },
+        { typeof(Node), false },
+        { typeof(Relationship), false },
         { typeof(string), false },
         { typeof(FactoryAddress), false },
     };
@@ -41,6 +48,7 @@ public class EntityFactoryTests
     static EntityFactoryTests()
     {
         EntitySerializerRegistry.Instance.Register<FactoryNode>(new FactoryNodeSerializer());
+        EntitySerializerRegistry.Instance.Register<FactoryRelationship>(new FactoryRelationshipSerializer());
     }
 
     [Fact]
@@ -90,6 +98,35 @@ public class EntityFactoryTests
         var factory = new EntityFactory();
 
         Assert.Equal(expected, factory.CanDeserialize(type));
+    }
+
+    [Fact]
+    public void CanDeserialize_NullType_ThrowsArgumentNullException()
+    {
+        var factory = new EntityFactory();
+
+        var exception = Assert.Throws<ArgumentNullException>(() => factory.CanDeserialize(null!));
+
+        Assert.Equal("type", exception.ParamName);
+    }
+
+    [Fact]
+    public void CanDeserialize_SupportedTypesHaveMatchingDeserializationStrategy()
+    {
+        var factory = new EntityFactory();
+        EntityInfo[] supportedEntities =
+        [
+            factory.Serialize(new FactoryNode { Labels = [nameof(FactoryNode)] }),
+            factory.Serialize(new FactoryRelationship { Type = nameof(FactoryRelationship) }),
+            factory.Serialize(new DynamicNode(["Person"], new Dictionary<string, object?>())),
+            factory.Serialize(new DynamicRelationship("KNOWS", new Dictionary<string, object?>())),
+        ];
+
+        foreach (var entity in supportedEntities)
+        {
+            Assert.True(factory.CanDeserialize(entity.ActualType));
+            Assert.Equal(entity.ActualType, factory.Deserialize(entity).GetType());
+        }
     }
 
     [Fact]
@@ -275,12 +312,39 @@ public class EntityFactoryTests
                 },
             });
 
-        var roundTripped = factory.Deserialize<DynamicNode>(factory.Serialize(node));
+        var entity = factory.Serialize(node);
+
+        Assert.True(factory.CanDeserialize(entity.ActualType));
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
 
         var address = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(roundTripped.Properties["address"]);
         Assert.Equal("1 Main", address["street"]);
         Assert.Equal("London", address["city"]);
         Assert.Equal(10, address["unit"]);
+    }
+
+    [Fact]
+    public void DynamicNode_RoundTripsEmptyAddressDictionaryWithoutChangingItsShape()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["address"] = new Dictionary<string, object?>(),
+            });
+
+        var entity = factory.Serialize(node);
+
+        Assert.True(factory.CanDeserialize(entity.ActualType));
+        var serializedAddress = Assert.IsType<EntityInfo>(entity.ComplexProperties["address"].Value);
+        Assert.Empty(serializedAddress.SimpleProperties);
+        Assert.Empty(serializedAddress.ComplexProperties);
+
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
+
+        var address = Assert.IsType<Dictionary<string, object?>>(roundTripped.Properties["address"]);
+        Assert.Empty(address);
     }
 
     [Fact]
@@ -771,6 +835,10 @@ public class EntityFactoryTests
 
     private sealed record UnregisteredNode : Node;
 
+    private sealed record FactoryRelationship : Relationship;
+
+    private sealed record UnregisteredRelationship : Relationship;
+
     private sealed record FactoryAddress(string Street, string City);
 
     private sealed record FactorySurvey
@@ -1047,5 +1115,31 @@ public class EntityFactoryTests
             return type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance)
                 ?? throw new InvalidOperationException($"Property {type.Name}.{name} was not found.");
         }
+    }
+
+    private sealed class FactoryRelationshipSerializer : IEntitySerializer
+    {
+        public Type EntityType => typeof(FactoryRelationship);
+
+        public EntityInfo Serialize(object obj)
+        {
+            var relationship = (FactoryRelationship)obj;
+            return new EntityInfo(
+                typeof(FactoryRelationship),
+                relationship.Type,
+                [],
+                new Dictionary<string, Property>(),
+                new Dictionary<string, Property>());
+        }
+
+        public object Deserialize(EntityInfo entity) => new FactoryRelationship { Type = entity.Label };
+
+        public EntitySchema GetSchema() => new(
+            typeof(FactoryRelationship),
+            nameof(FactoryRelationship),
+            false,
+            false,
+            new Dictionary<string, PropertySchema>(),
+            new Dictionary<string, PropertySchema>());
     }
 }
