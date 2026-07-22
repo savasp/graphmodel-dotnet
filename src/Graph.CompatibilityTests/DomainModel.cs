@@ -117,6 +117,7 @@ public record NullableComplexCollectionNode : Node
 {
     public string Marker { get; set; } = Guid.NewGuid().ToString("N");
 
+    [ComplexProperty(RelationshipType = "NULLABLE_ANIMAL")]
     public List<AnimalDescription?> Animals { get; set; } = [];
 
     public AddressValue?[] Addresses { get; set; } = [];

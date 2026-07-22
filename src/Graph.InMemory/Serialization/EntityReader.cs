@@ -72,19 +72,37 @@ internal sealed class EntityReader(EntityFactory entityFactory)
                 if (propertySchema.PropertyType == PropertyType.ComplexCollection)
                 {
                     var elementType = propertySchema.ElementType ?? typeof(object);
-                    var collection = record.ComplexCollections.TryGetValue(name, out var storedCollection)
-                        ? ComplexCollectionStorageCodec.Rehydrate(
+                    EntityCollection collection;
+                    if (record.ComplexCollections.TryGetValue(name, out var storedCollection))
+                    {
+                        if (!string.Equals(
+                                storedCollection.RelationshipType,
+                                relationshipType,
+                                StringComparison.Ordinal))
+                        {
+                            throw new GraphException(
+                                $"Invalid complex-collection storage for property '{name}': " +
+                                $"the stored relationship type '{storedCollection.RelationshipType}' does not match " +
+                                $"the declared relationship type '{relationshipType}'.");
+                        }
+
+                        collection = ComplexCollectionStorageCodec.Rehydrate(
                             name,
                             elementType,
                             storedCollection.Length,
                             storedCollection.NullIndexes,
                             storedCollection.ElementType,
-                            children)
-                        : new EntityCollection(
+                            children);
+                    }
+                    else
+                    {
+                        collection = new EntityCollection(
                             elementType,
                             [.. children
                                 .OrderBy(item => item.SequenceNumber)
                                 .Select(item => (EntityInfo?)item.Item2)]);
+                    }
+
                     complexProperties[name] = new Property(
                         propertySchema.PropertyInfo,
                         name,
@@ -135,51 +153,65 @@ internal sealed class EntityReader(EntityFactory entityFactory)
 
         var complexProperties = new Dictionary<string, Property>();
         var relationshipGroups = state.ComplexEdges(record.Key)
-            .GroupBy(edge => GraphDataModel.RelationshipTypeNameToPropertyName(edge.Type), StringComparer.Ordinal)
+            .GroupBy(edge => edge.Type, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
-        var propertyNames = relationshipGroups.Keys
-            .Concat(record.ComplexCollections.Keys)
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal);
-        foreach (var propertyName in propertyNames)
+        var consumedRelationshipTypes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (propertyName, storedCollection) in record.ComplexCollections
+            .OrderBy(item => item.Key, StringComparer.Ordinal))
         {
-            var edges = relationshipGroups.GetValueOrDefault(propertyName) ?? [];
+            if (!consumedRelationshipTypes.Add(storedCollection.RelationshipType))
+            {
+                throw new GraphException(
+                    $"Complex collection metadata assigns relationship type '{storedCollection.RelationshipType}' to more than one property.");
+            }
+
+            var edges = relationshipGroups.GetValueOrDefault(storedCollection.RelationshipType) ?? [];
             var children = edges
                 .Select(edge => (edge.SequenceNumber, Entity: DynamicChildInfo(edge, state)))
                 .Where(item => item.Entity is not null)
                 .Select(item => (item.SequenceNumber, item.Entity!))
                 .ToList();
+            var value = ComplexCollectionStorageCodec.Rehydrate(
+                propertyName,
+                typeof(object),
+                storedCollection.Length,
+                storedCollection.NullIndexes,
+                storedCollection.ElementType,
+                children);
 
-            if (children.Count == 0 && !record.ComplexCollections.ContainsKey(propertyName))
+            complexProperties[propertyName] = new Property(
+                PropertyInfo: null!,
+                propertyName,
+                IsNullable: false,
+                value,
+                storedCollection.RelationshipType);
+        }
+
+        foreach (var (relationshipType, edges) in relationshipGroups
+            .Where(group => !consumedRelationshipTypes.Contains(group.Key))
+            .OrderBy(group => group.Key, StringComparer.Ordinal))
+        {
+            var propertyName = GraphDataModel.RelationshipTypeNameToPropertyName(relationshipType);
+            if (complexProperties.ContainsKey(propertyName))
+            {
+                throw new GraphException(
+                    $"Complex relationship type '{relationshipType}' conflicts with collection metadata for property '{propertyName}'.");
+            }
+
+            var denseChildren = edges
+                .Select(edge => (edge.SequenceNumber, Entity: DynamicChildInfo(edge, state)))
+                .Where(item => item.Entity is not null)
+                .OrderBy(item => item.SequenceNumber)
+                .Select(item => item.Entity!)
+                .ToList();
+            if (denseChildren.Count == 0)
             {
                 continue;
             }
 
-            Serialized value;
-            string relationshipType;
-            if (record.ComplexCollections.TryGetValue(propertyName, out var storedCollection))
-            {
-                relationshipType = storedCollection.RelationshipType;
-                value = ComplexCollectionStorageCodec.Rehydrate(
-                    propertyName,
-                    typeof(object),
-                    storedCollection.Length,
-                    storedCollection.NullIndexes,
-                    storedCollection.ElementType,
-                    children);
-            }
-            else
-            {
-                relationshipType = edges[0].Type;
-                var denseChildren = children
-                    .OrderBy(item => item.SequenceNumber)
-                    .Select(item => item.Item2)
-                    .ToList();
-                value = denseChildren.Count == 1
-                    ? denseChildren[0]
-                    : new EntityCollection(typeof(object), denseChildren);
-            }
-
+            Serialized value = denseChildren.Count == 1
+                ? denseChildren[0]
+                : new EntityCollection(typeof(object), denseChildren);
             complexProperties[propertyName] = new Property(
                 PropertyInfo: null!,
                 propertyName,

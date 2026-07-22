@@ -134,6 +134,13 @@ internal sealed class CypherEngine
                     transaction,
                     cancellationToken).ConfigureAwait(false);
             }
+            else if (complexPlan!.HasWork)
+            {
+                await AcquireComplexMutationLocksAsync(
+                    nativeIdentities.Cast<string>().ToArray(),
+                    transaction,
+                    cancellationToken).ConfigureAwait(false);
+            }
 
             var statement = new CypherMutationPlanner(Neo4jDialect.Instance)
                 .Plan(
@@ -158,6 +165,40 @@ internal sealed class CypherEngine
         }
 
         return selected.Count;
+    }
+
+    private async Task AcquireComplexMutationLocksAsync(
+        string[] nativeIdentities,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var expected = nativeIdentities.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        var lockProperty = CypherIdentifier.Escape(
+            ComplexCollectionStorageCodec.MutationLockProperty,
+            "complex-property mutation lock");
+        var records = await _executor.ExecuteAsync(
+            $"""
+            UNWIND $targetIds AS targetId
+            WITH targetId ORDER BY targetId
+            MATCH (target)
+            WHERE elementId(target) = targetId
+            SET target.{lockProperty} = true
+            REMOVE target.{lockProperty}
+            RETURN elementId(target) AS __nativeId
+            """,
+            new Dictionary<string, object?> { ["targetIds"] = expected },
+            transaction,
+            cancellationToken).ConfigureAwait(false);
+        var actual = records
+            .Select(record => global::Neo4j.Driver.ValueExtensions.As<string>(record["__nativeId"]))
+            .ToArray();
+        if (expected.Length != nativeIdentities.Length ||
+            actual.Length != expected.Length ||
+            !expected.SequenceEqual(actual.Order(StringComparer.Ordinal), StringComparer.Ordinal))
+        {
+            throw new GraphException(
+                "The complex mutation target set changed before every frozen target could be locked.");
+        }
     }
 
     private async Task<IReadOnlyList<GraphMutationConstraintRow>> ReadConstraintRowsAsync(

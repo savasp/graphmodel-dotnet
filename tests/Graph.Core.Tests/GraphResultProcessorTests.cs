@@ -62,6 +62,52 @@ public class GraphResultProcessorTests
     }
 
     [Fact]
+    public async Task ComplexPropertyWireFixture_UsesStoredRelationshipTypeForDynamicCollection()
+    {
+        var child = DynamicComplexValueNode("child-wire", "child", "name", "Second");
+        var collection = new EntityCollection(
+            typeof(object),
+            [
+                null,
+                new EntityInfo(
+                    typeof(object),
+                    "Dictionary",
+                    [],
+                    new Dictionary<string, Property>(),
+                    new Dictionary<string, Property>()),
+            ]);
+        var metadata = ComplexCollectionStorageCodec.EncodeProperties(
+                new Dictionary<string, Property>
+                {
+                    ["Children"] = new(
+                        PropertyInfo: null!,
+                        Label: "Children",
+                        Value: collection,
+                        RelationshipType: "HAS_CHILD"),
+                },
+                static value => value)
+            .ToDictionary(item => item.Key, item => ToGraphValue(item.Value), StringComparer.Ordinal);
+        var parent = GraphValue.Node(
+            "parent-wire",
+            ["Parent"],
+            new Dictionary<string, GraphValue> { ["name"] = GraphValue.Scalar("Parent") },
+            metadata);
+        var edge = Relationship("edge", "HAS_CHILD", parent, child, sequence: 1);
+        var record = NodeRecord(parent, [ComplexProperty(parent, edge, child, 1)]);
+
+        var info = Assert.Single(await new GraphResultProcessor(factory).ProcessAsync(
+            [record], typeof(DynamicNode), TestContext.Current.CancellationToken));
+        var node = Assert.IsType<DynamicNode>(factory.Deserialize(info));
+        var children = Assert.IsAssignableFrom<System.Collections.IList>(node.Properties["Children"]);
+
+        Assert.Equal(2, children.Count);
+        Assert.Null(children[0]);
+        var storedChild = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(children[1]);
+        Assert.Equal("Second", storedChild["name"]);
+        Assert.DoesNotContain("HAS_CHILD", node.Properties.Keys);
+    }
+
+    [Fact]
     public async Task NestedDynamicComplexValues_ExcludeStructuralPropertiesAtEveryLevel()
     {
         var parent = Node("parent-wire", "parent", "Parent", 1, 1m);
@@ -544,6 +590,13 @@ public class GraphResultProcessorTests
             ["SequenceNumber"] = GraphValue.Scalar(sequence),
             ["Property"] = property,
         });
+
+    private static GraphValue ToGraphValue(object? value) => value switch
+    {
+        System.Collections.IEnumerable values when value is not string and not byte[] =>
+            GraphValue.List(values.Cast<object?>().Select(ToGraphValue).ToArray()),
+        _ => GraphValue.Scalar(value),
+    };
 
     private static GraphValue PathSegment(GraphValue start, GraphValue relationship, GraphValue end) =>
         GraphValue.Map(new Dictionary<string, GraphValue>

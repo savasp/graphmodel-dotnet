@@ -21,7 +21,8 @@ public class ComplexCollectionStorageCodecTests
             "Addresses",
             typeof(AddressValue),
             properties,
-            [(1, Entity("first")), (4, Entity("last"))]);
+            [(1, Entity("first")), (4, Entity("last"))],
+            "Addresses");
 
         Assert.NotNull(result);
         Assert.Equal(typeof(AddressValue), result.Type);
@@ -50,6 +51,30 @@ public class ComplexCollectionStorageCodecTests
             [(0, Entity("first"))]));
 
         Assert.Contains("index 2 has neither a child nor a null slot", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Metadata_RequiresRelationshipTypeAndValidatesDeclaredMapping()
+    {
+        var properties = PhysicalProperties(
+            "Addresses",
+            new EntityCollection(typeof(AddressValue), [Entity("first")]));
+
+        var mismatch = Assert.Throws<GraphException>(() => ComplexCollectionStorageCodec.Rehydrate(
+            "Addresses",
+            typeof(AddressValue),
+            properties,
+            [(0, Entity("first"))],
+            "LIVES_AT"));
+        Assert.Contains("stored relationship type 'Addresses'", mismatch.Message, StringComparison.Ordinal);
+
+        properties.Remove(ComplexCollectionStorageCodec.GetRelationshipTypePropertyName("Addresses"));
+        var partial = Assert.Throws<GraphException>(() => ComplexCollectionStorageCodec.Rehydrate(
+            "Addresses",
+            typeof(AddressValue),
+            properties,
+            [(0, Entity("first"))]));
+        Assert.Contains("all four collection companions", partial.Message, StringComparison.Ordinal);
     }
 
     [Fact]

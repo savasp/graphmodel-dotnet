@@ -16,6 +16,8 @@ internal static class ComplexCollectionStorageNames
     internal const string LengthPrefix = Prefix + "l:";
     internal const string NullIndexesPrefix = Prefix + "n:";
     internal const string ElementTypePrefix = Prefix + "t:";
+    internal const string RelationshipTypePrefix = Prefix + "r:";
+    internal const string MutationLockProperty = Prefix + "lock";
 
     internal static string GetLengthPropertyName(string logicalName) =>
         LengthPrefix + EncodeName(logicalName);
@@ -25,6 +27,9 @@ internal static class ComplexCollectionStorageNames
 
     internal static string GetElementTypePropertyName(string logicalName) =>
         ElementTypePrefix + EncodeName(logicalName);
+
+    internal static string GetRelationshipTypePropertyName(string logicalName) =>
+        RelationshipTypePrefix + EncodeName(logicalName);
 
     internal static string EncodeName(string value)
     {

@@ -14,6 +14,8 @@ internal static class ComplexCollectionStorageCodec
     internal const string LengthPrefix = ComplexCollectionStorageNames.LengthPrefix;
     internal const string NullIndexesPrefix = ComplexCollectionStorageNames.NullIndexesPrefix;
     internal const string ElementTypePrefix = ComplexCollectionStorageNames.ElementTypePrefix;
+    internal const string RelationshipTypePrefix = ComplexCollectionStorageNames.RelationshipTypePrefix;
+    internal const string MutationLockProperty = ComplexCollectionStorageNames.MutationLockProperty;
 
     internal static string GetLengthPropertyName(string logicalName) =>
         ComplexCollectionStorageNames.GetLengthPropertyName(logicalName);
@@ -24,11 +26,15 @@ internal static class ComplexCollectionStorageCodec
     internal static string GetElementTypePropertyName(string logicalName) =>
         ComplexCollectionStorageNames.GetElementTypePropertyName(logicalName);
 
+    internal static string GetRelationshipTypePropertyName(string logicalName) =>
+        ComplexCollectionStorageNames.GetRelationshipTypePropertyName(logicalName);
+
     internal static IReadOnlyList<string> GetCompanionPropertyNames(string logicalName) =>
         [
             GetLengthPropertyName(logicalName),
             GetNullIndexesPropertyName(logicalName),
             GetElementTypePropertyName(logicalName),
+            GetRelationshipTypePropertyName(logicalName),
         ];
 
     internal static Dictionary<string, object?> EncodeProperties(
@@ -56,6 +62,10 @@ internal static class ComplexCollectionStorageCodec
             encoded.Add(
                 GetElementTypePropertyName(logicalName),
                 convert(SimpleCollectionStorageCodec.GetTypeIdentity(collection.Type)));
+            var relationshipType = property.RelationshipType ?? (property.PropertyInfo is not null
+                ? GraphDataModel.GetComplexPropertyRelationshipType(property.PropertyInfo)
+                : GraphDataModel.PropertyNameToRelationshipTypeName(logicalName));
+            encoded.Add(GetRelationshipTypePropertyName(logicalName), convert(relationshipType));
         }
 
         return encoded;
@@ -65,7 +75,8 @@ internal static class ComplexCollectionStorageCodec
         string logicalName,
         Type expectedElementType,
         IReadOnlyDictionary<string, GraphValue> ownerProperties,
-        IReadOnlyList<(int SequenceNumber, EntityInfo Entity)> storedEntities)
+        IReadOnlyList<(int SequenceNumber, EntityInfo Entity)> storedEntities,
+        string? expectedRelationshipType = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(logicalName);
         ArgumentNullException.ThrowIfNull(expectedElementType);
@@ -91,6 +102,14 @@ internal static class ComplexCollectionStorageCodec
             throw InvalidEncoding(
                 logicalName,
                 $"the stored element type '{metadata.ElementType}' does not match the declared element type '{expectedElementType}'");
+        }
+
+        if (expectedRelationshipType is not null &&
+            !string.Equals(metadata.RelationshipType, expectedRelationshipType, StringComparison.Ordinal))
+        {
+            throw InvalidEncoding(
+                logicalName,
+                $"the stored relationship type '{metadata.RelationshipType}' does not match the declared relationship type '{expectedRelationshipType}'");
         }
 
         return Rehydrate(
@@ -175,7 +194,9 @@ internal static class ComplexCollectionStorageCodec
                     ? physicalName[NullIndexesPrefix.Length..]
                     : physicalName.StartsWith(ElementTypePrefix, StringComparison.Ordinal)
                         ? physicalName[ElementTypePrefix.Length..]
-                        : throw new GraphException($"Invalid private complex-collection property '{physicalName}'.");
+                        : physicalName.StartsWith(RelationshipTypePrefix, StringComparison.Ordinal)
+                            ? physicalName[RelationshipTypePrefix.Length..]
+                            : throw new GraphException($"Invalid private complex-collection property '{physicalName}'.");
             names.Add(ComplexCollectionStorageNames.DecodeName(encodedName));
         }
 
@@ -190,14 +211,28 @@ internal static class ComplexCollectionStorageCodec
     internal static bool IsMetadataProperty(string name) =>
         name.StartsWith(LengthPrefix, StringComparison.Ordinal) ||
         name.StartsWith(NullIndexesPrefix, StringComparison.Ordinal) ||
-        name.StartsWith(ElementTypePrefix, StringComparison.Ordinal);
+        name.StartsWith(ElementTypePrefix, StringComparison.Ordinal) ||
+        name.StartsWith(RelationshipTypePrefix, StringComparison.Ordinal);
 
     internal static bool HasMetadata(
         string logicalName,
         IReadOnlyDictionary<string, GraphValue> properties) =>
         properties.ContainsKey(GetLengthPropertyName(logicalName)) ||
         properties.ContainsKey(GetNullIndexesPropertyName(logicalName)) ||
-        properties.ContainsKey(GetElementTypePropertyName(logicalName));
+        properties.ContainsKey(GetElementTypePropertyName(logicalName)) ||
+        properties.ContainsKey(GetRelationshipTypePropertyName(logicalName));
+
+    internal static string GetRelationshipType(
+        string logicalName,
+        IReadOnlyDictionary<string, GraphValue> properties)
+    {
+        if (!TryReadMetadata(logicalName, properties, out var metadata))
+        {
+            throw InvalidEncoding(logicalName, "collection metadata is missing");
+        }
+
+        return metadata.RelationshipType;
+    }
 
     private static bool TryReadMetadata(
         string logicalName,
@@ -207,15 +242,18 @@ internal static class ComplexCollectionStorageCodec
         var hasLength = properties.TryGetValue(GetLengthPropertyName(logicalName), out var lengthValue);
         var hasNullIndexes = properties.TryGetValue(GetNullIndexesPropertyName(logicalName), out var nullIndexesValue);
         var hasElementType = properties.TryGetValue(GetElementTypePropertyName(logicalName), out var elementTypeValue);
-        if (!hasLength && !hasNullIndexes && !hasElementType)
+        var hasRelationshipType = properties.TryGetValue(
+            GetRelationshipTypePropertyName(logicalName),
+            out var relationshipTypeValue);
+        if (!hasLength && !hasNullIndexes && !hasElementType && !hasRelationshipType)
         {
             metadata = null!;
             return false;
         }
 
-        if (!hasLength || !hasNullIndexes || !hasElementType)
+        if (!hasLength || !hasNullIndexes || !hasElementType || !hasRelationshipType)
         {
-            throw InvalidEncoding(logicalName, "all three collection companions must be present");
+            throw InvalidEncoding(logicalName, "all four collection companions must be present");
         }
 
         var length = ReadInteger(logicalName, lengthValue!, "logical length");
@@ -226,8 +264,21 @@ internal static class ComplexCollectionStorageCodec
 
         var nullIndexes = ReadNullIndexes(logicalName, nullIndexesValue!, length);
         var elementType = ReadElementType(logicalName, elementTypeValue!);
-        metadata = new Metadata(length, nullIndexes, elementType);
+        var relationshipType = ReadRelationshipType(logicalName, relationshipTypeValue!);
+        metadata = new Metadata(length, nullIndexes, elementType, relationshipType);
         return true;
+    }
+
+    private static string ReadRelationshipType(string logicalName, GraphValue value)
+    {
+        if (value.Kind != GraphValueKind.Scalar ||
+            value.ScalarValue is not string relationshipType ||
+            string.IsNullOrWhiteSpace(relationshipType))
+        {
+            throw InvalidEncoding(logicalName, "the relationship-type companion is not a non-empty string");
+        }
+
+        return relationshipType;
     }
 
     private static Type ReadElementType(string logicalName, GraphValue value)
@@ -313,5 +364,9 @@ internal static class ComplexCollectionStorageCodec
     private static GraphException InvalidEncoding(string logicalName, string detail) =>
         new($"Invalid complex-collection storage for property '{logicalName}': {detail}.");
 
-    private sealed record Metadata(int Length, IReadOnlyList<int> NullIndexes, Type ElementType);
+    private sealed record Metadata(
+        int Length,
+        IReadOnlyList<int> NullIndexes,
+        Type ElementType,
+        string RelationshipType);
 }

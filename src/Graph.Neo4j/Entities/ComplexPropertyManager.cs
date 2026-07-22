@@ -153,10 +153,13 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         var cypher = new System.Text.StringBuilder();
         // Force Neo4j to serialize competing replacements before either transaction reads the old subtree.
         // The reserved lock property is removed in the same statement and never reaches committed storage.
+        var mutationLockProperty = CypherIdentifier.Escape(
+            ComplexCollectionStorageCodec.MutationLockProperty,
+            "complex-property mutation lock");
         cypher.AppendLine(FormattableString.Invariant(
-            $"SET {rootVariable}.__graphModelComplexMutationLock = true"));
+            $"SET {rootVariable}.{mutationLockProperty} = true"));
         cypher.AppendLine(FormattableString.Invariant(
-            $"REMOVE {rootVariable}.__graphModelComplexMutationLock"));
+            $"REMOVE {rootVariable}.{mutationLockProperty}"));
         cypher.AppendLine(FormattableString.Invariant($"WITH {rootVariable}"));
         cypher.AppendLine(FormattableString.Invariant($"OPTIONAL MATCH ({rootVariable})-[__complexOwnerRelationship]->(__complexPropertyRoot)"));
         cypher.AppendLine(FormattableString.Invariant(
@@ -173,8 +176,13 @@ internal sealed class ComplexPropertyManager(GraphContext context)
 
         if (rootScalarPropertiesToClear.Count > 0)
         {
-            var properties = rootScalarPropertiesToClear.Select(propertyName =>
-                $"{rootVariable}.{CypherIdentifier.Escape(propertyName, "dynamic property name")}");
+            var properties = rootScalarPropertiesToClear
+                .SelectMany(propertyName =>
+                    new[] { SimpleCollectionStorageCodec.GetPayloadPropertyName(propertyName) }
+                        .Concat(SimpleCollectionStorageCodec.GetCompanionPropertyNames(propertyName)))
+                .Distinct(StringComparer.Ordinal)
+                .Select(propertyName =>
+                    $"{rootVariable}.{CypherIdentifier.Escape(propertyName, "dynamic property name")}");
             cypher.AppendLine(FormattableString.Invariant($"REMOVE {string.Join(", ", properties)}"));
         }
 

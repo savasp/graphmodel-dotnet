@@ -105,7 +105,16 @@ public sealed record GraphValue
             null);
     }
 
-    internal static GraphValue Node(
+    /// <summary>
+    /// Creates a node wire value with provider-private storage properties that are available to
+    /// materialization but never enter the node's user property bag.
+    /// </summary>
+    /// <param name="elementId">The provider-native element identity.</param>
+    /// <param name="labels">The node labels.</param>
+    /// <param name="properties">The logical user properties.</param>
+    /// <param name="storageProperties">Provider-private storage metadata.</param>
+    /// <returns>An immutable node wire value.</returns>
+    public static GraphValue Node(
         string elementId,
         IReadOnlyList<string> labels,
         IReadOnlyDictionary<string, GraphValue> properties,

@@ -292,7 +292,8 @@ public sealed class GraphResultProcessor
                     propertySchema.PropertyName,
                     childType,
                     node.StorageEntries,
-                    children);
+                    children,
+                    expectedRelType);
                 if (collection is null)
                 {
                     continue;
@@ -368,17 +369,23 @@ public sealed class GraphResultProcessor
             .ToList();
 
         var relationshipGroups = directComplexProps
-            .GroupBy(cp => GraphDataModel.RelationshipTypeNameToPropertyName(cp.Relationship.Type))
+            .GroupBy(cp => cp.Relationship.Type)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
         var metadataNames = ComplexCollectionStorageCodec.GetMetadataLogicalNames(node.StorageEntries);
-        var propertyNames = relationshipGroups.Keys
-            .Concat(metadataNames)
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal);
+        var consumedRelationshipTypes = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var propertyName in propertyNames)
+        foreach (var propertyName in metadataNames)
         {
-            var matches = relationshipGroups.GetValueOrDefault(propertyName) ?? [];
+            var relationshipType = ComplexCollectionStorageCodec.GetRelationshipType(
+                propertyName,
+                node.StorageEntries);
+            if (!consumedRelationshipTypes.Add(relationshipType))
+            {
+                throw new GraphException(
+                    $"Complex collection metadata assigns relationship type '{relationshipType}' to more than one property.");
+            }
+
+            var matches = relationshipGroups.GetValueOrDefault(relationshipType) ?? [];
             var children = matches
                 .Select(cp => (
                     cp.SequenceNumber,
@@ -386,33 +393,50 @@ public sealed class GraphResultProcessor
                         cp.Property, allComplexProperties, typeof(object), depth + 1, visitedNodeIds)))
                 .ToList();
 
-            Serialized value;
-            if (ComplexCollectionStorageCodec.HasMetadata(propertyName, node.StorageEntries))
-            {
-                value = ComplexCollectionStorageCodec.Rehydrate(
-                    propertyName,
-                    typeof(object),
-                    node.StorageEntries,
-                    children) ?? throw new GraphException(
-                        $"Complex collection metadata for '{propertyName}' did not produce a collection.");
-            }
-            else
-            {
-                var denseChildren = children
-                    .OrderBy(child => child.SequenceNumber)
-                    .Select(child => child.Item2)
-                    .ToList();
-                value = denseChildren.Count == 1
-                    ? denseChildren[0]
-                    : new EntityCollection(typeof(object), denseChildren);
-            }
+            var value = ComplexCollectionStorageCodec.Rehydrate(
+                propertyName,
+                typeof(object),
+                node.StorageEntries,
+                children,
+                relationshipType) ?? throw new GraphException(
+                    $"Complex collection metadata for '{propertyName}' did not produce a collection.");
 
             entityInfo.ComplexProperties[propertyName] = new Property(
                 PropertyInfo: null!,
                 Label: propertyName,
                 IsNullable: true,
-                Value: value
-            );
+                Value: value,
+                RelationshipType: relationshipType);
+        }
+
+        foreach (var (relationshipType, matches) in relationshipGroups
+            .Where(group => !consumedRelationshipTypes.Contains(group.Key))
+            .OrderBy(group => group.Key, StringComparer.Ordinal))
+        {
+            var propertyName = GraphDataModel.RelationshipTypeNameToPropertyName(relationshipType);
+            if (entityInfo.ComplexProperties.ContainsKey(propertyName))
+            {
+                throw new GraphException(
+                    $"Complex relationship type '{relationshipType}' conflicts with collection metadata for property '{propertyName}'.");
+            }
+
+            var denseChildren = matches
+                .Select(cp => (
+                    cp.SequenceNumber,
+                    Entity: DeserializeComplexPropertiesForDynamicNode(
+                        cp.Property, allComplexProperties, typeof(object), depth + 1, visitedNodeIds)))
+                .OrderBy(child => child.SequenceNumber)
+                .Select(child => child.Entity)
+                .ToList();
+            Serialized value = denseChildren.Count == 1
+                ? denseChildren[0]
+                : new EntityCollection(typeof(object), denseChildren);
+            entityInfo.ComplexProperties[propertyName] = new Property(
+                PropertyInfo: null!,
+                Label: propertyName,
+                IsNullable: true,
+                Value: value,
+                RelationshipType: relationshipType);
         }
 
         return entityInfo;

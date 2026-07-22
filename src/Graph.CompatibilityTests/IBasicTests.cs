@@ -65,6 +65,24 @@ public interface IBasicTests : IGraphTest
         Assert.Equal(3, fetched.Addresses.Length);
         Assert.All(fetched.Addresses, Assert.Null);
         Assert.Empty(fetched.EmptyAddresses);
+
+        var dynamicCandidates = await Graph.DynamicNodes()
+            .OfLabel(Labels.GetLabelFromType(typeof(NullableComplexCollectionNode)))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var dynamicFetched = Assert.Single(
+            dynamicCandidates,
+            candidate => Equals(candidate.Properties[nameof(NullableComplexCollectionNode.Marker)], node.Marker));
+        var dynamicAnimals = Assert.IsType<List<Dictionary<string, object?>?>>(
+            dynamicFetched.Properties[nameof(NullableComplexCollectionNode.Animals)]);
+        Assert.Collection(
+            dynamicAnimals,
+            Assert.Null,
+            Assert.NotNull,
+            Assert.Null,
+            Assert.Null,
+            Assert.NotNull,
+            Assert.Null);
+        Assert.DoesNotContain("NULLABLE_ANIMAL", dynamicFetched.Properties.Keys);
     }
 
     [Fact]

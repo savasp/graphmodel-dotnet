@@ -49,8 +49,8 @@ public sealed class ComplexPropertyMutationFragmentTests
             ["old scalar"]);
 
         Assert.StartsWith(
-            "SET target.__graphModelComplexMutationLock = true\n" +
-            "REMOVE target.__graphModelComplexMutationLock",
+            "SET target.`__cvoya_sc:v1:c:lock` = true\n" +
+            "REMOVE target.`__cvoya_sc:v1:c:lock`",
             fragment.Cypher,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -63,9 +63,12 @@ public sealed class ComplexPropertyMutationFragmentTests
             StringComparison.Ordinal);
         Assert.Contains("DETACH DELETE __complexPropertyNode", fragment.Cypher, StringComparison.Ordinal);
         Assert.Contains("REMOVE target.`old scalar`", fragment.Cypher, StringComparison.Ordinal);
+        Assert.Contains("target.`__cvoya_sc:v1:n:b2xkIHNjYWxhcg`", fragment.Cypher, StringComparison.Ordinal);
+        Assert.Contains("target.`__cvoya_sc:v1:t:b2xkIHNjYWxhcg`", fragment.Cypher, StringComparison.Ordinal);
         Assert.Contains("target.`__cvoya_sc:v1:c:l:QWRkcmVzcw`", fragment.Cypher, StringComparison.Ordinal);
         Assert.Contains("target.`__cvoya_sc:v1:c:n:QWRkcmVzcw`", fragment.Cypher, StringComparison.Ordinal);
         Assert.Contains("target.`__cvoya_sc:v1:c:t:QWRkcmVzcw`", fragment.Cypher, StringComparison.Ordinal);
+        Assert.Contains("target.`__cvoya_sc:v1:c:r:QWRkcmVzcw`", fragment.Cypher, StringComparison.Ordinal);
         Assert.Contains("CREATE (target)-[__complexRelationship0:`HOME ADDRESS`]", fragment.Cypher, StringComparison.Ordinal);
         Assert.Equal(
             ["HOME ADDRESS"],

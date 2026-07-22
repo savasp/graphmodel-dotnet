@@ -730,8 +730,9 @@ public interface IGraphCommandTests : IGraphTest
             [label],
             new Dictionary<string, object?>
             {
-                ["profile"] = "before",
+                ["profile"] = new List<string?> { "before", null, "again" },
                 ["status"] = "before",
+                ["__graphModelComplexMutationLock"] = "preserve",
             });
         await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
         var replacement = new Dictionary<string, object?>
@@ -755,6 +756,7 @@ public interface IGraphCommandTests : IGraphTest
             .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, affected);
         Assert.Equal("after", stored.Properties["status"]);
+        Assert.Equal("preserve", stored.Properties["__graphModelComplexMutationLock"]);
         var profile = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(stored.Properties["profile"]);
         Assert.Equal("after", profile["name"]);
         var address = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(profile["address"]);
@@ -776,6 +778,7 @@ public interface IGraphCommandTests : IGraphTest
             .SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, affected);
         Assert.Equal("flat", stored.Properties["profile"]);
+        Assert.Equal("preserve", stored.Properties["__graphModelComplexMutationLock"]);
     }
 
     [Fact]

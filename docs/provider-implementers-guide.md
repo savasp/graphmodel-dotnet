@@ -135,12 +135,15 @@ agree on the mapping.
 
 Collections of complex properties use one relationship per non-null collection item and store the
 item's original zero-based index in the relationship's `SequenceNumber` property. The owner also
-stores three private companions: logical length (`__cvoya_sc:v1:c:l:<name>`), null indexes
+stores four private companions: logical length (`__cvoya_sc:v1:c:l:<name>`), null indexes
 (`__cvoya_sc:v1:c:n:<name>`), and the declared element-type identity
-(`__cvoya_sc:v1:c:t:<name>`). `<name>` is the Base64Url-encoded physical property label. Keeping the
+(`__cvoya_sc:v1:c:t:<name>`), plus the semantic relationship type
+(`__cvoya_sc:v1:c:r:<name>`). `<name>` is the Base64Url-encoded physical property label. Keeping the
 namespace beneath the simple-collection prefix lets the existing user-property escaping protect it
 from collisions. Empty and all-null collections therefore have an explicit representation without
-creating fake nodes or relationships.
+creating fake nodes or relationships. Persisting the relationship type also lets dynamic readers
+correlate children unambiguously when `[ComplexProperty(RelationshipType = "...")]` overrides the
+property-name convention.
 
 Readers reconstruct the ordered slot list from the union of real child `SequenceNumber` values and
 declared null indexes. Every index from zero through logical length minus one must occur exactly once;
@@ -149,7 +152,7 @@ corrupt storage and fails with `GraphException`. `PropertySchema.IsElementNullab
 element annotation for both simple and complex collections. A nullable declaration preserves null
 slots; a non-nullable declaration still rejects a null with an indexed diagnostic. Derived runtime
 elements remain valid when assignable to the declared element type. Replacements clear and write all
-three companions atomically with the real child relationships, and cascade deletion touches only real
+four companions atomically with the real child relationships, and cascade deletion touches only real
 value nodes. This representation is the current write contract; providers are not required to migrate
 previously deployed storage that predates it.
 
