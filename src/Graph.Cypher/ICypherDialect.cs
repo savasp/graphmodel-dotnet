@@ -31,6 +31,37 @@ public interface ICypherDialect
     /// </param>
     string RenderPropertyAccess(string target, string property, bool escape);
 
+    /// <summary>Renders access to an already-encoded physical property name.</summary>
+    string RenderPhysicalPropertyAccess(string target, string property) =>
+        RenderPropertyAccess(target, property, escape: true);
+
+    /// <summary>Renders logical access to a stored simple-collection property.</summary>
+    string RenderCollectionPropertyAccess(string target, string property, bool escape) =>
+        RenderPropertyAccess(target, property, escape);
+
+    /// <summary>Renders membership in a stored simple collection.</summary>
+    string RenderCollectionContains(string collection, string item) =>
+        Capabilities.Has(GraphCapability.NullElementsInSimpleCollections)
+            ? $"size([__cvoya_collection_item IN {collection} WHERE " +
+                $"__cvoya_collection_item = {item} OR " +
+                $"(toString(__cvoya_collection_item) IS NULL AND toString({item}) IS NULL)]) > 0"
+            : $"{item} IN {collection}";
+
+    /// <summary>
+    /// Encodes a logical constant assignment as one or more atomic physical property assignments.
+    /// </summary>
+    IReadOnlyList<CypherStoredPropertyValue> EncodePropertyValue(
+        string property,
+        Type? declaredType,
+        object? value) =>
+        [new(property, value)];
+
+    /// <summary>Gets the physical payload name for a logical property.</summary>
+    string GetPropertyStorageName(string property) => property;
+
+    /// <summary>Gets private companion properties that a non-collection assignment must clear.</summary>
+    IReadOnlyList<string> GetPropertyCompanionStorageNames(string property) => [];
+
     /// <summary>Renders transaction-local native identity for a bound graph element.</summary>
     /// <param name="target">The already-rendered node or relationship expression.</param>
     string RenderNativeElementIdentity(string target);

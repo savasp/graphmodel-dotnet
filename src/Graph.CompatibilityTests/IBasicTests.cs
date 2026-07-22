@@ -519,6 +519,10 @@ public interface IBasicTests : IGraphTest
         public List<Guid> Guids { get; set; } = [];
         public ValueCollectionKind[] Kinds { get; set; } = [];
         public int?[] NullableIntegers { get; set; } = [];
+        public List<int?> NullableIntegerList { get; set; } = [];
+        public string?[] NullableNames { get; set; } = [];
+        public List<string?> AllNullNames { get; set; } = [];
+        public int?[] EmptyNullableIntegers { get; set; } = [];
     }
 
     [Fact]
@@ -532,9 +536,6 @@ public interface IBasicTests : IGraphTest
             IntegerArray = [4, 5],
             Guids = [firstId, secondId],
             Kinds = [ValueCollectionKind.First, ValueCollectionKind.Second],
-            // Neo4j rejects null entries in stored property collections. Focused serialization and
-            // materialization tests cover null preservation; the provider contract still verifies
-            // that nullable element types themselves round-trip through every provider.
             NullableIntegers = [6, 7],
         };
 
@@ -548,6 +549,49 @@ public interface IBasicTests : IGraphTest
         AssertValueTypeCollections(node, fetched);
         Assert.NotNull(queried);
         AssertValueTypeCollections(node, queried);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
+    public async Task NullableSimpleCollections_RoundTripThroughGetAndQuery()
+    {
+        var firstId = Guid.Parse("7a2ef43f-dadf-4c88-a2f6-af730f87a963");
+        var secondId = Guid.Parse("69bd4638-166e-428f-8fd2-3993338e865f");
+        var node = new ValueTypeCollectionNode
+        {
+            IntegerList = [1, 2, 3],
+            IntegerArray = [4, 5],
+            Guids = [firstId, secondId],
+            Kinds = [ValueCollectionKind.First, ValueCollectionKind.Second],
+            NullableIntegers = [null, 6, null, null, 7, null],
+            NullableIntegerList = [null, 8, null],
+            NullableNames = [null, "first", null, null, "last", null],
+            AllNullNames = [null, null, null],
+            EmptyNullableIntegers = [],
+        };
+
+        await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
+
+        var fetched = await Graph.Nodes<ValueTypeCollectionNode>()
+            .SingleAsync(TestContext.Current.CancellationToken);
+        var queried = await Graph.Nodes<ValueTypeCollectionNode>()
+            .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        AssertValueTypeCollections(node, fetched);
+        Assert.NotNull(queried);
+        AssertValueTypeCollections(node, queried);
+
+        var containingNull = await Graph.Nodes<ValueTypeCollectionNode>()
+            .Where(candidate => candidate.NullableNames.Contains(null))
+            .SingleAsync(TestContext.Current.CancellationToken);
+        var containingValue = await Graph.Nodes<ValueTypeCollectionNode>()
+            .Where(candidate => candidate.NullableNames.Contains("first"))
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(node.NullableNames, containingNull.NullableNames);
+        Assert.Equal(node.NullableNames, containingValue.NullableNames);
+        Assert.Null(await Graph.Nodes<ValueTypeCollectionNode>()
+            .Where(candidate => candidate.NullableNames.Contains("missing"))
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -585,8 +629,157 @@ public interface IBasicTests : IGraphTest
             null,
             TestContext.Current.CancellationToken);
 
+        AssertBasicDynamicCollections(fetchedNode.Properties, firstId, secondId);
+        AssertBasicDynamicCollections(fetchedRelationship.Properties, firstId, secondId);
+        Assert.Equal(
+            new int?[] { 4, 5 },
+            CollectionValues(fetchedNode.Properties["nullableIntegers"]).Select(value => value is null
+                ? (int?)null
+                : Convert.ToInt32(value, CultureInfo.InvariantCulture)));
+        Assert.Empty(CollectionValues(fetchedNode.Properties["emptyIntegers"]));
+        Assert.Equal(
+            new int?[] { 4, 5 },
+            CollectionValues(fetchedRelationship.Properties["nullableIntegers"]).Select(value => value is null
+                ? (int?)null
+                : Convert.ToInt32(value, CultureInfo.InvariantCulture)));
+        Assert.Empty(CollectionValues(fetchedRelationship.Properties["emptyIntegers"]));
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
+    public async Task NullableDynamicSimpleCollections_RoundTripForNodesAndRelationships()
+    {
+        var firstId = Guid.Parse("7a2ef43f-dadf-4c88-a2f6-af730f87a963");
+        var secondId = Guid.Parse("69bd4638-166e-428f-8fd2-3993338e865f");
+        var properties = new Dictionary<string, object?>
+        {
+            ["strings"] = new[] { "first", "second" },
+            ["integers"] = new List<int> { 1, 2, 3 },
+            ["guids"] = new[] { firstId, secondId },
+            ["kinds"] = new[] { ValueCollectionKind.First, ValueCollectionKind.Second },
+            ["nullableIntegers"] = new int?[] { null, 4, null, null, 5, null },
+            ["allNullIntegers"] = new int?[] { null, null },
+            ["emptyIntegers"] = Array.Empty<int?>(),
+            ["markerValues"] = new string?[]
+            {
+                "__cvoya_sc:v1:n:value",
+                null,
+                "__cvoya_sc:v1:t:value",
+                "__cvoya_sc:v1:u:value",
+            },
+            ["__cvoya_sc:v1:n:c3RyaW5ncw"] = new string?[] { null, "null-index-name" },
+            ["__cvoya_sc:v1:t:c3RyaW5ncw"] = new string?[] { "safe", null },
+            ["__cvoya_sc:v1:u:c3RyaW5ncw"] = new string?[] { "user-name", null },
+            ["__cvoya_sc:v1:scalar"] = "scalar-safe",
+        };
+        var start = new DynamicNode(["DynamicCollectionStart"], properties);
+        var end = new DynamicNode(["DynamicCollectionEnd"], new Dictionary<string, object?>());
+
+        await Graph.CreateNodeAsync(start, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(end, null, TestContext.Current.CancellationToken);
+        var relationship = new DynamicRelationship("DYNAMIC_COLLECTION_RELATIONSHIP", properties);
+        await Graph.CreateRelationshipAsync(
+            Graph.DynamicNodes().OfLabel("DynamicCollectionStart"),
+            relationship,
+            Graph.DynamicNodes().OfLabel("DynamicCollectionEnd"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var fetchedNode = await Graph.FindDynamicNodeByTestKeyAsync(
+            "DynamicCollectionStart",
+            null,
+            TestContext.Current.CancellationToken);
+        var fetchedRelationship = await Graph.FindDynamicRelationshipByTestKeyAsync(
+            "DYNAMIC_COLLECTION_RELATIONSHIP",
+            null,
+            TestContext.Current.CancellationToken);
+
         AssertDynamicCollections(fetchedNode.Properties, firstId, secondId);
         AssertDynamicCollections(fetchedRelationship.Properties, firstId, secondId);
+
+        var replacement = new int?[] { null, 9, null };
+        var replacementCollision = new string?[] { "updated", null };
+        var affected = await Graph.DynamicRelationships()
+            .Where(candidate => candidate.Type == "DYNAMIC_COLLECTION_RELATIONSHIP")
+            .UpdateAsync(
+                setters => setters
+                    .SetProperty(candidate => candidate.Properties["nullableIntegers"], replacement)
+                    .SetProperty(
+                        candidate => candidate.Properties["__cvoya_sc:v1:n:c3RyaW5ncw"],
+                        replacementCollision),
+                TestContext.Current.CancellationToken);
+        fetchedRelationship = await Graph.FindDynamicRelationshipByTestKeyAsync(
+            "DYNAMIC_COLLECTION_RELATIONSHIP",
+            null,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(replacement, Assert.IsType<List<int?>>(fetchedRelationship.Properties["nullableIntegers"]));
+        Assert.Equal(
+            replacementCollision,
+            Assert.IsType<List<string>>(fetchedRelationship.Properties["__cvoya_sc:v1:n:c3RyaW5ncw"]));
+
+        var deleted = await Graph.DynamicRelationships()
+            .Where(candidate => candidate.Type == "DYNAMIC_COLLECTION_RELATIONSHIP")
+            .DeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, deleted);
+        Assert.Null(await Graph.DynamicRelationships()
+            .Where(candidate => candidate.Type == "DYNAMIC_COLLECTION_RELATIONSHIP")
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
+    }
+
+    public record NullableCollectionRelationship : Relationship
+    {
+        public List<string?> Names { get; set; } = [];
+        public int?[] Scores { get; set; } = [];
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
+    public async Task TypedRelationship_NullableCollections_RoundTrip()
+    {
+        var start = new Person { FirstName = "collection-start" };
+        var end = new Person { FirstName = "collection-end" };
+        var relationship = new NullableCollectionRelationship
+        {
+            Names = [null, "middle", null, null],
+            Scores = [null, 1, null, 2, null],
+        };
+        await Graph.CreateNodeAsync(start, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(end, null, TestContext.Current.CancellationToken);
+        await Graph.ConnectAsync(
+            start,
+            relationship,
+            end,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var fetched = await Graph.Relationships<NullableCollectionRelationship>()
+            .SingleAsync(TestContext.Current.CancellationToken);
+        var queried = await Graph.Relationships<NullableCollectionRelationship>()
+            .Where(candidate => candidate.Names.Contains(null))
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(relationship.Names, fetched.Names);
+        Assert.Equal(relationship.Scores, fetched.Scores);
+        Assert.Equal(relationship.Names, queried.Names);
+
+        var replacementNames = new List<string?> { "updated", null, null };
+        var replacementScores = new int?[] { null, null };
+        var affected = await Graph.Relationships<NullableCollectionRelationship>()
+            .UpdateAsync(
+                setters => setters
+                    .SetProperty(candidate => candidate.Names, replacementNames)
+                    .SetProperty(candidate => candidate.Scores, replacementScores),
+                TestContext.Current.CancellationToken);
+        fetched = await Graph.Relationships<NullableCollectionRelationship>()
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(replacementNames, fetched.Names);
+        Assert.Equal(replacementScores, fetched.Scores);
+
+        var deleted = await Graph.Relationships<NullableCollectionRelationship>()
+            .DeleteAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, deleted);
+        Assert.Null(await Graph.Relationships<NullableCollectionRelationship>()
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -679,9 +872,68 @@ public interface IBasicTests : IGraphTest
         Assert.Equal(expected.Guids, actual.Guids);
         Assert.Equal(expected.Kinds, actual.Kinds);
         Assert.Equal(expected.NullableIntegers, actual.NullableIntegers);
+        Assert.Equal(expected.NullableIntegerList, actual.NullableIntegerList);
+        Assert.Equal(expected.NullableNames, actual.NullableNames);
+        Assert.Equal(expected.AllNullNames, actual.AllNullNames);
+        Assert.Equal(expected.EmptyNullableIntegers, actual.EmptyNullableIntegers);
     }
 
     private static void AssertDynamicCollections(
+        IReadOnlyDictionary<string, object?> properties,
+        Guid firstId,
+        Guid secondId)
+    {
+        List<string> expectedPropertyNames =
+        [
+            "__cvoya_sc:v1:n:c3RyaW5ncw",
+            "__cvoya_sc:v1:scalar",
+            "__cvoya_sc:v1:t:c3RyaW5ncw",
+            "__cvoya_sc:v1:u:c3RyaW5ncw",
+            "allNullIntegers",
+            "emptyIntegers",
+            "guids",
+            "integers",
+            "kinds",
+            "markerValues",
+            "nullableIntegers",
+            "strings",
+        ];
+        Assert.Equal(
+            expectedPropertyNames,
+            properties.Keys.Order(StringComparer.Ordinal));
+        AssertBasicDynamicCollections(properties, firstId, secondId);
+        Assert.Equal(
+            new int?[] { null, 4, null, null, 5, null },
+            CollectionValues(properties["nullableIntegers"]).Select(value => value is null
+                ? (int?)null
+                : Convert.ToInt32(value, CultureInfo.InvariantCulture)));
+        Assert.IsType<List<int?>>(properties["nullableIntegers"]);
+        Assert.Equal(
+            new int?[] { null, null },
+            Assert.IsType<List<int?>>(properties["allNullIntegers"]));
+        Assert.Empty(Assert.IsType<List<int?>>(properties["emptyIntegers"]));
+        Assert.Equal(
+            new string?[]
+            {
+                "__cvoya_sc:v1:n:value",
+                null,
+                "__cvoya_sc:v1:t:value",
+                "__cvoya_sc:v1:u:value",
+            },
+            Assert.IsType<List<string>>(properties["markerValues"]));
+        Assert.Equal(
+            new string?[] { null, "null-index-name" },
+            Assert.IsType<List<string>>(properties["__cvoya_sc:v1:n:c3RyaW5ncw"]));
+        Assert.Equal(
+            new string?[] { "safe", null },
+            Assert.IsType<List<string>>(properties["__cvoya_sc:v1:t:c3RyaW5ncw"]));
+        Assert.Equal(
+            new string?[] { "user-name", null },
+            Assert.IsType<List<string>>(properties["__cvoya_sc:v1:u:c3RyaW5ncw"]));
+        Assert.Equal("scalar-safe", properties["__cvoya_sc:v1:scalar"]);
+    }
+
+    private static void AssertBasicDynamicCollections(
         IReadOnlyDictionary<string, object?> properties,
         Guid firstId,
         Guid secondId)
@@ -699,12 +951,6 @@ public interface IBasicTests : IGraphTest
         Assert.Equal(
             new[] { nameof(ValueCollectionKind.First), nameof(ValueCollectionKind.Second) },
             CollectionValues(properties["kinds"]).Select(value => value?.ToString()));
-        Assert.Equal(
-            new int?[] { 4, 5 },
-            CollectionValues(properties["nullableIntegers"]).Select(value => value is null
-                ? (int?)null
-                : Convert.ToInt32(value, CultureInfo.InvariantCulture)));
-        Assert.Empty(CollectionValues(properties["emptyIntegers"]));
     }
 
     private static List<object?> CollectionValues(object? value)

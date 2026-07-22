@@ -250,7 +250,8 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 var value = SerializationBridge.ToAgeValue(readValue(property));
                 parameters[parameterName] = value;
                 values.Add(value);
-                predicates.Add($"r.{CypherIdentifier.Escape(property.Name, "property name")} = ${parameterName}");
+                var storageName = SimpleCollectionStorageCodec.GetPayloadPropertyName(property.Name);
+                predicates.Add($"r.{CypherIdentifier.Escape(storageName, "property name")} = ${parameterName}");
             }
 
             var constraintKey = AgeUniquenessCheck.BuildConstraintKey(type, constraint, values);

@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Text.Json;
 using Cvoya.Graph.Age.Entities;
 using Cvoya.Graph.Age.Serialization;
+using Cvoya.Graph.Serialization;
 using Cvoya.Graph.Serialization.Results;
 using Npgsql.Age.Types;
 
@@ -111,9 +112,7 @@ internal sealed class AgeRecordAdapter
             labels.AddRange(ReadStrings(hierarchy!));
         }
 
-        var properties = vertex.Properties
-            .Where(pair => !IsInternalStorageProperty(pair.Key))
-            .ToDictionary(pair => pair.Key, pair => AdaptValue(pair.Value), StringComparer.Ordinal);
+        var properties = AdaptProperties(vertex.Properties);
         return GraphValue.Node(vertex.Id.Value.ToString(CultureInfo.InvariantCulture), labels.Distinct().ToArray(), properties);
     }
 
@@ -129,9 +128,7 @@ internal sealed class AgeRecordAdapter
             edge.Properties.TryGetValue("inheritance_labels", out var hierarchy)
                 ? ReadStrings(hierarchy).FirstOrDefault()
                 : edge.Label;
-        var properties = edge.Properties
-            .Where(pair => !IsInternalStorageProperty(pair.Key))
-            .ToDictionary(pair => pair.Key, pair => AdaptValue(pair.Value), StringComparer.Ordinal);
+        var properties = AdaptProperties(edge.Properties);
         return GraphValue.Relationship(
             edge.Id.Value.ToString(CultureInfo.InvariantCulture),
             relationshipType ?? string.Empty,
@@ -275,9 +272,7 @@ internal sealed class AgeRecordAdapter
             labels.AddRange(ReadStrings(hierarchy));
         }
 
-        var properties = propertiesElement.EnumerateObject()
-            .Where(property => !IsInternalStorageProperty(property.Name))
-            .ToDictionary(property => property.Name, property => AdaptJson(property.Value), StringComparer.Ordinal);
+        var properties = AdaptProperties(propertiesElement);
         return GraphValue.Node(JsonId(value.GetProperty("id")), labels.Distinct().ToArray(), properties);
     }
 
@@ -295,9 +290,7 @@ internal sealed class AgeRecordAdapter
             propertiesElement.TryGetProperty("inheritance_labels", out var hierarchy)
                 ? ReadStrings(hierarchy).FirstOrDefault()
                 : physicalType;
-        var properties = propertiesElement.EnumerateObject()
-            .Where(property => !IsInternalStorageProperty(property.Name))
-            .ToDictionary(property => property.Name, property => AdaptJson(property.Value), StringComparer.Ordinal);
+        var properties = AdaptProperties(propertiesElement);
         return GraphValue.Relationship(
             JsonId(value.GetProperty("id")),
             relationshipType ?? string.Empty,
@@ -314,6 +307,24 @@ internal sealed class AgeRecordAdapter
         name is "inheritance_labels" or
             ComplexPropertyStorage.NodeMarkerProperty or
             ComplexPropertyStorage.RelationshipMarkerProperty;
+
+    private IReadOnlyDictionary<string, GraphValue> AdaptProperties(
+        IEnumerable<KeyValuePair<string, object>> properties) =>
+        SimpleCollectionStorageCodec.DecodeProperties(
+            properties
+                .Where(pair => !IsInternalStorageProperty(pair.Key))
+                .ToDictionary(pair => pair.Key, pair => AdaptValue(pair.Value), StringComparer.Ordinal),
+            payloadOmitsNulls: false);
+
+    private IReadOnlyDictionary<string, GraphValue> AdaptProperties(JsonElement properties) =>
+        SimpleCollectionStorageCodec.DecodeProperties(
+            properties.EnumerateObject()
+                .Where(property => !IsInternalStorageProperty(property.Name))
+                .ToDictionary(
+                    property => property.Name,
+                    property => AdaptJson(property.Value),
+                    StringComparer.Ordinal),
+            payloadOmitsNulls: false);
 
     private static bool IsTrue(Dictionary<string, object> properties, string name) =>
         properties.TryGetValue(name, out var value) && value switch

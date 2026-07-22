@@ -1246,6 +1246,9 @@ public sealed class CypherQueryPlanner
         {
             PropertyAccess property => [property.Target],
             EscapedPropertyAccess property => [property.Target],
+            PhysicalPropertyAccess property => [property.Target],
+            CollectionPropertyAccess property => [property.Target],
+            CollectionContainsExpression contains => [contains.Collection, contains.Item],
             FunctionCall function => function.Arguments,
             AstBinaryExpression binary => [binary.Left, binary.Right],
             AstUnaryExpression unary => [unary.Operand],

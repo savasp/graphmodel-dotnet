@@ -96,6 +96,14 @@ internal sealed class AgeRelationshipPredicatePass : ICypherPass
                 UnaryExpression unary => new UnaryExpression(unary.Op, Rewrite(unary.Operand)),
                 PropertyAccess property => new PropertyAccess(Rewrite(property.Target), property.Property),
                 EscapedPropertyAccess property => new EscapedPropertyAccess(Rewrite(property.Target), property.Property),
+                PhysicalPropertyAccess property => new PhysicalPropertyAccess(Rewrite(property.Target), property.Property),
+                CollectionPropertyAccess property => new CollectionPropertyAccess(
+                    Rewrite(property.Target),
+                    property.Property,
+                    property.Escape),
+                CollectionContainsExpression contains => new CollectionContainsExpression(
+                    Rewrite(contains.Collection),
+                    Rewrite(contains.Item)),
                 NativeElementIdentity identity => new NativeElementIdentity(Rewrite(identity.Target)),
                 FunctionCall function => new FunctionCall(function.Name, function.Arguments.Select(Rewrite).ToArray()),
                 LabelTest label => new LabelTest(Rewrite(label.Target), label.Labels),
@@ -152,6 +160,16 @@ internal sealed class AgeRelationshipPredicatePass : ICypherPass
                 EscapedPropertyAccess property => new EscapedPropertyAccess(
                     ReplaceVariable(property.Target, alias, replacement),
                     property.Property),
+                PhysicalPropertyAccess property => new PhysicalPropertyAccess(
+                    ReplaceVariable(property.Target, alias, replacement),
+                    property.Property),
+                CollectionPropertyAccess property => new CollectionPropertyAccess(
+                    ReplaceVariable(property.Target, alias, replacement),
+                    property.Property,
+                    property.Escape),
+                CollectionContainsExpression contains => new CollectionContainsExpression(
+                    ReplaceVariable(contains.Collection, alias, replacement),
+                    ReplaceVariable(contains.Item, alias, replacement)),
                 NativeElementIdentity identity => new NativeElementIdentity(
                     ReplaceVariable(identity.Target, alias, replacement)),
                 FunctionCall function => new FunctionCall(

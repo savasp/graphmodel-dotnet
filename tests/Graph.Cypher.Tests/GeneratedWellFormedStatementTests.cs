@@ -145,6 +145,11 @@ public class GeneratedWellFormedStatementTests
         {
             QueryParameter parameter => [parameter.Name],
             PropertyAccess property => FindParameterNames(property.Target),
+            EscapedPropertyAccess property => FindParameterNames(property.Target),
+            PhysicalPropertyAccess property => FindParameterNames(property.Target),
+            CollectionPropertyAccess property => FindParameterNames(property.Target),
+            CollectionContainsExpression contains => FindParameterNames(contains.Collection)
+                .Concat(FindParameterNames(contains.Item)),
             FunctionCall function => function.Arguments.SelectMany(FindParameterNames),
             BinaryExpression binary => FindParameterNames(binary.Left).Concat(FindParameterNames(binary.Right)),
             UnaryExpression unary => FindParameterNames(unary.Operand),

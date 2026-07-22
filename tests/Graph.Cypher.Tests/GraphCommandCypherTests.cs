@@ -75,6 +75,62 @@ public sealed class GraphCommandCypherTests
         Assert.Equal(["affectedCount"], rendered.ProjectionColumns);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MutationPlan_RejectsComputedCollectionsWhenStorageRequiresCompanions(bool staged)
+    {
+        Expression<Func<Person, List<string?>>> values = person => person.Values;
+        var mutation = new GraphMutationModel(
+            GraphMutationKind.Update,
+            new GraphElementSelectionModel(Model(new NodeRoot(typeof(Person))), GraphElementSelectionMode.Set),
+            [new GraphComputedPropertyAssignment(
+                values,
+                typeof(Person).GetProperty(nameof(Person.Values)),
+                nameof(Person.Values),
+                false,
+                values)],
+            cascadeDelete: false);
+        var planner = new CypherMutationPlanner(new TestCypherDialect(
+            CapabilitySet.All,
+            usesCollectionCompanions: true));
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(
+            mutation,
+            ["native-1"],
+            staged ? [nameof(Person.Name)] : []));
+
+        Assert.Contains("Computed simple-collection updates", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MutationPlan_AllowsComputedByteArraysWhenStorageRequiresCompanions(bool staged)
+    {
+        Expression<Func<Person, byte[]>> fingerprint = person => person.Fingerprint;
+        var mutation = new GraphMutationModel(
+            GraphMutationKind.Update,
+            new GraphElementSelectionModel(Model(new NodeRoot(typeof(Person))), GraphElementSelectionMode.Set),
+            [new GraphComputedPropertyAssignment(
+                fingerprint,
+                typeof(Person).GetProperty(nameof(Person.Fingerprint)),
+                nameof(Person.Fingerprint),
+                false,
+                fingerprint)],
+            cascadeDelete: false);
+        var planner = new CypherMutationPlanner(new TestCypherDialect(
+            CapabilitySet.All,
+            usesCollectionCompanions: true));
+
+        var plan = planner.Plan(
+            mutation,
+            ["native-1"],
+            staged ? [nameof(Person.Name)] : []);
+
+        Assert.NotNull(plan);
+    }
+
     [Fact]
     public void ConstraintPreflightAndStagedMutation_ComputeBeforeClearing()
     {
@@ -232,6 +288,10 @@ public sealed class GraphCommandCypherTests
         public string Name { get; init; } = string.Empty;
 
         public int Age { get; init; }
+
+        public List<string?> Values { get; init; } = [];
+
+        public byte[] Fingerprint { get; init; } = [];
 
         public AddressValue Address { get; init; } = new();
     }

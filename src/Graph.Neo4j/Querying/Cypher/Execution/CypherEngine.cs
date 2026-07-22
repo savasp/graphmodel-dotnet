@@ -214,8 +214,10 @@ internal sealed class CypherEngine
             {
                 var parameterName = $"constraintValue{index}";
                 parameters[parameterName] = candidate.Values[index];
+                var storageName = SimpleCollectionStorageCodec.GetPayloadPropertyName(
+                    candidate.Constraint.Properties[index].StorageName);
                 predicates.Add(
-                    $"candidate.{CypherIdentifier.Escape(candidate.Constraint.Properties[index].StorageName, "property name")} = ${parameterName}");
+                    $"candidate.{CypherIdentifier.Escape(storageName, "property name")} = ${parameterName}");
             }
 
             var records = await _executor.ExecuteAsync(

@@ -76,11 +76,9 @@ public sealed class CypherMutationPlanner
         else if (mutation.Kind == GraphMutationKind.Update && scalarAssignments.Length > 0)
         {
             var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
-            var items = scalarAssignments.Select(assignment => new SetItem(
-                assignment.Dynamic
-                    ? new EscapedPropertyAccess(target, assignment.StorageName)
-                    : new PropertyAccess(target, assignment.StorageName),
-                LowerValue(assignment, alias, lowerer, parameters))).ToArray();
+            var items = scalarAssignments
+                .SelectMany(assignment => BuildSetItems(assignment, alias, target, lowerer, parameters))
+                .ToArray();
             if (lowerer.NavigationMatches.Count > 0)
             {
                 throw new GraphQueryTranslationException(
@@ -207,15 +205,46 @@ public sealed class CypherMutationPlanner
         CypherParameterRegistry parameters)
     {
         var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
+        var storedValues = new List<(string StorageName, CypherExpression Value, string Alias)>();
+        foreach (var assignment in assignments)
+        {
+            EnsureComputedCollectionCanBeStored(assignment);
+            if (assignment is GraphConstantPropertyAssignment constant)
+            {
+                var declaredType = constant.Property?.PropertyType;
+                foreach (var value in dialect.EncodePropertyValue(
+                    assignment.StorageName,
+                    declaredType,
+                    constant.Value))
+                {
+                    storedValues.Add((
+                        value.StorageName,
+                        parameters.Add(value.Value),
+                        FinalValueAlias(storedValues.Count)));
+                }
+
+                continue;
+            }
+
+            storedValues.Add((
+                dialect.GetPropertyStorageName(assignment.StorageName),
+                LowerValue(assignment, alias, lowerer, parameters),
+                FinalValueAlias(storedValues.Count)));
+            foreach (var companion in dialect.GetPropertyCompanionStorageNames(assignment.StorageName))
+            {
+                storedValues.Add((companion, new Literal(null), FinalValueAlias(storedValues.Count)));
+            }
+        }
+
         var finalItems = new List<ReturnItem>
         {
             new(target, alias),
         };
-        for (var index = 0; index < assignments.Length; index++)
+        foreach (var storedValue in storedValues)
         {
             finalItems.Add(new ReturnItem(
-                LowerValue(assignments[index], alias, lowerer, parameters),
-                FinalValueAlias(index)));
+                storedValue.Value,
+                storedValue.Alias));
         }
 
         if (lowerer.NavigationMatches.Count > 0)
@@ -228,7 +257,7 @@ public sealed class CypherMutationPlanner
         clauses.Add(new SetClause(stagedStorageNames
             .Distinct(StringComparer.Ordinal)
             .Select(storageName => new SetItem(
-                new PropertyAccess(target, storageName),
+                new PhysicalPropertyAccess(target, dialect.GetPropertyStorageName(storageName)),
                 new Literal(null)))
             .ToArray()));
 
@@ -236,9 +265,9 @@ public sealed class CypherMutationPlanner
         {
             new("target", target),
         };
-        for (var index = 0; index < assignments.Length; index++)
+        foreach (var storedValue in storedValues)
         {
-            rowEntries.Add(new MapEntry(FinalValueAlias(index), new VariableRef(FinalValueAlias(index))));
+            rowEntries.Add(new MapEntry(storedValue.Alias, new VariableRef(storedValue.Alias)));
         }
 
         clauses.Add(new WithClause(
@@ -250,20 +279,17 @@ public sealed class CypherMutationPlanner
         {
             new(new PropertyAccess(new VariableRef("__row"), "target"), alias),
         };
-        for (var index = 0; index < assignments.Length; index++)
+        foreach (var storedValue in storedValues)
         {
-            var finalAlias = FinalValueAlias(index);
             restoredItems.Add(new ReturnItem(
-                new PropertyAccess(new VariableRef("__row"), finalAlias),
-                finalAlias));
+                new PropertyAccess(new VariableRef("__row"), storedValue.Alias),
+                storedValue.Alias));
         }
 
         clauses.Add(new WithClause(restoredItems, distinct: false));
-        clauses.Add(new SetClause(assignments.Select((assignment, index) => new SetItem(
-            assignment.Dynamic
-                ? new EscapedPropertyAccess(target, assignment.StorageName)
-                : new PropertyAccess(target, assignment.StorageName),
-            new VariableRef(FinalValueAlias(index)))).ToArray()));
+        clauses.Add(new SetClause(storedValues.Select(storedValue => new SetItem(
+            new PhysicalPropertyAccess(target, storedValue.StorageName),
+            new VariableRef(storedValue.Alias))).ToArray()));
     }
 
     private static List<ICypherClause> BuildTargetClauses(
@@ -312,4 +338,51 @@ public sealed class CypherMutationPlanner
             _ => throw new GraphException(
                 $"Graph property assignment '{assignment.GetType().Name}' is not supported."),
         };
+
+    private IEnumerable<SetItem> BuildSetItems(
+        GraphPropertyAssignment assignment,
+        string alias,
+        VariableRef target,
+        ExpressionToCypherAstLowerer lowerer,
+        CypherParameterRegistry parameters)
+    {
+        EnsureComputedCollectionCanBeStored(assignment);
+        if (assignment is GraphConstantPropertyAssignment constant)
+        {
+            var declaredType = constant.Property?.PropertyType;
+            foreach (var value in dialect.EncodePropertyValue(
+                assignment.StorageName,
+                declaredType,
+                constant.Value))
+            {
+                yield return new SetItem(
+                    new PhysicalPropertyAccess(target, value.StorageName),
+                    parameters.Add(value.Value));
+            }
+
+            yield break;
+        }
+
+        yield return new SetItem(
+            new PhysicalPropertyAccess(target, dialect.GetPropertyStorageName(assignment.StorageName)),
+            LowerValue(assignment, alias, lowerer, parameters));
+        foreach (var companion in dialect.GetPropertyCompanionStorageNames(assignment.StorageName))
+        {
+            yield return new SetItem(
+                new PhysicalPropertyAccess(target, companion),
+                new Literal(null));
+        }
+    }
+
+    private void EnsureComputedCollectionCanBeStored(GraphPropertyAssignment assignment)
+    {
+        if (assignment is GraphComputedPropertyAssignment computed &&
+            ExpressionToCypherAstLowerer.IsReconstructedSimpleCollection(
+                assignment.Property?.PropertyType ?? computed.ValueExpression.ReturnType) &&
+            dialect.GetPropertyCompanionStorageNames(assignment.StorageName).Count > 0)
+        {
+            throw new GraphQueryTranslationException(
+                "Computed simple-collection updates are not supported by this provider's physical collection encoding.");
+        }
+    }
 }

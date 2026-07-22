@@ -408,6 +408,14 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
                 EscapedPropertyAccess property => new EscapedPropertyAccess(
                     Rewrite(property.Target),
                     property.Property),
+                PhysicalPropertyAccess property => new PhysicalPropertyAccess(Rewrite(property.Target), property.Property),
+                CollectionPropertyAccess property => new CollectionPropertyAccess(
+                    Rewrite(property.Target),
+                    property.Property,
+                    property.Escape),
+                CollectionContainsExpression contains => new CollectionContainsExpression(
+                    Rewrite(contains.Collection),
+                    Rewrite(contains.Item)),
                 FunctionCall function => new FunctionCall(
                     function.Name,
                     function.Arguments.Select(Rewrite).ToArray()),
@@ -498,6 +506,19 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
 
                 case EscapedPropertyAccess property:
                     Visit(property.Target);
+                    break;
+
+                case PhysicalPropertyAccess property:
+                    Visit(property.Target);
+                    break;
+
+                case CollectionPropertyAccess property:
+                    Visit(property.Target);
+                    break;
+
+                case CollectionContainsExpression contains:
+                    Visit(contains.Collection);
+                    Visit(contains.Item);
                     break;
 
                 case FunctionCall function:

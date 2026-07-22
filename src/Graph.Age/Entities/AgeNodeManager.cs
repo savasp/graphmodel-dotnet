@@ -102,7 +102,9 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
     internal static Dictionary<string, object?> BuildNodeProperties(EntityInfo entity)
     {
         var properties = SerializationHelpers.SerializeSimpleProperties(entity)
-            .Where(pair => pair.Key != nameof(Graph.INode.Labels))
+            .Where(pair => pair.Key != SimpleCollectionStorageCodec.GetPayloadPropertyName(nameof(Graph.INode.Labels)) &&
+                pair.Key != SimpleCollectionStorageCodec.GetNullIndexesPropertyName(nameof(Graph.INode.Labels)) &&
+                pair.Key != SimpleCollectionStorageCodec.GetElementTypePropertyName(nameof(Graph.INode.Labels)))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         var storageLabel = SerializationBridge.GetRootStorageName(entity.Label, relationship: false);
         if (SerializationBridge.IsEncodedRootStorageName(storageLabel, relationship: false))
@@ -278,7 +280,8 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
                 var value = SerializationBridge.ToAgeValue(readValue(property));
                 parameters[parameterName] = value;
                 values.Add(value);
-                predicates.Add($"n.{CypherIdentifier.Escape(property.Name, "property name")} = ${parameterName}");
+                var storageName = SimpleCollectionStorageCodec.GetPayloadPropertyName(property.Name);
+                predicates.Add($"n.{CypherIdentifier.Escape(storageName, "property name")} = ${parameterName}");
             }
 
             var constraintKey = AgeUniquenessCheck.BuildConstraintKey(label, constraint, values);

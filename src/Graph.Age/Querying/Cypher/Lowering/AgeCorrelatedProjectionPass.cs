@@ -639,6 +639,10 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
         {
             PropertyAccess property => ContainsExpression(property.Target, predicate),
             EscapedPropertyAccess property => ContainsExpression(property.Target, predicate),
+            PhysicalPropertyAccess property => ContainsExpression(property.Target, predicate),
+            CollectionPropertyAccess property => ContainsExpression(property.Target, predicate),
+            CollectionContainsExpression contains =>
+                ContainsExpression(contains.Collection, predicate) || ContainsExpression(contains.Item, predicate),
             FunctionCall function => function.Arguments.Any(item => ContainsExpression(item, predicate)),
             BinaryExpression binary =>
                 ContainsExpression(binary.Left, predicate) || ContainsExpression(binary.Right, predicate),
@@ -876,6 +880,14 @@ internal sealed class AgeCorrelatedProjectionPass : ICypherPass
             {
                 PropertyAccess property => new PropertyAccess(Rewrite(property.Target), property.Property),
                 EscapedPropertyAccess property => new EscapedPropertyAccess(Rewrite(property.Target), property.Property),
+                PhysicalPropertyAccess property => new PhysicalPropertyAccess(Rewrite(property.Target), property.Property),
+                CollectionPropertyAccess property => new CollectionPropertyAccess(
+                    Rewrite(property.Target),
+                    property.Property,
+                    property.Escape),
+                CollectionContainsExpression contains => new CollectionContainsExpression(
+                    Rewrite(contains.Collection),
+                    Rewrite(contains.Item)),
                 FunctionCall function => new FunctionCall(function.Name, function.Arguments.Select(Rewrite).ToArray()),
                 BinaryExpression binary => new BinaryExpression(binary.Op, Rewrite(binary.Left), Rewrite(binary.Right)),
                 UnaryExpression unary => new UnaryExpression(unary.Op, Rewrite(unary.Operand)),

@@ -139,8 +139,16 @@ internal sealed class ExpressionToCypherAstLowerer(
         var propertyName = node.Member is PropertyInfo property
             ? Labels.GetLabelFromProperty(property)
             : node.Member.Name;
-        return new PropertyAccess(target, propertyName);
+        return node.Member is PropertyInfo collectionProperty &&
+            IsReconstructedSimpleCollection(collectionProperty.PropertyType)
+                ? new CollectionPropertyAccess(target, propertyName, escape: false)
+                : new PropertyAccess(target, propertyName);
     }
+
+    // byte[] classifies as both a simple scalar and a simple collection; serialization gives
+    // IsSimple precedence, so only genuine collections use the reconstructed logical access.
+    internal static bool IsReconstructedSimpleCollection(Type type) =>
+        !GraphDataModel.IsSimple(type) && GraphDataModel.IsCollectionOfSimple(type);
 
     private bool TryLowerStructuralGraphMember(
         PropertyInfo property,
@@ -622,7 +630,12 @@ internal sealed class ExpressionToCypherAstLowerer(
         expression = node.Method.Name switch
         {
             "GetProperty" when node.Arguments.Count == 2 =>
-                new EscapedPropertyAccess(target, RequireConstantIdentifier(node.Arguments[1], node.Method.Name)),
+                IsReconstructedSimpleCollection(node.Type)
+                    ? new CollectionPropertyAccess(
+                        target,
+                        RequireConstantIdentifier(node.Arguments[1], node.Method.Name),
+                        escape: true)
+                    : new EscapedPropertyAccess(target, RequireConstantIdentifier(node.Arguments[1], node.Method.Name)),
             "HasProperty" when node.Arguments.Count == 2 =>
                 new AstUnaryExpression(
                     CypherUnaryOperator.IsNotNull,
@@ -675,7 +688,10 @@ internal sealed class ExpressionToCypherAstLowerer(
                 "explicit property comparisons instead.");
         }
 
-        expression = new AstBinaryExpression(CypherBinaryOperator.In, Lower(item, aliases), Lower(source, aliases));
+        var loweredSource = Lower(source, aliases);
+        expression = loweredSource is CollectionPropertyAccess
+            ? new CollectionContainsExpression(loweredSource, Lower(item, aliases))
+            : new AstBinaryExpression(CypherBinaryOperator.In, Lower(item, aliases), loweredSource);
         return true;
     }
 

@@ -84,7 +84,9 @@ public sealed class ComplianceInventoryTests
     // nullable-value, and non-nullable-value query shapes.
     // -2 for #477-#480: the endpoint-bearing relationship and provider identity compatibility
     // cases were retired with those pre-v1 surfaces.
-    private const int ExpectedTotalTestMethods = 474;
+    // +4 for #403: nullable simple collections across typed/dynamic nodes and relationships, plus
+    // atomic set-based transition and rollback behavior.
+    private const int ExpectedTotalTestMethods = 478;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

@@ -42,67 +42,44 @@ public static class Neo4jDynamicEntityExtensions
         }
 
         // Special handling for collections
-        if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(IList<>) && value is IList<object> objectList)
+        if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(IList<>) &&
+            value is System.Collections.IEnumerable objectList)
         {
             var elementType = typeof(T).GetGenericArguments()[0];
-            var resultList = new List<object?>();
+            var genericList = (System.Collections.IList)Activator.CreateInstance(
+                typeof(List<>).MakeGenericType(elementType))!;
+            var preservesNullElements = !elementType.IsValueType ||
+                Nullable.GetUnderlyingType(elementType) is not null;
 
             foreach (var item in objectList)
             {
                 if (item == null)
                 {
-                    resultList.Add(null);
+                    if (!preservesNullElements)
+                    {
+                        throw new GraphException(
+                            $"Property '{propertyName}' contains a null element that the requested " +
+                            $"non-nullable element type '{elementType}' cannot represent.");
+                    }
+
+                    genericList.Add(null);
                 }
                 else
                 {
                     try
                     {
                         // Use SerializationBridge for proper conversion from Neo4j types
-                        var converted = SerializationBridge.FromNeo4jValue(item, elementType);
-                        resultList.Add(converted);
+                        genericList.Add(SerializationBridge.FromNeo4jValue(item, elementType));
                     }
                     catch
                     {
                         // If conversion fails, try direct cast
-                        resultList.Add(item);
+                        genericList.Add(item);
                     }
                 }
             }
 
-            // Create the appropriate collection type
-            if (typeof(T) == typeof(IList<string>))
-            {
-                return Cast<T>(resultList.Where(x => x != null).Cast<string>().ToList());
-            }
-            else if (typeof(T) == typeof(IList<int>))
-            {
-                return Cast<T>(resultList.Where(x => x != null).Cast<int>().ToList());
-            }
-            else if (typeof(T) == typeof(IList<double>))
-            {
-                return Cast<T>(resultList.Where(x => x != null).Cast<double>().ToList());
-            }
-            else if (typeof(T) == typeof(IList<bool>))
-            {
-                return Cast<T>(resultList.Where(x => x != null).Cast<bool>().ToList());
-            }
-            else
-            {
-                // Generic fallback
-                var genericListType = typeof(List<>).MakeGenericType(elementType);
-                var genericList = Activator.CreateInstance(genericListType);
-                var addMethod = genericListType.GetMethod("Add");
-
-                foreach (var item in resultList)
-                {
-                    if (item != null)
-                    {
-                        addMethod?.Invoke(genericList, new[] { item });
-                    }
-                }
-
-                return (T?)genericList!;
-            }
+            return (T)genericList;
         }
 
         // For value types, always use conversion logic
@@ -332,8 +309,4 @@ public static class Neo4jDynamicEntityExtensions
         return relationship.Properties.ContainsKey(propertyName);
     }
 
-    private static T Cast<T>(object value)
-    {
-        return (T)value;
-    }
 }

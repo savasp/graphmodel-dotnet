@@ -282,6 +282,11 @@ public sealed class CypherRenderer : ICypherRenderContext
                 RenderExpression(property.Target), property.Property, escape: false),
             EscapedPropertyAccess property => dialect.RenderPropertyAccess(
                 RenderExpression(property.Target), property.Property, escape: true),
+            PhysicalPropertyAccess property => dialect.RenderPhysicalPropertyAccess(
+                RenderExpression(property.Target), property.Property),
+            CollectionPropertyAccess property => dialect.RenderCollectionPropertyAccess(
+                RenderExpression(property.Target), property.Property, property.Escape),
+            CollectionContainsExpression contains => RenderCollectionContains(contains),
             NativeElementIdentity identity => dialect.RenderNativeElementIdentity(
                 RenderExpression(identity.Target)),
             QueryParameter parameter => dialect.RenderParameter(parameter.Name),
@@ -303,6 +308,13 @@ public sealed class CypherRenderer : ICypherRenderContext
             PatternComprehensionExpression comprehension => RenderPatternComprehension(comprehension),
             _ => throw new GraphException($"Unsupported Cypher expression '{expression.GetType().Name}'."),
         };
+    }
+
+    private string RenderCollectionContains(CollectionContainsExpression contains)
+    {
+        var collection = RenderExpression(contains.Collection);
+        var item = RenderExpression(contains.Item);
+        return dialect.RenderCollectionContains(collection, item);
     }
 
     private string RenderEntityProjectionExpression(EntityProjectionExpression expression)

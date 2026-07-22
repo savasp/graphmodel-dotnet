@@ -229,6 +229,35 @@ public class CypherRendererTests
     }
 
     [Fact]
+    public void Render_CollectionContainsWithoutNullElementCapability_UsesNativeMembership()
+    {
+        var renderer = new CypherRenderer(new TestCypherDialect(CapabilitySet.Of()));
+        var expression = new CollectionContainsExpression(
+            new VariableRef("collection"),
+            new QueryParameter("item"));
+
+        var result = ((ICypherRenderContext)renderer).RenderExpression(expression);
+
+        Assert.Equal("$item IN collection", result);
+    }
+
+    [Fact]
+    public void Render_CollectionContainsWithNullElementCapability_UsesNullAwareMembership()
+    {
+        var expression = new CollectionContainsExpression(
+            new VariableRef("collection"),
+            new QueryParameter("item"));
+
+        var result = RenderExpression(expression);
+
+        Assert.Equal(
+            "size([__cvoya_collection_item IN collection WHERE " +
+            "__cvoya_collection_item = $item OR " +
+            "(toString(__cvoya_collection_item) IS NULL AND toString($item) IS NULL)]) > 0",
+            result);
+    }
+
+    [Fact]
     public void Render_MatchesParenthesizesConcatenatedPattern()
     {
         var expression = new BinaryExpression(
