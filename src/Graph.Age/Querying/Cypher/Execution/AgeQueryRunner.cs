@@ -376,10 +376,11 @@ internal sealed partial class AgeQueryRunner
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        var orderedIds = nativeIds.Distinct().Order().ToArray();
         var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = BuildElementLockSql(graphName, relationship);
-        command.Parameters.Add(new NpgsqlParameter<long[]>("nativeIds", nativeIds.Distinct().Order().ToArray())
+        command.Parameters.Add(new NpgsqlParameter<long[]>("nativeIds", orderedIds)
         {
             NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Bigint,
         });
@@ -387,7 +388,19 @@ internal sealed partial class AgeQueryRunner
 
         try
         {
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await using var readerLease = reader.ConfigureAwait(false);
+            var lockedCount = 0;
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                lockedCount++;
+            }
+
+            if (orderedIds.Length != nativeIds.Count || lockedCount != orderedIds.Length)
+            {
+                throw new GraphException(
+                    "The AGE mutation target set changed before every frozen target could be locked.");
+            }
         }
         catch (OperationCanceledException)
         {

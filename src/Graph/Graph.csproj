@@ -35,6 +35,12 @@
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Cvoya.Graph.InMemory</_Parameter1>
         </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Serialization</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Cypher</_Parameter1>
+        </AssemblyAttribute>
         <!-- Lets core tests exercise narrow internal test seams without widening the public API. -->
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Cvoya.Graph.Core.Tests</_Parameter1>

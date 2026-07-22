@@ -44,26 +44,35 @@ internal sealed class Neo4jRecordAdapter
         };
     }
 
-    private GraphValue AdaptNode(Neo4jNode node) => GraphValue.Node(
-        node.ElementId,
-        node.Labels,
-        AdaptProperties(node.Properties));
+    private GraphValue AdaptNode(Neo4jNode node)
+    {
+        var (properties, storageProperties) = AdaptProperties(node.Properties);
+        return GraphValue.Node(node.ElementId, node.Labels, properties, storageProperties);
+    }
 
-    private GraphValue AdaptRelationship(Neo4jRelationship relationship) => GraphValue.Relationship(
-        relationship.ElementId,
-        relationship.Type,
-        relationship.StartNodeElementId,
-        relationship.EndNodeElementId,
-        AdaptProperties(relationship.Properties));
+    private GraphValue AdaptRelationship(Neo4jRelationship relationship)
+    {
+        var (properties, storageProperties) = AdaptProperties(relationship.Properties);
+        return GraphValue.Relationship(
+            relationship.ElementId,
+            relationship.Type,
+            relationship.StartNodeElementId,
+            relationship.EndNodeElementId,
+            properties,
+            storageProperties);
+    }
 
-    private IReadOnlyDictionary<string, GraphValue> AdaptProperties(
-        IReadOnlyDictionary<string, object> properties) =>
-        SimpleCollectionStorageCodec.DecodeProperties(
-            properties.ToDictionary(
-                pair => pair.Key,
-                pair => AdaptValue(pair.Value),
-                StringComparer.Ordinal),
-            payloadOmitsNulls: true);
+    private (IReadOnlyDictionary<string, GraphValue> Properties, IReadOnlyDictionary<string, GraphValue> StorageProperties)
+        AdaptProperties(IReadOnlyDictionary<string, object> properties)
+    {
+        var physicalProperties = properties.ToDictionary(
+            pair => pair.Key,
+            pair => AdaptValue(pair.Value),
+            StringComparer.Ordinal);
+        return (
+            SimpleCollectionStorageCodec.DecodeProperties(physicalProperties, payloadOmitsNulls: true),
+            SimpleCollectionStorageCodec.ExtractComplexCollectionMetadata(physicalProperties));
+    }
 
     private GraphValue AdaptPath(IPath path)
     {

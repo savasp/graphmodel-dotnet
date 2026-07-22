@@ -189,16 +189,6 @@
     <value>The serialization source generator emits a non-generic serializer that would reference an open generic entity's unbound type parameters, producing invalid C#. Declare a non-generic concrete entity built from a closed construction (for example, 'StringNode : GenericNode&lt;string&gt;'); abstract generic bases inherited only by such concrete entities remain supported.</value>
   </data>
 
-  <data name="CG017_Title" xml:space="preserve">
-    <value>Nullable complex collection elements are not supported</value>
-  </data>
-  <data name="CG017_MessageFormat" xml:space="preserve">
-    <value>Property '{0}' in type '{1}' is declared as '{2}', a collection of complex types with a nullable element type. A null element cannot be represented in the graph wire model; declare the element type as non-nullable (for example 'List&lt;{3}&gt;')</value>
-  </data>
-  <data name="CG017_Description" xml:space="preserve">
-    <value>The provider-neutral wire model stores a collection of complex values as a sequence of serialized entities and has no representation for an empty slot, so a null element cannot round-trip. Serialization and materialization therefore throw a GraphException naming the property, the element type, and the zero-based index rather than silently dropping the element and shifting the ones after it. Declare the element type as non-nullable; support for nullable complex elements requires a new wire representation and is tracked as additive post-1.0 work.</value>
-  </data>
-
   <!-- CG018: Invalid graph key or ignored property declaration -->
   <data name="CG018_Title" xml:space="preserve">
     <value>Invalid graph key or ignored property declaration</value>

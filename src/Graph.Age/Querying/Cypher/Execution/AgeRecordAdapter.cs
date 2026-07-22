@@ -112,8 +112,12 @@ internal sealed class AgeRecordAdapter
             labels.AddRange(ReadStrings(hierarchy!));
         }
 
-        var properties = AdaptProperties(vertex.Properties);
-        return GraphValue.Node(vertex.Id.Value.ToString(CultureInfo.InvariantCulture), labels.Distinct().ToArray(), properties);
+        var (properties, storageProperties) = AdaptProperties(vertex.Properties);
+        return GraphValue.Node(
+            vertex.Id.Value.ToString(CultureInfo.InvariantCulture),
+            labels.Distinct().ToArray(),
+            properties,
+            storageProperties);
     }
 
     private GraphValue AdaptEdge(Edge<Dictionary<string, object>> edge)
@@ -128,13 +132,14 @@ internal sealed class AgeRecordAdapter
             edge.Properties.TryGetValue("inheritance_labels", out var hierarchy)
                 ? ReadStrings(hierarchy).FirstOrDefault()
                 : edge.Label;
-        var properties = AdaptProperties(edge.Properties);
+        var (properties, storageProperties) = AdaptProperties(edge.Properties);
         return GraphValue.Relationship(
             edge.Id.Value.ToString(CultureInfo.InvariantCulture),
             relationshipType ?? string.Empty,
             edge.StartId.Value.ToString(CultureInfo.InvariantCulture),
             edge.EndId.Value.ToString(CultureInfo.InvariantCulture),
-            properties);
+            properties,
+            storageProperties);
     }
 
     private GraphValue AdaptPath(Path path) => GraphValue.Path(path.Segments.Select(segment => segment switch
@@ -272,8 +277,12 @@ internal sealed class AgeRecordAdapter
             labels.AddRange(ReadStrings(hierarchy));
         }
 
-        var properties = AdaptProperties(propertiesElement);
-        return GraphValue.Node(JsonId(value.GetProperty("id")), labels.Distinct().ToArray(), properties);
+        var (properties, storageProperties) = AdaptProperties(propertiesElement);
+        return GraphValue.Node(
+            JsonId(value.GetProperty("id")),
+            labels.Distinct().ToArray(),
+            properties,
+            storageProperties);
     }
 
     private GraphValue AdaptJsonEdge(JsonElement value)
@@ -290,13 +299,14 @@ internal sealed class AgeRecordAdapter
             propertiesElement.TryGetProperty("inheritance_labels", out var hierarchy)
                 ? ReadStrings(hierarchy).FirstOrDefault()
                 : physicalType;
-        var properties = AdaptProperties(propertiesElement);
+        var (properties, storageProperties) = AdaptProperties(propertiesElement);
         return GraphValue.Relationship(
             JsonId(value.GetProperty("id")),
             relationshipType ?? string.Empty,
             JsonId(value.GetProperty("start_id")),
             JsonId(value.GetProperty("end_id")),
-            properties);
+            properties,
+            storageProperties);
     }
 
     private static string JsonId(JsonElement value) => value.ValueKind == JsonValueKind.String
@@ -308,23 +318,32 @@ internal sealed class AgeRecordAdapter
             ComplexPropertyStorage.NodeMarkerProperty or
             ComplexPropertyStorage.RelationshipMarkerProperty;
 
-    private IReadOnlyDictionary<string, GraphValue> AdaptProperties(
-        IEnumerable<KeyValuePair<string, object>> properties) =>
-        SimpleCollectionStorageCodec.DecodeProperties(
-            properties
-                .Where(pair => !IsInternalStorageProperty(pair.Key))
-                .ToDictionary(pair => pair.Key, pair => AdaptValue(pair.Value), StringComparer.Ordinal),
-            payloadOmitsNulls: false);
+    private (IReadOnlyDictionary<string, GraphValue> Properties, IReadOnlyDictionary<string, GraphValue> StorageProperties)
+        AdaptProperties(IEnumerable<KeyValuePair<string, object>> properties)
+    {
+        var physicalProperties = properties
+            .Where(pair => !IsInternalStorageProperty(pair.Key))
+            .ToDictionary(pair => pair.Key, pair => AdaptValue(pair.Value), StringComparer.Ordinal);
+        return DecodeProperties(physicalProperties);
+    }
 
-    private IReadOnlyDictionary<string, GraphValue> AdaptProperties(JsonElement properties) =>
-        SimpleCollectionStorageCodec.DecodeProperties(
-            properties.EnumerateObject()
-                .Where(property => !IsInternalStorageProperty(property.Name))
-                .ToDictionary(
-                    property => property.Name,
-                    property => AdaptJson(property.Value),
-                    StringComparer.Ordinal),
-            payloadOmitsNulls: false);
+    private (IReadOnlyDictionary<string, GraphValue> Properties, IReadOnlyDictionary<string, GraphValue> StorageProperties)
+        AdaptProperties(JsonElement properties)
+    {
+        var physicalProperties = properties.EnumerateObject()
+            .Where(property => !IsInternalStorageProperty(property.Name))
+            .ToDictionary(
+                property => property.Name,
+                property => AdaptJson(property.Value),
+                StringComparer.Ordinal);
+        return DecodeProperties(physicalProperties);
+    }
+
+    private static (IReadOnlyDictionary<string, GraphValue> Properties, IReadOnlyDictionary<string, GraphValue> StorageProperties)
+        DecodeProperties(IReadOnlyDictionary<string, GraphValue> physicalProperties) =>
+        (
+            SimpleCollectionStorageCodec.DecodeProperties(physicalProperties, payloadOmitsNulls: false),
+            SimpleCollectionStorageCodec.ExtractComplexCollectionMetadata(physicalProperties));
 
     private static bool IsTrue(Dictionary<string, object> properties, string name) =>
         properties.TryGetValue(name, out var value) && value switch

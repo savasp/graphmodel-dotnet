@@ -65,12 +65,14 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         AgeQueryRunner transaction,
         IReadOnlyList<long> parentGraphIds,
         IReadOnlyList<string> relationshipTypesToClear,
+        IReadOnlyList<string> propertyNamesToClear,
         EntityInfo replacementEntity,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(transaction);
         ArgumentNullException.ThrowIfNull(parentGraphIds);
         ArgumentNullException.ThrowIfNull(relationshipTypesToClear);
+        ArgumentNullException.ThrowIfNull(propertyNamesToClear);
         ArgumentNullException.ThrowIfNull(replacementEntity);
         if (parentGraphIds.Count == 0 || relationshipTypesToClear.Count == 0)
         {
@@ -78,6 +80,12 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         }
 
         var orderedGraphIds = parentGraphIds.Distinct().Order().ToArray();
+        await ReplaceComplexCollectionMetadataAsync(
+            transaction,
+            orderedGraphIds,
+            propertyNamesToClear,
+            replacementEntity,
+            cancellationToken).ConfigureAwait(false);
         await DeleteSelectedComplexPropertiesAsync(
             transaction,
             orderedGraphIds,
@@ -88,6 +96,54 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             transaction,
             [.. orderedGraphIds.Select(graphId => (graphId.ToString(System.Globalization.CultureInfo.InvariantCulture), replacementEntity))],
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task ReplaceComplexCollectionMetadataAsync(
+        AgeQueryRunner transaction,
+        IReadOnlyList<long> parentGraphIds,
+        IReadOnlyList<string> propertyNamesToClear,
+        EntityInfo replacementEntity,
+        CancellationToken cancellationToken)
+    {
+        var companions = propertyNamesToClear
+            .SelectMany(ComplexCollectionStorageCodec.GetCompanionPropertyNames)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var metadata = ComplexCollectionStorageCodec.EncodeProperties(
+            replacementEntity.ComplexProperties,
+            SerializationBridge.ToAgeValue);
+        if (companions.Length == 0 && metadata.Count == 0)
+        {
+            return;
+        }
+
+        var clauses = new List<string>();
+        if (companions.Length > 0)
+        {
+            clauses.Add("REMOVE " + string.Join(", ", companions.Select(name =>
+                $"parent.{CypherIdentifier.Escape(name, "complex-collection companion name")}")));
+        }
+
+        var parameters = new Dictionary<string, object?>
+        {
+            ["parentGraphIds"] = parentGraphIds,
+        };
+        if (metadata.Count > 0)
+        {
+            var assignments = metadata.Select((item, index) =>
+            {
+                var parameterName = $"complexCollectionMetadata{index}";
+                parameters[parameterName] = item.Value;
+                return $"parent.{CypherIdentifier.Escape(item.Key, "complex-collection companion name")} = ${parameterName}";
+            });
+            clauses.Add("SET " + string.Join(", ", assignments));
+        }
+
+        var result = await transaction.RunAsync(
+            $"MATCH (parent) WHERE id(parent) IN $parentGraphIds {string.Join(" ", clauses)} RETURN count(parent) AS affectedCount",
+            parameters,
+            cancellationToken).ConfigureAwait(false);
+        _ = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task CreateComplexPropertiesCoreAsync(
@@ -189,12 +245,17 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
                         var index = 0;
                         foreach (var item in collection.Entities)
                         {
-                            pending.Add(CreatePendingValueNode(
-                                parentElementId,
-                                propertyName,
-                                complexProperty,
-                                item,
-                                index++));
+                            if (item is not null)
+                            {
+                                pending.Add(CreatePendingValueNode(
+                                    parentElementId,
+                                    propertyName,
+                                    complexProperty,
+                                    item,
+                                    index));
+                            }
+
+                            index++;
                         }
                         break;
 

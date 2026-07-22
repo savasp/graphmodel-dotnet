@@ -172,16 +172,6 @@ internal static class DiagnosticDescriptors
         isEnabledByDefault: true,
         description: Resources.CG016_Description);
 
-    // CG017: Nullable complex collection elements are not supported
-    public static readonly DiagnosticDescriptor NullableComplexCollectionElement = new(
-        id: "CG017",
-        title: Resources.CG017_Title,
-        messageFormat: Resources.CG017_MessageFormat,
-        category: "Cvoya.Graph",
-        DiagnosticSeverity.Error,
-        isEnabledByDefault: true,
-        description: Resources.CG017_Description);
-
     // CG018: Invalid graph key or ignored property declaration
     public static readonly DiagnosticDescriptor InvalidPropertySchemaDeclaration = new(
         id: "CG018",

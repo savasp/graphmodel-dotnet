@@ -12,6 +12,7 @@ namespace Cvoya.Graph.InMemory;
 /// <param name="Labels">All labels stored for the node.</param>
 /// <param name="ActualType">The concrete CLR type the node was serialized from.</param>
 /// <param name="Properties">Snapshot of the node's simple properties keyed by storage name.</param>
+/// <param name="ComplexCollections">Complex-collection layout metadata keyed by logical property name.</param>
 /// <param name="IsComplexValue">True for a decomposed complex-property value node owned by
 /// another node; such records are never counted as user-deletable roots.</param>
 internal sealed record NodeRecord(
@@ -20,4 +21,5 @@ internal sealed record NodeRecord(
     IReadOnlyList<string> Labels,
     Type ActualType,
     IReadOnlyDictionary<string, StoredProperty> Properties,
+    IReadOnlyDictionary<string, StoredComplexCollection> ComplexCollections,
     bool IsComplexValue);

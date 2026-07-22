@@ -38,7 +38,6 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         DiagnosticDescriptors.EntityTypeMustBeReferenceType,
         DiagnosticDescriptors.IneffectiveComplexPropertyAttribute,
         DiagnosticDescriptors.OpenGenericEntityUnsupported,
-        DiagnosticDescriptors.NullableComplexCollectionElement,
         DiagnosticDescriptors.InvalidPropertySchemaDeclaration);
 
     /// <summary>
@@ -162,9 +161,6 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         // CG010: Check circular references
         AnalyzeCircularReferences(context, namedTypeSymbol, helper);
 
-        // CG017: Check for nullable complex collection elements
-        AnalyzeNullableComplexCollectionElements(context, namedTypeSymbol, helper, state);
-
         // CG018: Check opt-in key shapes and contradictory ignored-property flags
         AnalyzePropertySchemaDeclarations(
             context,
@@ -173,81 +169,6 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             implementsIRelationship,
             helper,
             state);
-    }
-
-    /// <summary>
-    /// CG017: Reports every <c>List&lt;Address?&gt;</c>-shaped property reachable from the entity,
-    /// including the ones declared on the complex types it uses, because generated serialization
-    /// walks the same graph. Each offending property is reported at its own declaration so the fix
-    /// lands where the type is declared, not where the entity happens to reference it.
-    /// </summary>
-    private static void AnalyzeNullableComplexCollectionElements(
-        SymbolAnalysisContext context,
-        INamedTypeSymbol namedType,
-        AnalyzerHelper helper,
-        AnalyzerCompilationState state)
-    {
-        var pending = new Stack<INamedTypeSymbol>();
-        pending.Push(namedType);
-
-        while (pending.Count > 0)
-        {
-            var current = pending.Pop();
-            if (!state.TryAnalyze(current))
-                continue;
-
-            foreach (var derivedType in state.GetDirectDerivedTypes(current))
-            {
-                if (helper.IsComplexType(derivedType) &&
-                    !helper.IsGraphInterfaceType(derivedType))
-                {
-                    pending.Push(derivedType);
-                }
-            }
-
-            // Abstract complex types are not serializer targets. Their effective inherited members
-            // are analyzed through each reachable concrete subtype instead.
-            if (current.IsAbstract)
-                continue;
-
-            foreach (var property in helper.GetSerializedProperties(current))
-            {
-                if (IsCompilerGeneratedProperty(property))
-                    continue;
-
-                if (helper.IsCollectionOfNullableComplexTypes(property.Type))
-                {
-                    var location = property.Locations.FirstOrDefault(candidate => candidate.IsInSource);
-                    if (location is not null && state.TryReport("CG017", location))
-                    {
-                        context.ReportDiagnostic(Diagnostic.Create(
-                            DiagnosticDescriptors.NullableComplexCollectionElement,
-                            location,
-                            property.Name,
-                            property.ContainingType.Name,
-                            GetShortTypeName(property.Type),
-                            GetShortTypeName(AnalyzerHelper.UnwrapNullableElementType(
-                                AnalyzerHelper.GetCollectionElementType(property.Type)!))));
-                    }
-                }
-
-                // Descend into complex property types (and complex collection element types) so a
-                // nullable element nested one level down is not missed.
-                var complexType = helper.IsCollectionOfComplexTypes(property.Type)
-                    ? AnalyzerHelper.GetCollectionElementType(property.Type)
-                    : property.Type;
-                complexType = complexType is null
-                    ? null
-                    : AnalyzerHelper.UnwrapNullableElementType(complexType);
-
-                if (complexType is INamedTypeSymbol complexNamedType &&
-                    helper.IsComplexType(complexType) &&
-                    !helper.IsGraphInterfaceType(complexType))
-                {
-                    pending.Push(complexNamedType);
-                }
-            }
-        }
     }
 
     /// <summary>

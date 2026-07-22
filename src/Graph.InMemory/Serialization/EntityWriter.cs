@@ -36,7 +36,8 @@ internal static class EntityWriter
     /// <summary>The decomposed owned value nodes and marker edges for a root entity.</summary>
     public sealed record DecomposedComplexProperties(
         IReadOnlyList<NodeRecord> ValueNodes,
-        IReadOnlyList<RelationshipRecord> Edges);
+        IReadOnlyList<RelationshipRecord> Edges,
+        IReadOnlyDictionary<string, StoredComplexCollection> Collections);
 
     /// <summary>Decomposes a serialized node into its store records.</summary>
     public static DecomposedNode DecomposeNode(EntityInfo entity)
@@ -50,6 +51,7 @@ internal static class EntityWriter
             labels,
             entity.ActualType,
             properties,
+            SnapshotComplexCollections(entity),
             IsComplexValue: false);
 
         var valueNodes = new List<NodeRecord>();
@@ -71,7 +73,7 @@ internal static class EntityWriter
         var valueNodes = new List<NodeRecord>();
         var edges = new List<RelationshipRecord>();
         AppendComplexProperties(entity, parentKey, valueNodes, edges, depth: 1);
-        return new DecomposedComplexProperties(valueNodes, edges);
+        return new DecomposedComplexProperties(valueNodes, edges, SnapshotComplexCollections(entity));
     }
 
     /// <summary>
@@ -134,7 +136,12 @@ internal static class EntityWriter
                     var sequence = 0;
                     foreach (var item in collection.Entities)
                     {
-                        AddComplexValue(item, parentKey, relationshipType, sequence++, valueNodes, edges, depth);
+                        if (item is not null)
+                        {
+                            AddComplexValue(item, parentKey, relationshipType, sequence, valueNodes, edges, depth);
+                        }
+
+                        sequence++;
                     }
 
                     break;
@@ -162,6 +169,7 @@ internal static class EntityWriter
             [entity.Label],
             entity.ActualType,
             properties,
+            SnapshotComplexCollections(entity),
             IsComplexValue: true);
 
         valueNodes.Add(valueNode);
@@ -230,6 +238,34 @@ internal static class EntityWriter
         }
 
         return snapshot;
+    }
+
+    private static Dictionary<string, StoredComplexCollection> SnapshotComplexCollections(
+        EntityInfo entity)
+    {
+        var result = new Dictionary<string, StoredComplexCollection>(StringComparer.Ordinal);
+        foreach (var (name, property) in entity.ComplexProperties)
+        {
+            if (property.Value is not EntityCollection collection)
+            {
+                continue;
+            }
+
+            var relationshipType = property.RelationshipType
+                ?? (property.PropertyInfo is not null
+                    ? GraphDataModel.GetComplexPropertyRelationshipType(property.PropertyInfo)
+                    : GraphDataModel.PropertyNameToRelationshipTypeName(name));
+            result.Add(name, new StoredComplexCollection(
+                relationshipType,
+                collection.Type,
+                collection.Entities.Count,
+                [.. collection.Entities
+                    .Select((value, index) => (value, index))
+                    .Where(item => item.value is null)
+                    .Select(item => item.index)]));
+        }
+
+        return result;
     }
 
     private static IReadOnlyList<string> EffectiveLabels(EntityInfo entity)

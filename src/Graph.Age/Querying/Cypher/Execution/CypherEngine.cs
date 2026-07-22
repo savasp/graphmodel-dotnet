@@ -178,6 +178,7 @@ internal sealed class CypherEngine
                     transaction.Runner,
                     nativeIdentities.Cast<long>().ToArray(),
                     complexPlan.RelationshipTypesToClear,
+                    complexPlan.PropertyNamesToClear,
                     complexPlan.ReplacementEntity,
                     cancellationToken).ConfigureAwait(false);
             }

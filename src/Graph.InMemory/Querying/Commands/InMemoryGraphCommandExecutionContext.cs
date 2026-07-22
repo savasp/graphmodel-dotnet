@@ -177,7 +177,8 @@ internal sealed class InMemoryGraphCommandExecutionContext(
                         key,
                         complexPlan.RelationshipTypesToClear,
                         complexProperties.ValueNodes,
-                        complexProperties.Edges);
+                        complexProperties.Edges,
+                        complexProperties.Collections);
                 }
             }
             else

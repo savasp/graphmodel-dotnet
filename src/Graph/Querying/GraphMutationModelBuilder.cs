@@ -325,14 +325,29 @@ internal static class GraphMutationModelBuilder
         }
 
         var elementType = GetCollectionElementType(property.PropertyType);
+        var propertyNullability = new NullabilityInfoContext().Create(property);
+        var elementNullability = property.PropertyType.IsArray
+            ? propertyNullability.ElementType
+            : propertyNullability.GenericTypeArguments.FirstOrDefault();
+        var allowsNullElement = Nullable.GetUnderlyingType(elementType) is not null ||
+            (!elementType.IsValueType && elementNullability?.ReadState == NullabilityState.Nullable);
         var index = 0;
         foreach (var item in values)
         {
-            if (item is null || !elementType.IsAssignableFrom(item.GetType()))
+            if (item is null)
+            {
+                if (!allowsNullElement)
+                {
+                    throw new GraphQueryTranslationException(
+                        $"Complex collection property '{storageName}' contains a null element at index {index}; " +
+                        $"the element type is '{elementType}'.");
+                }
+            }
+            else if (!elementType.IsAssignableFrom(item.GetType()))
             {
                 throw new GraphQueryTranslationException(
                     $"Complex collection property '{storageName}' contains " +
-                    $"{(item is null ? "a null" : $"an incompatible '{item.GetType()}'")} element at index {index}; " +
+                    $"an incompatible '{item.GetType()}' element at index {index}; " +
                     $"the element type is '{elementType}'.");
             }
 

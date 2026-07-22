@@ -31,6 +31,129 @@ public interface IBasicTests : IGraphTest
         Assert.Equal("Somewhere", fetched.Address.City);
     }
 
+    [Fact]
+    public async Task NullableComplexCollections_PreserveEverySlotAndRuntimeType()
+    {
+        var node = new NullableComplexCollectionNode
+        {
+            Animals =
+            [
+                null,
+                new DogDescription { Name = "Rex", Breed = "Labrador" },
+                null,
+                null,
+                new PoliceDogDescription { Name = "K9", Breed = "Shepherd", Badge = "42" },
+                null,
+            ],
+            Addresses = [null, null, null],
+            EmptyAddresses = [],
+        };
+        await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+
+        var fetched = await Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(candidate => candidate.Marker == node.Marker)
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Collection(
+            fetched.Animals,
+            Assert.Null,
+            animal => Assert.IsType<DogDescription>(animal),
+            Assert.Null,
+            Assert.Null,
+            animal => Assert.IsType<PoliceDogDescription>(animal),
+            Assert.Null);
+        Assert.Equal(3, fetched.Addresses.Length);
+        Assert.All(fetched.Addresses, Assert.Null);
+        Assert.Empty(fetched.EmptyAddresses);
+
+        var dynamicCandidates = await Graph.DynamicNodes()
+            .OfLabel(Labels.GetLabelFromType(typeof(NullableComplexCollectionNode)))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var dynamicFetched = Assert.Single(
+            dynamicCandidates,
+            candidate => Equals(candidate.Properties[nameof(NullableComplexCollectionNode.Marker)], node.Marker));
+        var dynamicAnimals = Assert.IsType<List<Dictionary<string, object?>?>>(
+            dynamicFetched.Properties[nameof(NullableComplexCollectionNode.Animals)]);
+        Assert.Collection(
+            dynamicAnimals,
+            Assert.Null,
+            Assert.NotNull,
+            Assert.Null,
+            Assert.Null,
+            Assert.NotNull,
+            Assert.Null);
+        Assert.DoesNotContain("NULLABLE_ANIMAL", dynamicFetched.Properties.Keys);
+    }
+
+    [Fact]
+    public async Task DynamicNullableComplexCollection_PreservesAllNullAndMixedSlots()
+    {
+        var label = $"DynamicNullableComplex{Guid.NewGuid():N}";
+        var node = new DynamicNode(
+            [label],
+            new Dictionary<string, object?>
+            {
+                ["mixed"] = new List<Dictionary<string, object?>?>
+                {
+                    null,
+                    new() { ["name"] = "first" },
+                    null,
+                    new() { ["name"] = "last" },
+                    null,
+                },
+                ["allNull"] = new List<Dictionary<string, object?>?> { null, null },
+                ["empty"] = new List<Dictionary<string, object?>?>(),
+            });
+        await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+
+        var fetched = await Graph.DynamicNodes().OfLabel(label)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        var mixed = Assert.IsType<List<Dictionary<string, object?>?>>(fetched.Properties["mixed"]);
+        Assert.Collection(
+            mixed,
+            Assert.Null,
+            item => Assert.Equal("first", item!["name"]),
+            Assert.Null,
+            item => Assert.Equal("last", item!["name"]),
+            Assert.Null);
+        Assert.Equal(2, Assert.IsType<List<Dictionary<string, object?>?>>(fetched.Properties["allNull"]).Count);
+        Assert.Empty(Assert.IsType<List<Dictionary<string, object?>?>>(fetched.Properties["empty"]));
+    }
+
+    [Fact]
+    public async Task NullableComplexCollection_DeleteCascadesOnlyRealChildren()
+    {
+        var marker = $"nullable-complex-delete-{Guid.NewGuid():N}";
+        var node = new NullableComplexCollectionNode
+        {
+            Marker = marker,
+            Animals = [null, new DogDescription { Name = marker, Breed = "Labrador" }, null],
+        };
+        await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(
+            1,
+            await Harness.CountNodesByPropertyAsync(
+                Graph,
+                Labels.GetLabelFromType(typeof(DogDescription)),
+                nameof(AnimalDescription.Name),
+                [marker],
+                TestContext.Current.CancellationToken));
+
+        var affected = await Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .DeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, affected);
+        Assert.Equal(
+            0,
+            await Harness.CountNodesByPropertyAsync(
+                Graph,
+                Labels.GetLabelFromType(typeof(DogDescription)),
+                nameof(AnimalDescription.Name),
+                [marker],
+                TestContext.Current.CancellationToken));
+    }
+
 
     [Fact]
     public async Task CanCreateAndGetRelationship()

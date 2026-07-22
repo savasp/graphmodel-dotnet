@@ -580,7 +580,7 @@ public class EntityFactoryTests
         var bagInfo = Assert.IsType<EntityInfo>(entity.ComplexProperties["bag"].Value);
         var entriesInfo = Assert.IsType<EntityCollection>(bagInfo.ComplexProperties["entries"].Value);
         Assert.Equal(2, entriesInfo.Entities.Count);
-        Assert.All(entriesInfo.Entities, entry => Assert.DoesNotContain("Count", entry.SimpleProperties.Keys));
+        Assert.All(entriesInfo.Entities, entry => Assert.DoesNotContain("Count", entry!.SimpleProperties.Keys));
 
         var roundTripped = factory.Deserialize<DynamicNode>(entity);
         var bag = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(roundTripped.Properties["bag"]);
@@ -591,7 +591,7 @@ public class EntityFactoryTests
     }
 
     [Fact]
-    public void DynamicNode_WithNullComplexCollectionElement_ThrowsIndexedDiagnostic()
+    public void DynamicNode_WithNullComplexCollectionElement_PreservesSlot()
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
@@ -605,16 +605,17 @@ public class EntityFactoryTests
                 },
             });
 
-        var exception = Assert.Throws<GraphException>(() => factory.Serialize(node));
+        var entity = factory.Serialize(node);
+        var collection = Assert.IsType<EntityCollection>(entity.ComplexProperties["stored_addresses"].Value);
+        Assert.Collection(collection.Entities, Assert.NotNull, Assert.Null);
 
-        Assert.Equal(
-            "Complex collection property 'stored_addresses' contains a null element at index 1, " +
-            $"but its target element type '{typeof(FactoryAddress)}' does not allow null elements.",
-            exception.Message);
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
+        var addresses = Assert.IsType<List<Dictionary<string, object?>?>>(roundTripped.Properties["stored_addresses"]);
+        Assert.Collection(addresses, Assert.NotNull, Assert.Null);
     }
 
     [Fact]
-    public void DynamicNode_WithNullComplexCollectionNestedInPoco_ThrowsIndexedDiagnostic()
+    public void DynamicNode_WithNullComplexCollectionNestedInPoco_PreservesSlot()
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
@@ -627,16 +628,19 @@ public class EntityFactoryTests
                 },
             });
 
-        var exception = Assert.Throws<GraphException>(() => factory.Serialize(node));
+        var entity = factory.Serialize(node);
+        var directory = Assert.IsType<EntityInfo>(entity.ComplexProperties["directory"].Value);
+        var collection = Assert.IsType<EntityCollection>(directory.ComplexProperties["stored_offices"].Value);
+        Assert.Collection(collection.Entities, Assert.NotNull, Assert.Null);
 
-        Assert.Equal(
-            "Complex collection property 'stored_offices' contains a null element at index 1, " +
-            $"but its target element type '{typeof(FactoryAddress)}' does not allow null elements.",
-            exception.Message);
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
+        var roundTrippedDirectory = Assert.IsType<Dictionary<string, object?>>(roundTripped.Properties["directory"]);
+        var offices = Assert.IsType<List<Dictionary<string, object?>?>>(roundTrippedDirectory["stored_offices"]);
+        Assert.Collection(offices, Assert.NotNull, Assert.Null);
     }
 
     [Fact]
-    public void DynamicNode_WithNullDictionaryCollectionElement_ThrowsIndexedDiagnostic()
+    public void DynamicNode_WithNullDictionaryCollectionElement_PreservesSlot()
     {
         var factory = new EntityFactory();
         var node = new DynamicNode(
@@ -650,12 +654,13 @@ public class EntityFactoryTests
                 },
             });
 
-        var exception = Assert.Throws<GraphException>(() => factory.Serialize(node));
+        var entity = factory.Serialize(node);
+        var collection = Assert.IsType<EntityCollection>(entity.ComplexProperties["entries"].Value);
+        Assert.Collection(collection.Entities, Assert.NotNull, Assert.Null);
 
-        Assert.Equal(
-            "Complex collection property 'entries' contains a null element at index 1, " +
-            $"but its target element type '{typeof(Dictionary<string, object?>)}' does not allow null elements.",
-            exception.Message);
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
+        var entries = Assert.IsType<List<Dictionary<string, object?>?>>(roundTripped.Properties["entries"]);
+        Assert.Collection(entries, Assert.NotNull, Assert.Null);
     }
 
     [Fact]
@@ -673,7 +678,7 @@ public class EntityFactoryTests
             }));
         var property = entity.ComplexProperties["stored_addresses"];
         var collection = Assert.IsType<EntityCollection>(property.Value);
-        var mistyped = collection.Entities.Single() with { ActualType = typeof(FactorySurvey) };
+        var mistyped = collection.Entities.Single()! with { ActualType = typeof(FactorySurvey) };
         entity.ComplexProperties["stored_addresses"] = property with
         {
             Value = new EntityCollection(collection.Type, [mistyped]),
@@ -706,7 +711,7 @@ public class EntityFactoryTests
         var collection = Assert.IsType<EntityCollection>(entity.ComplexProperties["locations"].Value);
         Assert.Equal(typeof(FactoryLocation), collection.Type);
         var storedOffice = Assert.Single(collection.Entities);
-        Assert.Equal(typeof(FactoryOffice), storedOffice.ActualType);
+        Assert.Equal(typeof(FactoryOffice), storedOffice!.ActualType);
         Assert.Equal(14, Assert.IsType<SimpleValue>(storedOffice.SimpleProperties[nameof(FactoryOffice.Floor)].Value).Object);
 
         var roundTripped = factory.Deserialize<DynamicNode>(entity);
@@ -736,7 +741,7 @@ public class EntityFactoryTests
         var collection = Assert.IsType<EntityCollection>(directory.ComplexProperties["stored_locations"].Value);
         Assert.Equal(typeof(FactoryLocation), collection.Type);
         var storedOffice = Assert.Single(collection.Entities);
-        Assert.Equal(typeof(FactoryOffice), storedOffice.ActualType);
+        Assert.Equal(typeof(FactoryOffice), storedOffice!.ActualType);
         Assert.Equal(14, Assert.IsType<SimpleValue>(storedOffice.SimpleProperties[nameof(FactoryOffice.Floor)].Value).Object);
 
         var roundTripped = factory.Deserialize<DynamicNode>(entity);
@@ -1025,8 +1030,8 @@ public class EntityFactoryTests
 
             return collection.Entities
                 .Select(addressInfo => new FactoryAddress(
-                    ReadSimple<string>(addressInfo, nameof(FactoryAddress.Street)) ?? string.Empty,
-                    ReadSimple<string>(addressInfo, nameof(FactoryAddress.City)) ?? string.Empty))
+                    ReadSimple<string>(addressInfo!, nameof(FactoryAddress.Street)) ?? string.Empty,
+                    ReadSimple<string>(addressInfo!, nameof(FactoryAddress.City)) ?? string.Empty))
                 .ToList();
         }
 

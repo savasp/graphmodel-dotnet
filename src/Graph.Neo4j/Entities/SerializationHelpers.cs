@@ -12,9 +12,17 @@ internal static class SerializationHelpers
     public static Dictionary<string, object?> SerializeSimpleProperties(EntityInfo entity)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        return SimpleCollectionStorageCodec.EncodeProperties(
+        var properties = SimpleCollectionStorageCodec.EncodeProperties(
             entity.SimpleProperties,
             omitNullPayloads: true,
             SerializationBridge.ToNeo4jValue);
+        foreach (var (name, value) in ComplexCollectionStorageCodec.EncodeProperties(
+            entity.ComplexProperties,
+            SerializationBridge.ToNeo4jValue))
+        {
+            properties.Add(name, value);
+        }
+
+        return properties;
     }
 }

@@ -88,7 +88,9 @@ public sealed class ComplianceInventoryTests
     // atomic set-based transition and rollback behavior.
     // +5 for #423/#433: nullable and non-nullable collection-element schemas across stored-property
     // materialization and constructor projections, including independent container nullability.
-    private const int ExpectedTotalTestMethods = 483;
+    // +4 for #425: typed and dynamic nullable complex collections, real-child cascade cleanup,
+    // and atomic dense/sparse/all-null/empty mutation transitions.
+    private const int ExpectedTotalTestMethods = 487;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

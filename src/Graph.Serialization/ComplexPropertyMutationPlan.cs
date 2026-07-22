@@ -13,6 +13,7 @@ using Cvoya.Graph.Querying;
 internal sealed record ComplexPropertyMutationPlan(
     EntityInfo ReplacementEntity,
     IReadOnlyList<string> RelationshipTypesToClear,
+    IReadOnlyList<string> PropertyNamesToClear,
     IReadOnlyList<string> RootScalarPropertiesToClear)
 {
     /// <summary>Gets whether the mutation must alter complex-property storage.</summary>
@@ -26,6 +27,7 @@ internal sealed record ComplexPropertyMutationPlan(
 
         var complexProperties = new Dictionary<string, Property>(StringComparer.Ordinal);
         var relationshipTypes = new HashSet<string>(StringComparer.Ordinal);
+        var propertyNames = new HashSet<string>(StringComparer.Ordinal);
         var rootScalarProperties = new HashSet<string>(StringComparer.Ordinal);
         var canOwnComplexProperties = mutation.Selection.ElementKind == GraphElementKind.Node;
 
@@ -36,6 +38,7 @@ internal sealed record ComplexPropertyMutationPlan(
                 // A dynamic key may change between scalar and complex representations. Always
                 // remove a prior owned subtree before writing the new scalar representation.
                 relationshipTypes.Add(GraphDataModel.PropertyNameToRelationshipTypeName(assignment.StorageName));
+                propertyNames.Add(assignment.StorageName);
             }
 
             if (assignment is not GraphConstantPropertyAssignment { IsComplex: true } complex)
@@ -76,6 +79,7 @@ internal sealed record ComplexPropertyMutationPlan(
             complexProperties.Add(complex.StorageName, property);
             relationshipTypes.Add(property.RelationshipType
                 ?? GraphDataModel.PropertyNameToRelationshipTypeName(complex.StorageName));
+            propertyNames.Add(complex.StorageName);
         }
 
         var entityType = GetEntityType(mutation.Selection.Query.Root);
@@ -87,6 +91,7 @@ internal sealed record ComplexPropertyMutationPlan(
                 new Dictionary<string, Property>(StringComparer.Ordinal),
                 complexProperties),
             [.. relationshipTypes.Order(StringComparer.Ordinal)],
+            [.. propertyNames.Order(StringComparer.Ordinal)],
             [.. rootScalarProperties.Order(StringComparer.Ordinal)]);
     }
 

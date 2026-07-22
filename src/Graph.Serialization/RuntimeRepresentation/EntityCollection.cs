@@ -6,10 +6,12 @@ namespace Cvoya.Graph.Serialization;
 /// <summary>
 /// Represents a collection of entities.
 /// </summary>
-/// <param name="Entities">A collection of entities (<see cref="EntityInfo"/> ).</param>
-/// <param name="Type">The type of entities in the collection.</param>
+/// <param name="Type">The declared type of elements in the collection.</param>
+/// <param name="Entities">
+/// The ordered collection slots. A <see langword="null"/> entry is an explicit null element, not
+/// an omitted entity; count and position are part of the serialized contract.
+/// </param>
 public record EntityCollection(
     Type Type,
-    ICollection<EntityInfo> Entities
+    IReadOnlyList<EntityInfo?> Entities
 ) : Serialized;
-

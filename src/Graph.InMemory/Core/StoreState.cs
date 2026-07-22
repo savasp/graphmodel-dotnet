@@ -101,11 +101,13 @@ internal sealed record StoreState(
         Guid parentKey,
         IReadOnlyCollection<string> relationshipTypes,
         IReadOnlyList<NodeRecord> complexValueNodes,
-        IReadOnlyList<RelationshipRecord> complexEdges)
+        IReadOnlyList<RelationshipRecord> complexEdges,
+        IReadOnlyDictionary<string, StoredComplexCollection> complexCollections)
     {
         ArgumentNullException.ThrowIfNull(relationshipTypes);
         ArgumentNullException.ThrowIfNull(complexValueNodes);
         ArgumentNullException.ThrowIfNull(complexEdges);
+        ArgumentNullException.ThrowIfNull(complexCollections);
         if (!Nodes.TryGetValue(parentKey, out var parent) || parent.IsComplexValue)
         {
             throw new GraphException(
@@ -114,7 +116,17 @@ internal sealed record StoreState(
 
         var selectedTypes = relationshipTypes.ToHashSet(StringComparer.Ordinal);
         var state = RemoveComplexSubtrees(parentKey, selectedTypes);
-        var nodes = state.Nodes;
+        var retainedCollections = parent.ComplexCollections
+            .Where(item => !selectedTypes.Contains(item.Value.RelationshipType))
+            .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+        foreach (var (name, collection) in complexCollections)
+        {
+            retainedCollections[name] = collection;
+        }
+
+        var nodes = state.Nodes.SetItem(
+            parentKey,
+            state.Nodes[parentKey] with { ComplexCollections = retainedCollections });
         foreach (var child in complexValueNodes)
         {
             nodes = nodes.Add(child.Key, child);

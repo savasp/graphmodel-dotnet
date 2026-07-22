@@ -25,7 +25,8 @@ public sealed record GraphValue
         string? endNodeElementId,
         IReadOnlyDictionary<string, GraphValue>? entries,
         IReadOnlyList<GraphValue>? items,
-        Type? collectionElementType = null)
+        Type? collectionElementType = null,
+        IReadOnlyDictionary<string, GraphValue>? storageEntries = null)
     {
         Kind = kind;
         this.scalar = scalar is byte[] bytes ? bytes.ToArray() : scalar;
@@ -35,6 +36,7 @@ public sealed record GraphValue
         StartNodeElementId = startNodeElementId;
         EndNodeElementId = endNodeElementId;
         Entries = entries ?? EmptyMap;
+        StorageEntries = storageEntries ?? EmptyMap;
         Items = items ?? [];
         CollectionElementType = collectionElementType;
     }
@@ -62,6 +64,9 @@ public sealed record GraphValue
 
     /// <summary>Gets node/relationship properties or map entries.</summary>
     public IReadOnlyDictionary<string, GraphValue> Entries { get; }
+
+    /// <summary>Gets provider-private storage entries that must not enter a user property bag.</summary>
+    internal IReadOnlyDictionary<string, GraphValue> StorageEntries { get; }
 
     /// <summary>Gets list or path items.</summary>
     public IReadOnlyList<GraphValue> Items { get; }
@@ -100,6 +105,34 @@ public sealed record GraphValue
             null);
     }
 
+    /// <summary>
+    /// Creates a node wire value with provider-private storage properties that are available to
+    /// materialization but never enter the node's user property bag.
+    /// </summary>
+    /// <param name="elementId">The provider-native element identity.</param>
+    /// <param name="labels">The node labels.</param>
+    /// <param name="properties">The logical user properties.</param>
+    /// <param name="storageProperties">Provider-private storage metadata.</param>
+    /// <returns>An immutable node wire value.</returns>
+    public static GraphValue Node(
+        string elementId,
+        IReadOnlyList<string> labels,
+        IReadOnlyDictionary<string, GraphValue> properties,
+        IReadOnlyDictionary<string, GraphValue> storageProperties)
+    {
+        return new GraphValue(
+            GraphValueKind.Node,
+            null,
+            Required(elementId, nameof(elementId)),
+            CopyStrings(labels, nameof(labels)),
+            null,
+            null,
+            null,
+            CopyEntries(properties, nameof(properties)),
+            null,
+            storageEntries: CopyEntries(storageProperties, nameof(storageProperties)));
+    }
+
     /// <summary>Creates a relationship wire value.</summary>
     public static GraphValue Relationship(
         string elementId,
@@ -118,6 +151,27 @@ public sealed record GraphValue
             Required(endNodeElementId, nameof(endNodeElementId)),
             CopyEntries(properties, nameof(properties)),
             null);
+    }
+
+    internal static GraphValue Relationship(
+        string elementId,
+        string type,
+        string startNodeElementId,
+        string endNodeElementId,
+        IReadOnlyDictionary<string, GraphValue> properties,
+        IReadOnlyDictionary<string, GraphValue> storageProperties)
+    {
+        return new GraphValue(
+            GraphValueKind.Relationship,
+            null,
+            Required(elementId, nameof(elementId)),
+            null,
+            Required(type, nameof(type)),
+            Required(startNodeElementId, nameof(startNodeElementId)),
+            Required(endNodeElementId, nameof(endNodeElementId)),
+            CopyEntries(properties, nameof(properties)),
+            null,
+            storageEntries: CopyEntries(storageProperties, nameof(storageProperties)));
     }
 
     /// <summary>Creates an ordered list wire value.</summary>

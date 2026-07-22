@@ -161,8 +161,8 @@ public sealed class AgeCorrelatedProjectionPassTests
         var rendered = Translate(query);
 
         Assert.DoesNotContain("COUNT {", rendered.Text);
-        Assert.Contains("count(__age_count0_relationship0) AS __age_count0", rendered.Text);
-        Assert.Contains("__age_count0 AS `Count`", rendered.Text);
+        Assert.DoesNotContain("__age_count0", rendered.Text);
+        Assert.Contains("src.`__cvoya_sc:v1:c:l:QW5pbWFscw`", rendered.Text);
         Assert.Equal(["Name", "Count"], rendered.ProjectionColumns);
     }
 
@@ -368,13 +368,15 @@ public sealed class AgeCorrelatedProjectionPassTests
 
         var rendered = Translate(query).Text;
 
-        // The existence filter and the size projection traverse the same pattern: one match feeds
-        // both, the filter becomes a row guard, and the size counts every row (not just "Rex").
+        // The existence filter still uses an anchored match and row guard. The size is independent:
+        // it reads the owner's logical length so null slots are included.
         Assert.DoesNotContain("EXISTS {", rendered);
         Assert.DoesNotContain("COUNT {", rendered);
-        Assert.Contains("count(src_animals) AS __age_projection1", rendered);
-        Assert.Contains("count(CASE WHEN src_animals.Name = $p0 THEN src_animals ELSE null END) AS __age_anchor_rows", rendered);
-        Assert.Contains("WHERE __age_anchor_rows > 0", rendered);
+        Assert.Contains("src.`__cvoya_sc:v1:c:l:QW5pbWFscw`", rendered);
+        Assert.Contains("count(CASE WHEN", rendered);
+        Assert.Contains(".Name = $p0", rendered);
+        Assert.Contains("WHERE", rendered);
+        Assert.Contains("> 0", rendered);
     }
 
     private static Querying.Cypher.CypherQuery Translate(IQueryable query)

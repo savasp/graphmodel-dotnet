@@ -27,7 +27,7 @@ public record PropertySchema(
 )
 {
     private bool _isElementNullable =
-        PropertyType == PropertyType.SimpleCollection &&
+        IsCollection(PropertyType) &&
         NullabilityDerivation.IsElementNullable(PropertyInfo, ElementType);
 
     /// <summary>
@@ -36,15 +36,16 @@ public record PropertySchema(
     /// <remarks>
     /// Generated schemas set this value from compiler nullability metadata. Hand-authored schemas
     /// default to reflection metadata so nullable reference annotations are not inferred from the
-    /// runtime element type alone. Complex collections always return <see langword="false"/>
-    /// because their wire representation has no nullable slot; CG017 rejects nullable complex
-    /// element declarations before generation.
+    /// runtime element type alone.
     /// </remarks>
     public bool IsElementNullable
     {
-        get => PropertyType == PropertyType.SimpleCollection && _isElementNullable;
-        init => _isElementNullable = PropertyType == PropertyType.SimpleCollection && value;
+        get => IsCollection(PropertyType) && _isElementNullable;
+        init => _isElementNullable = IsCollection(PropertyType) && value;
     }
+
+    private static bool IsCollection(PropertyType propertyType) =>
+        propertyType is PropertyType.SimpleCollection or PropertyType.ComplexCollection;
 }
 
 /// <summary>

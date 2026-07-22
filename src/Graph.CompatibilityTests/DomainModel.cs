@@ -113,6 +113,18 @@ public record Kennel : Node
     public List<AnimalDescription> Animals { get; set; } = new();
 }
 
+public record NullableComplexCollectionNode : Node
+{
+    public string Marker { get; set; } = Guid.NewGuid().ToString("N");
+
+    [ComplexProperty(RelationshipType = "NULLABLE_ANIMAL")]
+    public List<AnimalDescription?> Animals { get; set; } = [];
+
+    public AddressValue?[] Addresses { get; set; } = [];
+
+    public List<AddressValue?> EmptyAddresses { get; set; } = [];
+}
+
 public record Address : Node
 {
     public string TestKey { get; set; } = Guid.NewGuid().ToString("N");

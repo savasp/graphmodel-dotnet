@@ -414,6 +414,7 @@ public class PolymorphicDeserializationTests
             {
                 foreach (var animalEntity in collection.Entities)
                 {
+                    Assert.NotNull(animalEntity);
                     var serializer = EntitySerializerRegistry.Instance.GetSerializer(animalEntity.ActualType)
                         ?? throw new InvalidOperationException($"No serializer registered for {animalEntity.ActualType.Name}.");
                     animals.Add((Animal)serializer.Deserialize(animalEntity));

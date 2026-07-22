@@ -330,7 +330,6 @@ TransientException: Deadlock detected
 | **CG014** | Graph entity types (INode/IRelationship) must be reference types | Error |
 | **CG015** | [ComplexProperty] has no effect on the configured property | Warning |
 | **CG016** | Open generic graph entities are not supported | Error |
-| **CG017** | Nullable complex collection elements are not supported | Error |
 | **CG018** | Invalid graph key or ignored property declaration | Error |
 
 **Solutions:**

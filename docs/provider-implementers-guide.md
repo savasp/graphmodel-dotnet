@@ -133,16 +133,35 @@ The relationship type is the property name by convention. `[ComplexProperty(Rela
 `GraphDataModel.GetComplexPropertyRelationshipType` so generated and reflection-based serializers
 agree on the mapping.
 
-Collections of complex properties use one relationship per collection item and store a `SequenceNumber` relationship property. Deserialization orders collection items by `SequenceNumber`. Nested complex properties recurse with the same relationship-type convention.
+Collections of complex properties use one relationship per non-null collection item and store the
+item's original zero-based index in the relationship's `SequenceNumber` property. The owner also
+stores four private companions: logical length (`__cvoya_sc:v1:c:l:<name>`), null indexes
+(`__cvoya_sc:v1:c:n:<name>`), and the declared element-type identity
+(`__cvoya_sc:v1:c:t:<name>`), plus the semantic relationship type
+(`__cvoya_sc:v1:c:r:<name>`). `<name>` is the Base64Url-encoded physical property label. Keeping the
+namespace beneath the simple-collection prefix lets the existing user-property escaping protect it
+from collisions. Empty and all-null collections therefore have an explicit representation without
+creating fake nodes or relationships. Persisting the relationship type also lets dynamic readers
+correlate children unambiguously when `[ComplexProperty(RelationshipType = "...")]` overrides the
+property-name convention.
 
-Unlike a simple collection, a complex collection has no representation for a null element: it is stored as one relationship per item, and an absent relationship is indistinguishable from a shorter collection. The stable-v1 contract is therefore fail-closed in both directions. Serialization rejects a null element with `GraphException`, and materialization rejects an element that is null or not assignable to the declared element type; both diagnostics identify the physical property label, the target element type, and the zero-based index. Neither direction filters the element out, because dropping it would shrink the collection and shift every later element behind a plausible-looking result. The analyzer rejects the declaration up front with `CG017` (`List<Address?>` and equivalents) for the same reason, so a compiled model never reaches a provider with a nullable complex element. `PropertySchema.IsElementNullable` is always `false` for a `ComplexCollection`; only a `SimpleCollection` can advertise nullable elements. Valid non-null collections, including polymorphic derived elements, retain their count and order. Nullable complex elements would need a new wire representation and are additive post-1.0 work.
+Readers reconstruct the ordered slot list from the union of real child `SequenceNumber` values and
+declared null indexes. Every index from zero through logical length minus one must occur exactly once;
+a duplicate, out-of-range index, missing child, partial companion set, or incompatible element type is
+corrupt storage and fails with `GraphException`. `PropertySchema.IsElementNullable` reflects the CLR
+element annotation for both simple and complex collections. A nullable declaration preserves null
+slots; a non-nullable declaration still rejects a null with an indexed diagnostic. Derived runtime
+elements remain valid when assignable to the declared element type. Replacements clear and write all
+four companions atomically with the real child relationships, and cascade deletion touches only real
+value nodes. This representation is the current write contract; providers are not required to migrate
+previously deployed storage that predates it.
 
 Every occurrence is a separate value node, even when two owners reference the same in-memory object.
 Nodes and relationships need stable CVOYA graph IDs and remain visible to ordinary graph queries.
 Providers may add an internal relationship marker for cascade cleanup, but must not infer
 complex-property edges from a reserved relationship-name prefix.
 
-When **dynamic** entities are materialized, a complex-property value is reconstructed into the property bag using one canonical shape, shared by dynamic nodes and dynamic relationships so the same stored value round-trips identically regardless of owner: a single complex value becomes a `Dictionary<string, object?>` keyed by the stored (physical) property labels, and a complex-property collection becomes a `List<Dictionary<string, object?>>`. A simple collection nested inside such a dictionary follows the canonical `List<T>` rule above, and a nested complex value recurses into a further dictionary, so the whole subtree survives the round trip. A dynamic entity has no CLR type to materialize into, so the value is never rehydrated as a typed instance. Providers that decompose complex values into storage nodes must remove those nodes' synthetic `Id` and `Labels` members when rebuilding the dictionary; only caller-supplied value members belong in the materialized shape.
+When **dynamic** entities are materialized, a complex-property value is reconstructed into the property bag using one canonical shape, shared by dynamic nodes and dynamic relationships so the same stored value round-trips identically regardless of owner: a single complex value becomes a `Dictionary<string, object?>` keyed by the stored (physical) property labels, and a complex-property collection becomes a `List<Dictionary<string, object?>?>`. A simple collection nested inside such a dictionary follows the canonical `List<T>` rule above, and a nested complex value recurses into a further dictionary, so the whole subtree survives the round trip. A dynamic entity has no CLR type to materialize into, so the value is never rehydrated as a typed instance. Providers that decompose complex values into storage nodes must remove those nodes' synthetic `Id` and `Labels` members when rebuilding the dictionary; only caller-supplied value members belong in the materialized shape.
 
 Declared properties auto-load recursively. Writes and reads must reject cycles and paths deeper than
 `GraphDataModel.DefaultDepthAllowed` (currently 5). A read type that omits the property leaves it
@@ -264,7 +283,7 @@ disjoint recursively. Flat mixed chains are rejected by the builder; explicitly 
 retain their declared grouping. Neo4j and in-memory implement the contract; AGE declines it at
 translation time.
 
-`PatternSizeProjection` gates every relationship-count pattern subquery a projection can produce: both complex-property collection sizes (`.Offices.Count`) and the node relationship-count (degree) surface `CountRelationships<TRel>(direction)`, which lowers to a `COUNT { MATCH (src)-[:REL]->() }` / `size((src)-[:REL]->())` subquery. Relationship direction is physical (matching traversal), compatible derived relationship labels participate, and an undirected self-loop counts once. A provider that declines the capability rejects both at translation time.
+`PatternSizeProjection` gates every relationship-count pattern subquery a projection can produce. The node relationship-count (degree) surface `CountRelationships<TRel>(direction)` lowers to a `COUNT { MATCH (src)-[:REL]->() }` / `size((src)-[:REL]->())` subquery. Relationship direction is physical (matching traversal), compatible derived relationship labels participate, and an undirected self-loop counts once. A provider that declines the capability rejects it at translation time. Complex-property collection `.Count` instead reads the owner's stored logical length so null slots are counted without requiring this capability.
 
 A provider should decline every capability its native dialect or structured lowering cannot preserve.
 AGE, for example, declares `CallSubqueries` and `PatternSizeProjection` only because its provider-local
@@ -422,7 +441,7 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `Transactions` | `ITransactionTests` (all methods) | interface | pass | pass | pass |
 | `ComplexPropertyCascade` | `IComplexObjectGraphSerializationTests` (all methods) | interface | pass | pass | pass |
 | `CallSubqueries` | `IAdvancedQueryTests` correlated-collection pattern comprehensions and grouped-projection rejection cases | method | pass | pass | pass |
-| `PatternSizeProjection` | `IAdvancedQueryTests.CanProjectComplexCollectionSize`, `IAdvancedQueryTests.CanProjectRelationshipCounts` (node degree via `CountRelationships<TRel>(direction)`) | method | pass | pass | pass |
+| `PatternSizeProjection` | `IAdvancedQueryTests.CanProjectRelationshipCounts` (node degree via `CountRelationships<TRel>(direction)`) | method | pass | pass | pass |
 | `MultiLabelMatch` | `IAdvancedQueryTests.CanQueryPolymorphicBaseTypeAcrossSubtypeLabels` | method | pass | pass | pass |
 | `LabelFiltering` | `IQueryTraversalTests.LabelFilters_PinSubtypeDynamicAnyAllEmptyCompositionAndSafetySemantics` | method | pass | pass | pass |
 | `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | pass |
