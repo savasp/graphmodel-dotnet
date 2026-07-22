@@ -127,6 +127,12 @@ target, and is not automatically immutable. Key values may change through an ope
 preserve the applicable constraints. An ignored property cannot also request key, unique, indexed,
 or required behavior.
 
+In v1.0, a simple collection cannot declare either `IsKey = true` or `IsUnique = true`,
+regardless of whether its element type is nullable. Collection equality and uniqueness do not have
+a portable cross-provider graph contract, so schema registration rejects these declarations before
+any provider creates a constraint or performs mutation uniqueness preflight. Ordinary
+non-constrained collections remain supported.
+
 ### Property Types
 
 Supported property types:

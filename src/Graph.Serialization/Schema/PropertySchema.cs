@@ -26,9 +26,10 @@ public record PropertySchema(
     string? RelationshipType = null
 )
 {
-    private bool _isElementNullable =
-        IsCollection(PropertyType) &&
-        NullabilityDerivation.IsElementNullable(PropertyInfo, ElementType);
+    private bool _isElementNullable = ValidateAndGetInitialElementNullability(
+        PropertyInfo,
+        PropertyType,
+        ElementType);
 
     /// <summary>
     /// Gets whether collection elements may be null according to the declared property schema.
@@ -46,6 +47,16 @@ public record PropertySchema(
 
     private static bool IsCollection(PropertyType propertyType) =>
         propertyType is PropertyType.SimpleCollection or PropertyType.ComplexCollection;
+
+    private static bool ValidateAndGetInitialElementNullability(
+        PropertyInfo property,
+        PropertyType propertyType,
+        Type? elementType)
+    {
+        PropertyConstraintValidation.Validate(property);
+        return IsCollection(propertyType) &&
+            NullabilityDerivation.IsElementNullable(property, elementType);
+    }
 }
 
 /// <summary>

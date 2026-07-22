@@ -42,6 +42,16 @@ internal sealed class GraphMutationConstraintPlan
         ArgumentNullException.ThrowIfNull(mutation);
         ArgumentNullException.ThrowIfNull(schemaRegistry);
 
+        foreach (var property in mutation.Assignments
+                     .Select(assignment => assignment.Property)
+                     .OfType<PropertyInfo>())
+        {
+            // Keep this validation ahead of both the no-constraint fast path and schema access.
+            // That makes this boundary independent of registry initialization and prevents an
+            // unsupported collection constraint from reaching provider preflight.
+            PropertyConstraintValidation.Validate(property);
+        }
+
         var hasAffectedConstraint = mutation.Assignments.Any(assignment =>
         {
             var attribute = assignment.Property?.GetCustomAttribute<PropertyAttribute>(inherit: true);

@@ -524,6 +524,8 @@ public class SchemaRegistry : IDisposable
             return;
         }
 
+        PropertyConstraintValidation.Validate(property);
+
         if (FindUnsupportedPropertyShape(property.PropertyType) is { } unsupported)
         {
             var memberPath = string.IsNullOrEmpty(unsupported.MemberPath)

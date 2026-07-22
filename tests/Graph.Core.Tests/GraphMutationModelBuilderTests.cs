@@ -376,6 +376,49 @@ public sealed class GraphMutationModelBuilderTests
     }
 
     [Fact]
+    public void ConstraintPlan_RejectsCollectionConstraintBeforeSchemaAccess()
+    {
+        Expression<Func<InvalidCollectionConstraintMetadata, List<string>>> invalidSelector =
+            metadata => metadata.Values;
+        var selection = GraphMutationModelBuilder.Build(UpdateCall(
+            Root<Person>(),
+            (Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>>)(builder =>
+                builder.SetProperty(person => person.Nicknames, Array.Empty<string>())))).Selection;
+        var property = typeof(InvalidCollectionConstraintMetadata).GetProperty(
+            nameof(InvalidCollectionConstraintMetadata.Values))!;
+        var scalarProperty = typeof(InvalidCollectionConstraintMetadata).GetProperty(
+            nameof(InvalidCollectionConstraintMetadata.ScalarValue))!;
+        var mutation = new GraphMutationModel(
+            GraphMutationKind.Update,
+            selection,
+            [
+                new GraphConstantPropertyAssignment(
+                    (Expression<Func<InvalidCollectionConstraintMetadata, string>>)(metadata => metadata.ScalarValue),
+                    scalarProperty,
+                    nameof(InvalidCollectionConstraintMetadata.ScalarValue),
+                    dynamic: false,
+                    value: "replacement"),
+                new GraphConstantPropertyAssignment(
+                    invalidSelector,
+                    property,
+                    nameof(InvalidCollectionConstraintMetadata.Values),
+                    dynamic: false,
+                    value: Array.Empty<string>()),
+            ],
+            cascadeDelete: false);
+        using var registry = new SchemaRegistry();
+
+        var exception = Assert.ThrowsAny<GraphException>(() =>
+            GraphMutationConstraintPlan.Create(mutation, registry));
+
+        Assert.Equal(
+            $"Property '{typeof(InvalidCollectionConstraintMetadata).FullName}.Values' cannot declare IsUnique " +
+            "because simple collections cannot be key or unique values.",
+            exception.Message);
+        Assert.False(registry.IsInitialized);
+    }
+
+    [Fact]
     public void BuildUpdate_AcceptsDomainIdAsOrdinaryMutableData()
     {
         Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> setters = builder =>
@@ -475,6 +518,15 @@ public sealed class GraphMutationModelBuilderTests
     private sealed record Address
     {
         public string City { get; init; } = string.Empty;
+    }
+
+    private sealed class InvalidCollectionConstraintMetadata
+    {
+        [Property(IsUnique = true)]
+        public string ScalarValue { get; } = string.Empty;
+
+        [Property(IsUnique = true)]
+        public List<string> Values { get; } = [];
     }
 
     private sealed class RecursiveAddress

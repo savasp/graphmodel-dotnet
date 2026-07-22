@@ -30,7 +30,6 @@ public sealed class RuntimeKeySchemaValidationTests
     }
 
     [Theory]
-    [InlineData("string[]", " = [];")]
     [InlineData("object", " = new();")]
     [InlineData("ComplexKeyValue", " = new();")]
     public void CreateEntitySchemaInfo_NonScalarKey_Throws(string propertyType, string initializer)
@@ -50,6 +49,113 @@ public sealed class RuntimeKeySchemaValidationTests
             """;
 
         AssertInvalidSchema(source, "RuntimeNonScalarKeyNode", "graph-storable scalar");
+    }
+
+    public static TheoryData<string, string> SimpleCollectionConstraints => new()
+    {
+        { "IsKey", "List<string>" },
+        { "IsUnique", "List<string>" },
+        { "IsKey", "List<string?>" },
+        { "IsUnique", "List<string?>" },
+        { "IsKey", "string[]" },
+        { "IsUnique", "string[]" },
+        { "IsKey", "List<int?>" },
+        { "IsUnique", "List<int?>" },
+    };
+
+    [Theory]
+    [MemberData(nameof(SimpleCollectionConstraints))]
+    public void CreateEntitySchemaInfo_SimpleCollectionConstraint_ThrowsDeterministicError(
+        string constraint,
+        string propertyType)
+    {
+        var source = $$"""
+            #nullable enable
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            [Node("RuntimeCollectionConstraintNode")]
+            public sealed record RuntimeCollectionConstraintNode : Node
+            {
+                [Property({{constraint}} = true)]
+                public {{propertyType}} DomainKey { get; init; } = [];
+            }
+            """;
+
+        AssertInvalidSchemaMessage(
+            source,
+            "RuntimeCollectionConstraintNode",
+            $"Property 'RuntimeCollectionConstraintNode.DomainKey' cannot declare {constraint} " +
+            "because simple collections cannot be key or unique values.");
+    }
+
+    [Theory]
+    [InlineData("IsKey", "string[]")]
+    [InlineData("IsUnique", "List<int?>")]
+    public void InitializeAsync_SimpleCollectionConstraint_FailsBeforeProviderSetup(
+        string constraint,
+        string propertyType)
+    {
+        var source = $$"""
+            #nullable enable
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            [Node("RuntimeProviderSetupConstraintNode")]
+            public sealed record RuntimeProviderSetupConstraintNode : Node
+            {
+                [Property({{constraint}} = true)]
+                public {{propertyType}} DomainKey { get; init; } = [];
+            }
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["RuntimeProviderSetupConstraintNode"],
+            _ =>
+            {
+                using var registry = new SchemaRegistry();
+                var exception = Assert.ThrowsAny<GraphException>(
+                    () => registry.InitializeAsync(TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+
+                Assert.Equal(
+                    $"Property 'RuntimeProviderSetupConstraintNode.DomainKey' cannot declare {constraint} " +
+                    "because simple collections cannot be key or unique values.",
+                    exception.Message);
+            });
+    }
+
+    [Fact]
+    public void CreateEntitySchemaInfo_ScalarConstraintsAndOrdinaryCollection_Succeed()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            [Node("RuntimeValidConstraintNode")]
+            public sealed record RuntimeValidConstraintNode : Node
+            {
+                [Property(IsKey = true)]
+                public string DomainKey { get; init; } = string.Empty;
+
+                [Property(IsUnique = true)]
+                public int Sequence { get; init; }
+
+                public List<string?> Aliases { get; init; } = [];
+            }
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["RuntimeValidConstraintNode"],
+            types =>
+            {
+                var schema = CreateEntitySchemaInfo(types[0]);
+                Assert.True(schema.Properties["DomainKey"].IsKey);
+                Assert.True(schema.Properties["Sequence"].IsUnique);
+                Assert.False(schema.Properties["Aliases"].IsKey);
+                Assert.False(schema.Properties["Aliases"].IsUnique);
+            });
     }
 
     [Theory]
@@ -453,6 +559,21 @@ public sealed class RuntimeKeySchemaValidationTests
                 {
                     Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
                 }
+            });
+    }
+
+    private static void AssertInvalidSchemaMessage(
+        string source,
+        string typeName,
+        string expectedMessage)
+    {
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            [typeName],
+            types =>
+            {
+                var exception = Assert.ThrowsAny<GraphException>(() => CreateEntitySchemaInfo(types[0]));
+                Assert.Equal(expectedMessage, exception.Message);
             });
     }
 
