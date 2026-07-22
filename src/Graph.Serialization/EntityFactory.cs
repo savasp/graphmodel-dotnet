@@ -30,16 +30,14 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     /// <returns>A .NET object graph</returns>
     public object Deserialize(EntityInfo entity)
     {
-        // Handle dynamic entities
-        if (entity.ActualType.IsAssignableTo(typeof(DynamicNode)) || entity.ActualType.IsAssignableTo(typeof(DynamicRelationship)))
+        if (!TryResolveDeserializer(entity.ActualType, out var isDynamic, out var serializer))
         {
-            return DeserializeDynamicEntity(entity);
+            throw new GraphException($"No serializer found for type {entity.ActualType}. Ensure it is registered in the EntitySerializerRegistry.");
         }
 
-        var serializer = _serializerRegistry.GetSerializer(entity.ActualType)
-            ?? throw new GraphException($"No serializer found for type {entity.ActualType}. Ensure it is registered in the EntitySerializerRegistry.");
-
-        return serializer.Deserialize(entity);
+        return isDynamic
+            ? DeserializeDynamicEntity(entity)
+            : serializer!.Deserialize(entity);
     }
 
     /// <summary>
@@ -66,16 +64,33 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     }
 
     /// <summary>
-    /// Checks if the factory can deserialize a given type.
+    /// Determines whether the factory can deserialize the exact specified type.
     /// </summary>
-    /// <param name="type">The type to check for deserialization capability.</param>
-    /// <returns>True if the factory can deserialize the type, otherwise false.</returns>
-    public bool CanDeserialize(Type type) =>
-        _serializerRegistry.ContainsType(type) ||
-        typeof(INode).IsAssignableFrom(type) ||
-        typeof(IRelationship).IsAssignableFrom(type) ||
-        type == typeof(DynamicNode) ||
-        type == typeof(DynamicRelationship);
+    /// <param name="type">The exact type to check for deserialization capability.</param>
+    /// <returns>
+    /// <see langword="true"/> when <paramref name="type"/> is <see cref="DynamicNode"/>,
+    /// <see cref="DynamicRelationship"/>, or has a serializer registered with
+    /// <see cref="EntitySerializerRegistry"/>; otherwise, <see langword="false"/>.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="type"/> is <see langword="null"/>.</exception>
+    public bool CanDeserialize(Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return TryResolveDeserializer(type, out _, out _);
+    }
+
+    private bool TryResolveDeserializer(
+        Type type,
+        out bool isDynamic,
+        out IEntitySerializer? serializer)
+    {
+        isDynamic = IsBuiltInDynamicType(type);
+        serializer = isDynamic ? null : _serializerRegistry.GetSerializer(type);
+        return isDynamic || serializer is not null;
+    }
+
+    private static bool IsBuiltInDynamicType(Type type) =>
+        type == typeof(DynamicNode) || type == typeof(DynamicRelationship);
 
     /// <summary>
     /// Retrieves the schema for a given entity type.
@@ -271,12 +286,12 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     {
         var actualType = entity.ActualType;
 
-        if (actualType.IsAssignableTo(typeof(DynamicNode)))
+        if (actualType == typeof(DynamicNode))
         {
             return DeserializeDynamicNode(entity);
         }
 
-        if (actualType.IsAssignableTo(typeof(DynamicRelationship)))
+        if (actualType == typeof(DynamicRelationship))
         {
             return DeserializeDynamicRelationship(entity);
         }

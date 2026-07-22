@@ -19,6 +19,43 @@ public class GraphResultMaterializerTests
     private readonly EntityFactory factory = new();
 
     [Fact]
+    public void SupportedDynamicNode_UsesEntityFactoryDeserialization()
+    {
+        var entity = factory.Serialize(new DynamicNode(
+            ["Person"],
+            new Dictionary<string, object?> { ["name"] = "Ada" }));
+
+        Assert.True(factory.CanDeserialize(entity.ActualType));
+        var result = Assert.IsType<DynamicNode>(InvokeSingleElementMaterialization(entity, typeof(DynamicNode)));
+
+        Assert.Equal("Ada", result.Properties["name"]);
+    }
+
+    [Fact]
+    public void UnregisteredNode_UsesConstructorFallbackMaterialization()
+    {
+        var entity = new EntityInfo(
+            typeof(UnregisteredMaterializedNode),
+            nameof(UnregisteredMaterializedNode),
+            [nameof(UnregisteredMaterializedNode)],
+            new Dictionary<string, Property>
+            {
+                [nameof(UnregisteredMaterializedNode.Name)] = new Property(
+                    typeof(UnregisteredMaterializedNode).GetProperty(nameof(UnregisteredMaterializedNode.Name))!,
+                    nameof(UnregisteredMaterializedNode.Name),
+                    false,
+                    new SimpleValue("Ada", typeof(string))),
+            },
+            new Dictionary<string, Property>());
+
+        Assert.False(factory.CanDeserialize(entity.ActualType));
+        var result = Assert.IsType<UnregisteredMaterializedNode>(
+            InvokeSingleElementMaterialization(entity, typeof(UnregisteredMaterializedNode)));
+
+        Assert.Equal("Ada", result.Name);
+    }
+
+    [Fact]
     public async Task NullScalar_IntoNonNullableValueParameter_ThrowsWithoutInventingDefault()
     {
         var exception = await Assert.ThrowsAsync<GraphException>(() => MaterializeAsync<ScalarProjection>(
@@ -536,6 +573,24 @@ public class GraphResultMaterializerTests
         }
     }
 
+    private object? InvokeSingleElementMaterialization(EntityInfo entity, Type elementType)
+    {
+        var materializer = new GraphResultMaterializer(factory, loggerFactory: null);
+        var method = typeof(GraphResultMaterializer).GetMethod(
+            "MaterializeSingleElement",
+            BindingFlags.Instance | BindingFlags.NonPublic)!
+            .MakeGenericMethod(typeof(object));
+
+        try
+        {
+            return method.Invoke(materializer, [entity, elementType]);
+        }
+        catch (TargetInvocationException exception) when (exception.InnerException is not null)
+        {
+            throw exception.InnerException;
+        }
+    }
+
     private static EntityInfo ComplexEntity(Type actualType) => new(
         actualType,
         actualType.Name,
@@ -585,6 +640,8 @@ public class GraphResultMaterializerTests
     private sealed record NullableComplexCollectionProjection(List<MaterializedAddress?> Addresses);
 
     private sealed record BlobProjection(byte[] Data);
+
+    private sealed record UnregisteredMaterializedNode(string Name) : Node;
 
     private class MaterializedAddress
     {
