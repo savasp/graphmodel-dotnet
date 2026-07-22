@@ -29,18 +29,6 @@ internal static class GraphDataModel
         SpecialType.System_DateTime,
     ];
 
-    // For types that don't have SpecialType representations, we need to check by metadata
-    private static readonly (string Namespace, string TypeName)[] AdditionalSimpleTypes =
-    [
-        ("System", "DateTimeOffset"),
-        ("System", "Guid"),
-        ("System", "TimeSpan"),
-        ("System", "DateOnly"),
-        ("System", "TimeOnly"),
-        ("System", "Uri"),
-        ("Cvoya.Graph", "Point")
-    ];
-
     public static bool IsSimple(ITypeSymbol type)
     {
         // Handle nullable value types
@@ -63,15 +51,20 @@ internal static class GraphDataModel
             arrayType.ElementType.SpecialType == SpecialType.System_Byte)
             return true;
 
-        // Check additional types by namespace and name
+        // Check additional types by metadata and defining-assembly identity. Consumer source can
+        // legally shadow these fully-qualified names, so namespace/name text alone is insufficient.
         if (type is INamedTypeSymbol named)
         {
-            var namespaceName = named.ContainingNamespace?.ToString();
-            var typeName = named.Name;
+            if (named.ContainingNamespace?.ToDisplayString() == "System" &&
+                named.MetadataName is "DateTimeOffset" or "Guid" or "TimeSpan" or "DateOnly" or
+                    "TimeOnly" or "Uri")
+            {
+                return IsFrameworkAssembly(named.ContainingAssembly);
+            }
 
-            return AdditionalSimpleTypes.Any(t =>
-                t.Namespace == namespaceName &&
-                t.TypeName == typeName);
+            return named.MetadataName == "Point" &&
+                   named.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph" &&
+                   named.ContainingAssembly.Identity.Name == "Cvoya.Graph";
         }
 
         return false;
@@ -138,6 +131,11 @@ internal static class GraphDataModel
         if (type.SpecialType is SpecialType.System_IntPtr or SpecialType.System_UIntPtr)
             return true;
 
+        // Keep source-defined lookalikes on the unsupported path instead of treating them as
+        // complex values. Runtime simple-type classification uses exact CLR Type identity (#426).
+        if (IsNamedSimpleTypeLookalike(type))
+            return true;
+
         var fullName = type.ToDisplayString();
         return fullName.StartsWith("System.Threading.Tasks.") ||
                fullName.StartsWith("System.Action") ||
@@ -147,6 +145,23 @@ internal static class GraphDataModel
                fullName.StartsWith("System.Net.") ||
                fullName.StartsWith("System.Reflection.") ||
                fullName.StartsWith("System.Runtime.");
+    }
+
+    private static bool IsNamedSimpleTypeLookalike(ITypeSymbol type)
+    {
+        if (type is not INamedTypeSymbol named)
+            return false;
+
+        if (named.ContainingNamespace?.ToDisplayString() == "System" &&
+            named.MetadataName is "DateTime" or "DateTimeOffset" or "TimeSpan" or "DateOnly" or
+                "TimeOnly" or "Guid" or "Uri")
+        {
+            return !IsFrameworkAssembly(named.ContainingAssembly);
+        }
+
+        return named.MetadataName == "Point" &&
+               named.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph" &&
+               named.ContainingAssembly.Identity.Name != "Cvoya.Graph";
     }
 
     internal static bool IsDictionaryType(ITypeSymbol type)
@@ -262,8 +277,11 @@ internal static class GraphDataModel
         {
             "System.Private.CoreLib" => HasPublicKeyToken(assembly, [0x7c, 0xec, 0x85, 0xd7, 0xbe, 0xa7, 0x79, 0x8e]),
             "System.Runtime" or "System.Collections" => HasPublicKeyToken(assembly, [0xb0, 0x3f, 0x5f, 0x7f, 0x11, 0xd5, 0x0a, 0x3a]),
-            "mscorlib" => HasPublicKeyToken(assembly, [0xb7, 0x7a, 0x5c, 0x56, 0x19, 0x34, 0xe0, 0x89]),
+            "mscorlib" or "System" => HasPublicKeyToken(assembly, [0xb7, 0x7a, 0x5c, 0x56, 0x19, 0x34, 0xe0, 0x89]),
             "netstandard" => HasPublicKeyToken(assembly, [0xcc, 0x7b, 0x13, 0xff, 0xcd, 0x2d, 0xdd, 0x51]),
+            _ when assembly.Identity.Name.StartsWith("System.", StringComparison.Ordinal) =>
+                HasPublicKeyToken(assembly, [0xb0, 0x3f, 0x5f, 0x7f, 0x11, 0xd5, 0x0a, 0x3a]) ||
+                HasPublicKeyToken(assembly, [0x7c, 0xec, 0x85, 0xd7, 0xbe, 0xa7, 0x79, 0x8e]),
             _ => false,
         };
     }

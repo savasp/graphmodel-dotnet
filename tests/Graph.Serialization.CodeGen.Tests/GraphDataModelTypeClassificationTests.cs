@@ -54,6 +54,37 @@ public class GraphDataModelTypeClassificationTests
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
+    private static CSharpCompilation CreateLookalikeCompilation()
+    {
+        const string lookalikeSource = """
+            namespace System
+            {
+                public readonly struct DateTime { }
+                public readonly struct DateTimeOffset { }
+                public readonly struct TimeSpan { }
+                public readonly struct TimeOnly { }
+                public readonly struct DateOnly { }
+                public readonly struct Guid { }
+                public sealed class Uri { }
+            }
+
+            namespace Cvoya.Graph
+            {
+                public readonly struct Point { }
+            }
+            """;
+        var trustedAssemblies = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator);
+        var references = trustedAssemblies
+            .Select(path => (MetadataReference)MetadataReference.CreateFromFile(path));
+
+        return CSharpCompilation.Create(
+            assemblyName: "Consumer.NamedSimpleLookalikes",
+            syntaxTrees: [CSharpSyntaxTree.ParseText(lookalikeSource)],
+            references: references,
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
     /// <summary>
     /// Resolves an <see cref="ITypeSymbol"/> for one of the truth-table shapes by the same short
     /// symbolic names used in the runtime and analyzer mirrors of this table.
@@ -193,5 +224,24 @@ public class GraphDataModelTypeClassificationTests
     public void IsCollectionOfSimple_ReturnsExpectedResult(string shape, bool expected)
     {
         Assert.Equal(expected, GraphDataModel.IsCollectionOfSimple(Resolve(shape)));
+    }
+
+    [Theory]
+    [InlineData("System.DateTime")]
+    [InlineData("System.DateTimeOffset")]
+    [InlineData("System.TimeSpan")]
+    [InlineData("System.TimeOnly")]
+    [InlineData("System.DateOnly")]
+    [InlineData("System.Guid")]
+    [InlineData("System.Uri")]
+    [InlineData("Cvoya.Graph.Point")]
+    public void SourceDefinedNamedSimpleLookalike_IsNotSimple(string metadataName)
+    {
+        var compilation = CreateLookalikeCompilation();
+        var type = compilation.GetTypeByMetadataName(metadataName)
+            ?? throw new InvalidOperationException($"Could not resolve source type '{metadataName}'.");
+
+        Assert.False(GraphDataModel.IsSimple(type));
+        Assert.True(GraphDataModel.IsUnsupportedFrameworkType(type));
     }
 }

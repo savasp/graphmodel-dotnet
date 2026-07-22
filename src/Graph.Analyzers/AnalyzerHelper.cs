@@ -4,7 +4,6 @@
 namespace Cvoya.Graph.Analyzers;
 
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 
 /// <summary>
@@ -13,10 +12,17 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 internal class AnalyzerHelper
 {
     private readonly Compilation _compilation;
+    private readonly GraphAttributeSymbols _graphAttributes;
 
     public AnalyzerHelper(Compilation compilation)
+        : this(compilation, GraphAttributeSymbols.Resolve(compilation))
+    {
+    }
+
+    internal AnalyzerHelper(Compilation compilation, GraphAttributeSymbols graphAttributes)
     {
         _compilation = compilation;
+        _graphAttributes = graphAttributes;
     }
 
     public static bool ImplementsINode(INamedTypeSymbol type)
@@ -123,6 +129,13 @@ internal class AnalyzerHelper
 
         type = UnwrapNullableValueType(type);
 
+        // A consumer-defined type with the same metadata name as a supported named simple type
+        // must not fall through to complex-type serialization. Runtime classification uses exact
+        // CLR Type identity, so treating the lookalike as complex here would still let CG004 pass
+        // while runtime and generated materialization disagree (#426).
+        if (IsNamedSimpleTypeLookalike(type))
+            return true;
+
         // Check specific unsupported framework types by name and namespace
         var fullName = type.ToDisplayString();
 
@@ -146,6 +159,23 @@ internal class AnalyzerHelper
             return true;
 
         return false;
+    }
+
+    private static bool IsNamedSimpleTypeLookalike(ITypeSymbol type)
+    {
+        if (type is not INamedTypeSymbol named)
+            return false;
+
+        if (named.ContainingNamespace?.ToDisplayString() == "System" &&
+            named.MetadataName is "DateTime" or "DateTimeOffset" or "TimeSpan" or "TimeOnly" or
+                "DateOnly" or "Guid" or "Uri")
+        {
+            return !IsFrameworkAssembly(named.ContainingAssembly);
+        }
+
+        return named.MetadataName == "Point" &&
+               named.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph" &&
+               named.ContainingAssembly.Identity.Name != "Cvoya.Graph";
     }
 
     public bool IsValidRelationshipPropertyType(ITypeSymbol type)
@@ -205,23 +235,27 @@ internal class AnalyzerHelper
         if (type.TypeKind == TypeKind.Enum)
             return true;
 
-        // Check specific types by full name - matching the runtime GraphDataModel.IsSimple and the
-        // source generator's simple-type list exactly. System.Drawing.Point is intentionally absent:
-        // only Cvoya.Graph.Point is supported end to end by runtime, codegen, and providers (#387).
-        var fullName = type.ToDisplayString();
-        return fullName switch
+        if (type is IArrayTypeSymbol arrayType &&
+            arrayType.ElementType.SpecialType == SpecialType.System_Byte)
         {
-            "System.DateTime" => true,
-            "System.DateTimeOffset" => true,
-            "System.TimeSpan" => true,
-            "System.TimeOnly" => true,
-            "System.DateOnly" => true,
-            "System.Guid" => true,
-            "byte[]" => true,
-            "System.Uri" => true,
-            "Cvoya.Graph.Point" => true,
-            _ => false
-        };
+            return true;
+        }
+
+        if (type is not INamedTypeSymbol named)
+            return false;
+
+        if (named.ContainingNamespace?.ToDisplayString() == "System" &&
+            named.MetadataName is "DateTime" or "DateTimeOffset" or "TimeSpan" or "TimeOnly" or
+                "DateOnly" or "Guid" or "Uri")
+        {
+            return IsFrameworkAssembly(named.ContainingAssembly);
+        }
+
+        // System.Drawing.Point is intentionally absent: only the Point defined by the Cvoya.Graph
+        // assembly is supported end to end by runtime, codegen, and providers (#387).
+        return named.MetadataName == "Point" &&
+               named.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph" &&
+               named.ContainingAssembly.Identity.Name == "Cvoya.Graph";
     }
 
     public bool IsComplexType(ITypeSymbol type)
@@ -292,7 +326,7 @@ internal class AnalyzerHelper
     /// True when generated serialization includes <paramref name="property"/> in the effective
     /// property set: a non-indexed public instance property with a getter that is not explicitly ignored.
     /// </summary>
-    public static bool IsSerializedProperty(IPropertySymbol property)
+    public bool IsSerializedProperty(IPropertySymbol property)
     {
         return !property.IsStatic &&
                !property.IsIndexer &&
@@ -374,8 +408,11 @@ internal class AnalyzerHelper
         {
             "System.Private.CoreLib" => HasPublicKeyToken(assembly, [0x7c, 0xec, 0x85, 0xd7, 0xbe, 0xa7, 0x79, 0x8e]),
             "System.Runtime" or "System.Collections" => HasPublicKeyToken(assembly, [0xb0, 0x3f, 0x5f, 0x7f, 0x11, 0xd5, 0x0a, 0x3a]),
-            "mscorlib" => HasPublicKeyToken(assembly, [0xb7, 0x7a, 0x5c, 0x56, 0x19, 0x34, 0xe0, 0x89]),
+            "mscorlib" or "System" => HasPublicKeyToken(assembly, [0xb7, 0x7a, 0x5c, 0x56, 0x19, 0x34, 0xe0, 0x89]),
             "netstandard" => HasPublicKeyToken(assembly, [0xcc, 0x7b, 0x13, 0xff, 0xcd, 0x2d, 0xdd, 0x51]),
+            _ when assembly.Identity.Name.StartsWith("System.", StringComparison.Ordinal) =>
+                HasPublicKeyToken(assembly, [0xb0, 0x3f, 0x5f, 0x7f, 0x11, 0xd5, 0x0a, 0x3a]) ||
+                HasPublicKeyToken(assembly, [0x7c, 0xec, 0x85, 0xd7, 0xbe, 0xa7, 0x79, 0x8e]),
             _ => false,
         };
     }
@@ -633,7 +670,7 @@ internal class AnalyzerHelper
         return new ComplexTypeValidationResult(true, null, false);
     }
 
-    private static bool CanDeserializeComplexStruct(INamedTypeSymbol type)
+    private bool CanDeserializeComplexStruct(INamedTypeSymbol type)
     {
         if (type.GetMembers().OfType<IFieldSymbol>().Any(field => field.IsRequired))
             return false;
@@ -681,7 +718,7 @@ internal class AnalyzerHelper
     /// generated code does not fall back to the base declaration after applying
     /// <c>[Property(Ignore = true)]</c> to the derived one.
     /// </summary>
-    public static IEnumerable<IPropertySymbol> GetSerializedProperties(INamedTypeSymbol type)
+    public IEnumerable<IPropertySymbol> GetSerializedProperties(INamedTypeSymbol type)
     {
         var seenProperties = new HashSet<string>(StringComparer.Ordinal);
         for (var current = type; current is not null; current = current.BaseType)
@@ -704,32 +741,12 @@ internal class AnalyzerHelper
         }
     }
 
-    private static bool SerializationShouldIgnoreProperty(IPropertySymbol property)
+    private bool SerializationShouldIgnoreProperty(IPropertySymbol property)
     {
-        var attribute = property.GetAttributes().FirstOrDefault(candidate =>
-            candidate.AttributeClass?.Name == "PropertyAttribute" &&
-            candidate.AttributeClass.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph");
+        var attribute = _graphAttributes.FindPropertyAttribute(property);
 
-        if (attribute is null)
-            return false;
-
-        if (attribute.NamedArguments.Any(argument =>
-            argument.Key == "Ignore" && argument.Value.Value is true))
-        {
-            return true;
-        }
-
-        // Some analyzer-test compilations expose referenced attributes without populated
-        // NamedArguments. The application syntax remains authoritative for an explicit literal.
-        if (attribute.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax syntax)
-        {
-            var argument = syntax.ArgumentList?.Arguments.FirstOrDefault(candidate =>
-                candidate.NameEquals?.Name.Identifier.ValueText == "Ignore");
-            return argument?.Expression is LiteralExpressionSyntax literal &&
-                literal.Token.Value is true;
-        }
-
-        return false;
+        return attribute?.NamedArguments.Any(argument =>
+            argument.Key == "Ignore" && argument.Value.Value is true) == true;
     }
 
     private static bool IsNativeSizedInteger(ITypeSymbol type)

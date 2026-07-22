@@ -6,7 +6,6 @@ namespace Cvoya.Graph.Analyzers;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
 
@@ -67,7 +66,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         if (namedTypeSymbol.TypeKind != TypeKind.Class && namedTypeSymbol.TypeKind != TypeKind.Struct)
             return;
 
-        var helper = new AnalyzerHelper(context.Compilation);
+        var helper = new AnalyzerHelper(context.Compilation, state.GraphAttributes);
 
         bool implementsINode = AnalyzerHelper.ImplementsINode(namedTypeSymbol);
         bool implementsIRelationship = AnalyzerHelper.ImplementsIRelationship(namedTypeSymbol);
@@ -75,11 +74,16 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         // CG012: Check for [Node]/[Relationship] applied to a type that doesn't implement the
         // matching interface. Must run before the early-return below, since its whole point is to
         // flag types that implement neither (or the wrong) interface.
-        AnalyzeMisappliedNodeOrRelationshipAttribute(context, namedTypeSymbol, implementsINode, implementsIRelationship);
+        AnalyzeMisappliedNodeOrRelationshipAttribute(
+            context,
+            namedTypeSymbol,
+            implementsINode,
+            implementsIRelationship,
+            state.GraphAttributes);
 
         // CG013: Check for both [Node] and [Relationship] applied to the same type. Same reasoning
         // as CG012 - must run regardless of which interfaces (if any) the type implements.
-        AnalyzeConflictingNodeAndRelationshipAttributes(context, namedTypeSymbol);
+        AnalyzeConflictingNodeAndRelationshipAttributes(context, namedTypeSymbol, state.GraphAttributes);
 
         // CG014: Check that entity types (implementing INode/IRelationship, directly or through a
         // derived interface) are reference types, not structs. Must run before the early-return
@@ -91,7 +95,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         // CG015: Check for ComplexPropertyAttribute configurations that are silent no-ops. Must run
         // before the early-return below: the attribute is equally consumed - and equally inert when
         // misconfigured - on complex property types that are not themselves graph entities.
-        AnalyzeComplexPropertyAttributes(context, namedTypeSymbol, helper);
+        AnalyzeComplexPropertyAttributes(context, namedTypeSymbol, helper, state.GraphAttributes);
 
         // Skip if it doesn't implement INode or IRelationship
         if (!implementsINode && !implementsIRelationship)
@@ -120,7 +124,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         AnalyzeParameterlessConstructor(context, namedTypeSymbol, implementsINode, implementsIRelationship);
 
         // CG002: Check property accessors
-        AnalyzePropertyAccessors(context, namedTypeSymbol);
+        AnalyzePropertyAccessors(context, namedTypeSymbol, helper);
 
         // CG003: Check for INode/IRelationship properties
         AnalyzeGraphInterfaceProperties(context, namedTypeSymbol, helper);
@@ -141,18 +145,18 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         }
 
         // CG007: Check duplicate PropertyAttribute labels
-        AnalyzeDuplicatePropertyAttributeLabels(context, namedTypeSymbol);
+        AnalyzeDuplicatePropertyAttributeLabels(context, namedTypeSymbol, state.GraphAttributes);
 
         // CG008: Check duplicate RelationshipAttribute labels
         if (implementsIRelationship)
         {
-            AnalyzeDuplicateRelationshipAttributeLabels(context, namedTypeSymbol);
+            AnalyzeDuplicateRelationshipAttributeLabels(context, namedTypeSymbol, state.GraphAttributes);
         }
 
         // CG009: Check duplicate NodeAttribute labels
         if (implementsINode)
         {
-            AnalyzeDuplicateNodeAttributeLabels(context, namedTypeSymbol);
+            AnalyzeDuplicateNodeAttributeLabels(context, namedTypeSymbol, state.GraphAttributes);
         }
 
         // CG010: Check circular references
@@ -206,7 +210,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             if (current.IsAbstract)
                 continue;
 
-            foreach (var property in AnalyzerHelper.GetSerializedProperties(current))
+            foreach (var property in helper.GetSerializedProperties(current))
             {
                 if (IsCompilerGeneratedProperty(property))
                     continue;
@@ -262,9 +266,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
     {
         foreach (var property in GetSchemaProperties(namedType))
         {
-            var attribute = property.GetAttributes().FirstOrDefault(candidate =>
-                candidate.AttributeClass?.Name == "PropertyAttribute" &&
-                candidate.AttributeClass.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph");
+            var attribute = state.GraphAttributes.FindPropertyAttribute(property);
             if (attribute is null)
                 continue;
 
@@ -325,23 +327,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static bool HasTrueNamedArgument(AttributeData attribute, string name)
     {
-        if (attribute.NamedArguments.Any(argument =>
-            argument.Key == name && argument.Value.Value is true))
-        {
-            return true;
-        }
-
-        // Some analyzer-test compilations expose referenced attributes without populated
-        // NamedArguments. The application syntax remains authoritative for an explicit literal.
-        if (attribute.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax syntax)
-        {
-            var argument = syntax.ArgumentList?.Arguments.FirstOrDefault(candidate =>
-                candidate.NameEquals?.Name.Identifier.ValueText == name);
-            return argument?.Expression is LiteralExpressionSyntax literal &&
-                literal.Token.Value is true;
-        }
-
-        return false;
+        return attribute.NamedArguments.Any(argument =>
+            argument.Key == name && argument.Value.Value is true);
     }
 
     private static void AddFlagIfTrue(AttributeData attribute, string name, List<string> flags)
@@ -445,9 +432,14 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static void AnalyzeMisappliedNodeOrRelationshipAttribute(SymbolAnalysisContext context, INamedTypeSymbol namedType, bool implementsINode, bool implementsIRelationship)
+    private static void AnalyzeMisappliedNodeOrRelationshipAttribute(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol namedType,
+        bool implementsINode,
+        bool implementsIRelationship,
+        GraphAttributeSymbols graphAttributes)
     {
-        var nodeAttr = namedType.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "NodeAttribute");
+        var nodeAttr = graphAttributes.FindNodeAttribute(namedType);
         if (nodeAttr != null && !implementsINode)
         {
             var diagnostic = Diagnostic.Create(
@@ -460,7 +452,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             context.ReportDiagnostic(diagnostic);
         }
 
-        var relationshipAttr = namedType.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "RelationshipAttribute");
+        var relationshipAttr = graphAttributes.FindRelationshipAttribute(namedType);
         if (relationshipAttr != null && !implementsIRelationship)
         {
             var diagnostic = Diagnostic.Create(
@@ -474,10 +466,13 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static void AnalyzeConflictingNodeAndRelationshipAttributes(SymbolAnalysisContext context, INamedTypeSymbol namedType)
+    private static void AnalyzeConflictingNodeAndRelationshipAttributes(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol namedType,
+        GraphAttributeSymbols graphAttributes)
     {
-        var nodeAttr = namedType.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "NodeAttribute");
-        var relationshipAttr = namedType.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "RelationshipAttribute");
+        var nodeAttr = graphAttributes.FindNodeAttribute(namedType);
+        var relationshipAttr = graphAttributes.FindRelationshipAttribute(namedType);
 
         if (nodeAttr != null && relationshipAttr != null)
         {
@@ -535,13 +530,12 @@ public class GraphAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeComplexPropertyAttributes(
         SymbolAnalysisContext context,
         INamedTypeSymbol namedType,
-        AnalyzerHelper helper)
+        AnalyzerHelper helper,
+        GraphAttributeSymbols graphAttributes)
     {
         foreach (var property in namedType.GetMembers().OfType<IPropertySymbol>())
         {
-            var attribute = property.GetAttributes().FirstOrDefault(candidate =>
-                candidate.AttributeClass?.Name == "ComplexPropertyAttribute" &&
-                candidate.AttributeClass.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph");
+            var attribute = graphAttributes.FindComplexPropertyAttribute(property);
             if (attribute is null)
             {
                 continue;
@@ -575,19 +569,6 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         {
             value = argument.Value.Value as string;
             return true;
-        }
-
-        // Some analyzer-test compilations expose the referenced attribute without populated
-        // NamedArguments. The application syntax remains authoritative for an explicit literal.
-        if (attribute.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax syntax)
-        {
-            var argument = syntax.ArgumentList?.Arguments.FirstOrDefault(candidate =>
-                candidate.NameEquals?.Name.Identifier.ValueText == "RelationshipType");
-            if (argument?.Expression is LiteralExpressionSyntax literal)
-            {
-                value = literal.Token.Value as string;
-                return true;
-            }
         }
 
         value = null;
@@ -662,9 +643,12 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static void AnalyzePropertyAccessors(SymbolAnalysisContext context, INamedTypeSymbol namedType)
+    private static void AnalyzePropertyAccessors(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol namedType,
+        AnalyzerHelper helper)
     {
-        var properties = AnalyzerHelper.GetSerializedProperties(namedType);
+        var properties = helper.GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {
@@ -690,7 +674,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeGraphInterfaceProperties(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
-        var properties = AnalyzerHelper.GetSerializedProperties(namedType);
+        var properties = helper.GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {
@@ -813,7 +797,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeNodePropertyTypes(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
-        var properties = AnalyzerHelper.GetSerializedProperties(namedType);
+        var properties = helper.GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {
@@ -906,7 +890,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeRelationshipPropertyTypes(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
-        var properties = AnalyzerHelper.GetSerializedProperties(namedType);
+        var properties = helper.GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {
@@ -999,7 +983,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeComplexTypeProperties(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
-        var properties = AnalyzerHelper.GetSerializedProperties(namedType);
+        var properties = helper.GetSerializedProperties(namedType);
 
         foreach (var property in properties)
         {
@@ -1080,7 +1064,10 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static void AnalyzeDuplicatePropertyAttributeLabels(SymbolAnalysisContext context, INamedTypeSymbol namedType)
+    private static void AnalyzeDuplicatePropertyAttributeLabels(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol namedType,
+        GraphAttributeSymbols graphAttributes)
     {
         // This dictionary will track property labels across the entire inheritance hierarchy
         var propertyLabels = new Dictionary<string, (IPropertySymbol Property, INamedTypeSymbol ContainingType)>(StringComparer.Ordinal);
@@ -1094,8 +1081,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
             foreach (var property in baseProperties)
             {
-                var propertyAttr = property.GetAttributes()
-                    .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute");
+                var propertyAttr = graphAttributes.FindPropertyAttribute(property);
 
                 if (propertyAttr != null)
                 {
@@ -1117,8 +1103,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         foreach (var property in currentTypeProperties)
         {
-            var propertyAttr = property.GetAttributes()
-                .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute");
+            var propertyAttr = graphAttributes.FindPropertyAttribute(property);
 
             if (propertyAttr != null)
             {
@@ -1153,75 +1138,34 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static string ExtractPropertyLabel(IPropertySymbol property, AttributeData propertyAttr)
     {
-        // Try to extract the label from NamedArguments first
-        var namedArg = propertyAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "Label");
-        string? label = null;
-
-        if (!namedArg.Equals(default(KeyValuePair<string, TypedConstant>)))
-        {
-            // Handle TypedConstant properly - check if it's an array
-            if (namedArg.Value.Kind == TypedConstantKind.Array)
-            {
-                // For arrays, take the first value
-                var firstValue = namedArg.Value.Values.FirstOrDefault();
-                label = firstValue.Value?.ToString();
-            }
-            else
-            {
-                label = namedArg.Value.Value?.ToString();
-            }
-        }
-
-        // If NamedArguments doesn't work (common in test frameworks), 
-        // try to extract from source code
-        if (string.IsNullOrEmpty(label))
-        {
-            label = ExtractLabelFromSource(property);
-        }
-
-        // Fallback to property name if no label found
-        if (string.IsNullOrEmpty(label))
-        {
-            label = property.Name;
-        }
-
-        return label ?? string.Empty;
+        return GetAttributeLabel(propertyAttr, property.Name);
     }
 
-    private static string ExtractLabelFromSource(IPropertySymbol property)
+    private static string GetAttributeLabel(AttributeData attribute, string fallback)
     {
-        // Try to extract the Label value from the source syntax
-        var location = property.Locations.FirstOrDefault();
-        if (location == null || location.SourceTree == null)
-            return string.Empty;
-
-        var sourceText = location.SourceTree.GetText();
-        var propertyLine = sourceText.Lines[location.GetLineSpan().StartLinePosition.Line];
-        var lineText = propertyLine.ToString();
-
-        // Look for [Property(Label = "value")] pattern
-        var match = System.Text.RegularExpressions.Regex.Match(lineText, @"\[Property\(Label\s*=\s*""([^""]+)""\)]");
-        if (match.Success)
+        foreach (var argument in attribute.NamedArguments)
         {
-            return match.Groups[1].Value;
-        }
-
-        // Look for lines above the property for the attribute
-        var lineNumber = location.GetLineSpan().StartLinePosition.Line;
-        if (lineNumber > 0)
-        {
-            var previousLine = sourceText.Lines[lineNumber - 1].ToString().Trim();
-            var previousMatch = System.Text.RegularExpressions.Regex.Match(previousLine, @"\[Property\(Label\s*=\s*""([^""]+)""\)]");
-            if (previousMatch.Success)
+            if (argument.Key == "Label")
             {
-                return previousMatch.Groups[1].Value;
+                return argument.Value.Value is string { Length: > 0 } namedLabel
+                    ? namedLabel
+                    : fallback;
             }
         }
 
-        return string.Empty;
+        foreach (var argument in attribute.ConstructorArguments)
+        {
+            if (argument.Value is string { Length: > 0 } constructorLabel)
+                return constructorLabel;
+        }
+
+        return fallback;
     }
 
-    private static void AnalyzeDuplicateRelationshipAttributeLabels(SymbolAnalysisContext context, INamedTypeSymbol namedType)
+    private static void AnalyzeDuplicateRelationshipAttributeLabels(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol namedType,
+        GraphAttributeSymbols graphAttributes)
     {
         // Collect all types in the compilation that implement IRelationship
         var allRelationshipTypes = context.Compilation.GetSymbolsWithName(_ => true, SymbolFilter.Type)
@@ -1234,180 +1178,37 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         foreach (var type in allRelationshipTypes)
         {
-            var relationshipAttr = type.GetAttributes()
-                .FirstOrDefault(a => a.AttributeClass?.Name == "RelationshipAttribute");
+            var relationshipAttr = graphAttributes.FindRelationshipAttribute(type);
 
             if (relationshipAttr != null)
             {
-                var labels = new List<string>();
+                var label = GetAttributeLabel(relationshipAttr, type.Name);
 
-                // Try to extract labels from NamedArguments first
-                var namedArg = relationshipAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "Label");
-                string? namedLabel = null;
-
-                if (!namedArg.Equals(default(KeyValuePair<string, TypedConstant>)))
+                if (labelToTypeMap.TryGetValue(label, out var existing))
                 {
-                    // Handle TypedConstant properly - check if it's an array
-                    if (namedArg.Value.Kind == TypedConstantKind.Array)
+                    // Only report the duplicate owned by the symbol action currently running.
+                    if (type.Equals(namedType, SymbolEqualityComparer.Default))
                     {
-                        // For arrays, take the first value
-                        var firstValue = namedArg.Value.Values.FirstOrDefault();
-                        namedLabel = firstValue.Value?.ToString();
-                    }
-                    else
-                    {
-                        namedLabel = namedArg.Value.Value?.ToString();
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.DuplicateRelationshipAttributeLabel,
+                            type.Locations.FirstOrDefault(),
+                            type.Name,
+                            label,
+                            existing.Name));
                     }
                 }
-
-                if (!string.IsNullOrEmpty(namedLabel))
+                else
                 {
-                    labels.Add(namedLabel!);
-                }
-
-                // If NamedArguments doesn't work, try all ConstructorArguments (for multiple labels)
-                if (labels.Count == 0)
-                {
-                    foreach (var arg in relationshipAttr.ConstructorArguments)
-                    {
-                        // Handle TypedConstant properly - check if it's an array
-                        if (arg.Kind == TypedConstantKind.Array)
-                        {
-                            // For arrays, extract all values
-                            foreach (var arrayValue in arg.Values)
-                            {
-                                var label = arrayValue.Value?.ToString();
-                                if (!string.IsNullOrEmpty(label))
-                                {
-                                    labels.Add(label!);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            var label = arg.Value?.ToString();
-                            if (!string.IsNullOrEmpty(label))
-                            {
-                                labels.Add(label!);
-                            }
-                        }
-                    }
-                }
-
-                // If both fail (common in test frameworks), try to extract from source code
-                if (labels.Count == 0)
-                {
-                    var sourceLabels = ExtractRelationshipLabelsFromSource(type);
-                    if (sourceLabels.Count > 0)
-                    {
-                        labels.AddRange(sourceLabels);
-                    }
-                }
-
-                // Fallback to type name if no labels found
-                if (labels.Count == 0)
-                {
-                    labels.Add(type.Name);
-                }
-
-                // Check each label for duplicates
-                foreach (var label in labels)
-                {
-                    if (!string.IsNullOrEmpty(label))
-                    {
-                        if (labelToTypeMap.TryGetValue(label!, out var existing))
-                        {
-                            // Only report diagnostic if we're analyzing the type that has the conflict
-                            if (type.Equals(namedType, SymbolEqualityComparer.Default))
-                            {
-                                var diagnostic = Diagnostic.Create(
-                                    DiagnosticDescriptors.DuplicateRelationshipAttributeLabel,
-                                    type.Locations.FirstOrDefault(),
-                                    type.Name,
-                                    label,
-                                    existing.Name);
-
-                                context.ReportDiagnostic(diagnostic);
-                            }
-                        }
-                        else
-                        {
-                            labelToTypeMap[label!] = type;
-                        }
-                    }
+                    labelToTypeMap[label] = type;
                 }
             }
         }
     }
 
-    private static List<string> ExtractRelationshipLabelsFromSource(INamedTypeSymbol type)
-    {
-        var labels = new List<string>();
-
-        // Try to extract the Label value from the source syntax
-        var location = type.Locations.FirstOrDefault();
-        if (location == null || location.SourceTree == null)
-            return labels;
-
-        var sourceText = location.SourceTree.GetText();
-        var typeLine = sourceText.Lines[location.GetLineSpan().StartLinePosition.Line];
-        var lineText = typeLine.ToString();
-
-        // Look for [Relationship(Label = "value")] pattern (named argument)
-        var namedMatch = System.Text.RegularExpressions.Regex.Match(lineText, @"\[Relationship\(Label\s*=\s*""([^""]+)""\)]");
-        if (namedMatch.Success)
-        {
-            labels.Add(namedMatch.Groups[1].Value);
-            return labels;
-        }
-
-        // Look for [Relationship("value1", "value2", ...)] pattern (constructor arguments)
-        var constructorMatch = System.Text.RegularExpressions.Regex.Match(lineText, @"\[Relationship\(([^)]+)\)]");
-        if (constructorMatch.Success)
-        {
-            var argumentsText = constructorMatch.Groups[1].Value;
-            // Extract all quoted strings
-            var matches = System.Text.RegularExpressions.Regex.Matches(argumentsText, @"""([^""]+)""");
-            foreach (System.Text.RegularExpressions.Match match in matches)
-            {
-                labels.Add(match.Groups[1].Value);
-            }
-            if (labels.Count > 0)
-                return labels;
-        }
-
-        // Look for lines above the type for the attribute
-        var lineNumber = location.GetLineSpan().StartLinePosition.Line;
-        if (lineNumber > 0)
-        {
-            var previousLine = sourceText.Lines[lineNumber - 1].ToString().Trim();
-
-            // Try named argument syntax on previous line
-            var previousNamedMatch = System.Text.RegularExpressions.Regex.Match(previousLine, @"\[Relationship\(Label\s*=\s*""([^""]+)""\)]");
-            if (previousNamedMatch.Success)
-            {
-                labels.Add(previousNamedMatch.Groups[1].Value);
-                return labels;
-            }
-
-            // Try constructor syntax on previous line
-            var previousConstructorMatch = System.Text.RegularExpressions.Regex.Match(previousLine, @"\[Relationship\(([^)]+)\)]");
-            if (previousConstructorMatch.Success)
-            {
-                var argumentsText = previousConstructorMatch.Groups[1].Value;
-                // Extract all quoted strings
-                var matches = System.Text.RegularExpressions.Regex.Matches(argumentsText, @"""([^""]+)""");
-                foreach (System.Text.RegularExpressions.Match match in matches)
-                {
-                    labels.Add(match.Groups[1].Value);
-                }
-            }
-        }
-
-        return labels;
-    }
-
-    private static void AnalyzeDuplicateNodeAttributeLabels(SymbolAnalysisContext context, INamedTypeSymbol namedType)
+    private static void AnalyzeDuplicateNodeAttributeLabels(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol namedType,
+        GraphAttributeSymbols graphAttributes)
     {
         // Collect all types in the compilation that implement INode
         var allNodeTypes = context.Compilation.GetSymbolsWithName(_ => true, SymbolFilter.Type)
@@ -1420,177 +1221,31 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         foreach (var type in allNodeTypes)
         {
-            var nodeAttr = type.GetAttributes()
-                .FirstOrDefault(a => a.AttributeClass?.Name == "NodeAttribute");
+            var nodeAttr = graphAttributes.FindNodeAttribute(type);
 
             if (nodeAttr != null)
             {
-                var labels = new List<string>();
+                var label = GetAttributeLabel(nodeAttr, type.Name);
 
-                // Try to extract labels from NamedArguments first
-                var namedArg = nodeAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "Label");
-                string? namedLabel = null;
-
-                if (!namedArg.Equals(default(KeyValuePair<string, TypedConstant>)))
+                if (labelToTypeMap.TryGetValue(label, out var existing))
                 {
-                    // Handle TypedConstant properly - check if it's an array
-                    if (namedArg.Value.Kind == TypedConstantKind.Array)
+                    // Only report the duplicate owned by the symbol action currently running.
+                    if (type.Equals(namedType, SymbolEqualityComparer.Default))
                     {
-                        // For arrays, take the first value
-                        var firstValue = namedArg.Value.Values.FirstOrDefault();
-                        namedLabel = firstValue.Value?.ToString();
-                    }
-                    else
-                    {
-                        namedLabel = namedArg.Value.Value?.ToString();
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.DuplicateNodeAttributeLabel,
+                            type.Locations.FirstOrDefault(),
+                            type.Name,
+                            label,
+                            existing.Name));
                     }
                 }
-
-                if (!string.IsNullOrEmpty(namedLabel))
+                else
                 {
-                    labels.Add(namedLabel!);
-                }
-
-                // If NamedArguments doesn't work, try all ConstructorArguments (for multiple labels)
-                if (labels.Count == 0)
-                {
-                    foreach (var arg in nodeAttr.ConstructorArguments)
-                    {
-                        // Handle TypedConstant properly - check if it's an array
-                        if (arg.Kind == TypedConstantKind.Array)
-                        {
-                            // For arrays, extract all values
-                            foreach (var arrayValue in arg.Values)
-                            {
-                                var label = arrayValue.Value?.ToString();
-                                if (!string.IsNullOrEmpty(label))
-                                {
-                                    labels.Add(label!);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            var label = arg.Value?.ToString();
-                            if (!string.IsNullOrEmpty(label))
-                            {
-                                labels.Add(label!);
-                            }
-                        }
-                    }
-                }
-
-                // If both fail (common in test frameworks), try to extract from source code
-                if (labels.Count == 0)
-                {
-                    var sourceLabels = ExtractNodeLabelsFromSource(type);
-                    if (sourceLabels.Count > 0)
-                    {
-                        labels.AddRange(sourceLabels);
-                    }
-                }
-
-                // Fallback to type name if no labels found
-                if (labels.Count == 0)
-                {
-                    labels.Add(type.Name);
-                }
-
-                // Check each label for duplicates
-                foreach (var label in labels)
-                {
-                    if (!string.IsNullOrEmpty(label))
-                    {
-                        if (labelToTypeMap.TryGetValue(label!, out var existing))
-                        {
-                            // Only report diagnostic if we're analyzing the type that has the conflict
-                            if (type.Equals(namedType, SymbolEqualityComparer.Default))
-                            {
-                                var diagnostic = Diagnostic.Create(
-                                    DiagnosticDescriptors.DuplicateNodeAttributeLabel,
-                                    type.Locations.FirstOrDefault(),
-                                    type.Name,
-                                    label,
-                                    existing.Name);
-
-                                context.ReportDiagnostic(diagnostic);
-                            }
-                        }
-                        else
-                        {
-                            labelToTypeMap[label!] = type;
-                        }
-                    }
+                    labelToTypeMap[label] = type;
                 }
             }
         }
-    }
-
-    private static List<string> ExtractNodeLabelsFromSource(INamedTypeSymbol type)
-    {
-        var labels = new List<string>();
-
-        // Try to extract the Label value from the source syntax
-        var location = type.Locations.FirstOrDefault();
-        if (location == null || location.SourceTree == null)
-            return labels;
-
-        var sourceText = location.SourceTree.GetText();
-        var typeLine = sourceText.Lines[location.GetLineSpan().StartLinePosition.Line];
-        var lineText = typeLine.ToString();
-
-        // Look for [Node(Label = "value")] pattern (named argument)
-        var namedMatch = System.Text.RegularExpressions.Regex.Match(lineText, @"\[Node\(Label\s*=\s*""([^""]+)""\)]");
-        if (namedMatch.Success)
-        {
-            labels.Add(namedMatch.Groups[1].Value);
-            return labels;
-        }
-
-        // Look for [Node("value1", "value2", ...)] pattern (constructor arguments)
-        var constructorMatch = System.Text.RegularExpressions.Regex.Match(lineText, @"\[Node\(([^)]+)\)]");
-        if (constructorMatch.Success)
-        {
-            var argumentsText = constructorMatch.Groups[1].Value;
-            // Extract all quoted strings
-            var matches = System.Text.RegularExpressions.Regex.Matches(argumentsText, @"""([^""]+)""");
-            foreach (System.Text.RegularExpressions.Match match in matches)
-            {
-                labels.Add(match.Groups[1].Value);
-            }
-            if (labels.Count > 0)
-                return labels;
-        }
-
-        // Look for lines above the type for the attribute
-        var lineNumber = location.GetLineSpan().StartLinePosition.Line;
-        if (lineNumber > 0)
-        {
-            var previousLine = sourceText.Lines[lineNumber - 1].ToString().Trim();
-
-            // Try named argument syntax on previous line
-            var previousNamedMatch = System.Text.RegularExpressions.Regex.Match(previousLine, @"\[Node\(Label\s*=\s*""([^""]+)""\)]");
-            if (previousNamedMatch.Success)
-            {
-                labels.Add(previousNamedMatch.Groups[1].Value);
-                return labels;
-            }
-
-            // Try constructor syntax on previous line
-            var previousConstructorMatch = System.Text.RegularExpressions.Regex.Match(previousLine, @"\[Node\(([^)]+)\)]");
-            if (previousConstructorMatch.Success)
-            {
-                var argumentsText = previousConstructorMatch.Groups[1].Value;
-                // Extract all quoted strings
-                var matches = System.Text.RegularExpressions.Regex.Matches(argumentsText, @"""([^""]+)""");
-                foreach (System.Text.RegularExpressions.Match match in matches)
-                {
-                    labels.Add(match.Groups[1].Value);
-                }
-            }
-        }
-
-        return labels;
     }
 
     private static void AnalyzeCircularReferences(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
@@ -1607,7 +1262,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 continue;
             // Only serialized properties can create serialization cycles; static, non-public,
             // getterless, and ignored properties never round-trip.
-            if (!AnalyzerHelper.IsSerializedProperty(property))
+            if (!helper.IsSerializedProperty(property))
                 continue;
             // Skip properties that would be handled by CG004/CG005 (invalid property types)
             bool isNode = AnalyzerHelper.ImplementsINode(namedType);
@@ -1701,7 +1356,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                     continue;
                 // Only serialized properties can create serialization cycles; a static self-typed
                 // member (IntPtr.MaxValue, a Default/Empty singleton) is not a stored cycle.
-                if (!AnalyzerHelper.IsSerializedProperty(property))
+                if (!helper.IsSerializedProperty(property))
                     continue;
                 // Skip nullable references - they break the cycle
                 if (IsNullableReference(property.Type, helper))
@@ -1804,6 +1459,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         public AnalyzerCompilationState(Compilation compilation)
         {
+            GraphAttributes = GraphAttributeSymbols.Resolve(compilation);
+
             foreach (var type in GetAllNamedTypes(compilation.Assembly.GlobalNamespace))
             {
                 if (type.BaseType is not { } baseType)
@@ -1818,6 +1475,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 derivedTypes.Add(type);
             }
         }
+
+        public GraphAttributeSymbols GraphAttributes { get; }
 
         public bool TryAnalyze(ITypeSymbol type) => analyzedTypes.TryAdd(type, 0);
 
