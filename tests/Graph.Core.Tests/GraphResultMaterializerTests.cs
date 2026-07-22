@@ -386,6 +386,15 @@ public class GraphResultMaterializerTests
     }
 
     [Fact]
+    public async Task ByteArrayParameter_MaterializesFromBase64Scalar()
+    {
+        var result = await MaterializeAsync<BlobProjection>(
+            ("Data", GraphValue.Scalar(System.Convert.ToBase64String([1, 2, 3]))));
+
+        Assert.Equal([1, 2, 3], result.Data);
+    }
+
+    [Fact]
     public async Task NonNullCollection_MaterializesWithoutRejection()
     {
         var result = await MaterializeAsync<NameCollectionProjection>(

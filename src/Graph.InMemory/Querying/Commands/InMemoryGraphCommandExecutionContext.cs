@@ -286,7 +286,10 @@ internal sealed class InMemoryGraphCommandExecutionContext(
             ?? existing?.Type
             ?? value?.GetType()
             ?? typeof(object);
-        var isCollection = GraphDataModel.IsCollectionOfSimple(declaredType) ||
+        // byte[] satisfies the collection predicate too, but its simple-scalar classification has
+        // precedence everywhere else and must also win for command snapshots.
+        var isCollection =
+            (!GraphDataModel.IsSimple(declaredType) && GraphDataModel.IsCollectionOfSimple(declaredType)) ||
             assignment.Dynamic && value is IEnumerable and not string && value is not byte[];
         Type? elementType = null;
         if (isCollection)

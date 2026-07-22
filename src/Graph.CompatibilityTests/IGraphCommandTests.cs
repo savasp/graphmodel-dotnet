@@ -10,6 +10,33 @@ using Cvoya.Graph.Querying.Commands;
 public interface IGraphCommandTests : IGraphTest
 {
     [Fact]
+    public async Task ByteArrayScalar_RoundTripsAndSupportsConstantUpdate()
+    {
+        var marker = $"command-binary-{Guid.NewGuid():N}";
+        var original = new byte[] { 0, 1, 127, 128, 255 };
+        var updated = new byte[] { 255, 128, 127, 1, 0 };
+        await Graph.CreateNodeAsync(
+            new BinaryPropertyNode { TestKey = marker, Data = original },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var created = await Graph.Nodes<BinaryPropertyNode>()
+            .Where(candidate => candidate.TestKey == marker && candidate.Data != null)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(original, created.Data);
+
+        var affected = await Graph.Nodes<BinaryPropertyNode>()
+            .Where(candidate => candidate.TestKey == marker)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Data, updated),
+                TestContext.Current.CancellationToken);
+        var stored = await Graph.Nodes<BinaryPropertyNode>()
+            .SingleAsync(candidate => candidate.TestKey == marker, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, affected);
+        Assert.Equal(updated, stored.Data);
+    }
+
+    [Fact]
     [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
     public async Task SimpleCollectionUpdate_PreservesNullTransitionsAndDynamicType()
     {

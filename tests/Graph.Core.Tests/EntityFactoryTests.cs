@@ -530,6 +530,29 @@ public class EntityFactoryTests
     }
 
     [Fact]
+    public void DynamicNode_ReflectionSerializationTreatsNestedByteArrayAsSimpleValue()
+    {
+        var factory = new EntityFactory();
+        var expected = new byte[] { 0, 1, 127, 128, 255 };
+        var node = new DynamicNode(
+            ["Document"],
+            new Dictionary<string, object?>
+            {
+                ["content"] = new FactoryBinaryContent { Data = expected },
+            });
+
+        var entity = factory.Serialize(node);
+        var content = Assert.IsType<EntityInfo>(entity.ComplexProperties["content"].Value);
+        var data = Assert.IsType<SimpleValue>(content.SimpleProperties[nameof(FactoryBinaryContent.Data)].Value);
+        var roundTripped = factory.Deserialize<DynamicNode>(entity);
+
+        Assert.Equal(typeof(byte[]), data.Type);
+        Assert.Equal(expected, Assert.IsType<byte[]>(data.Object));
+        var contentBag = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(roundTripped.Properties["content"]);
+        Assert.Equal(expected, Assert.IsType<byte[]>(contentBag[nameof(FactoryBinaryContent.Data)]));
+    }
+
+    [Fact]
     public void DynamicNode_RoundTripsSimpleCollectionNestedInDictionaryWithinDictionary()
     {
         var factory = new EntityFactory();
@@ -849,6 +872,11 @@ public class EntityFactoryTests
     private sealed record FactorySurvey
     {
         public List<int?> Scores { get; init; } = [1, null, 3];
+    }
+
+    private sealed record FactoryBinaryContent
+    {
+        public byte[] Data { get; init; } = [];
     }
 
     private sealed record FactoryDirectory
