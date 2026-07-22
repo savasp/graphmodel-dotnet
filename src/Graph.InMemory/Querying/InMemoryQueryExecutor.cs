@@ -1440,8 +1440,7 @@ internal sealed class InMemoryQueryExecutor(
                     } constructionMember ||
                     parameter != selector.Parameters[0] ||
                     (!GraphDataModel.IsSimple(constructionMember.Type) &&
-                     !GraphDataModel.IsCollectionOfSimple(constructionMember.Type)) ||
-                    NullabilityDerivation.IsParameterNullable(parameters[index]))
+                     !GraphDataModel.IsCollectionOfSimple(constructionMember.Type)))
                 {
                     continue;
                 }
@@ -1449,6 +1448,11 @@ internal sealed class InMemoryQueryExecutor(
                 if (!constructorSource.TryGetValue(Labels.GetLabelFromProperty(constructionProperty), out var constructionStored) ||
                     constructionStored.Value is null)
                 {
+                    if (NullabilityDerivation.IsParameterNullable(parameters[index]))
+                    {
+                        continue;
+                    }
+
                     throw new GraphException(
                         $"Cannot materialize null into non-nullable type '{parameters[index].ParameterType.FullName}' " +
                         $"for '{parameters[index].Name ?? $"param{index}"}'.");

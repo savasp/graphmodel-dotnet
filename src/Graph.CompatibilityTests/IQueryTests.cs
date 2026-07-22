@@ -634,6 +634,28 @@ public interface IQueryTests : IGraphTest
     }
 
     [Fact]
+    [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
+    public async Task ProjectedNullElements_NullableCollectionWithNonNullableElements_RejectsFirstInvalidIndex()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var node = new NullableCollectionElementNode
+        {
+            Values = ["first", null, "third", null],
+        };
+        await Graph.CreateNodeAsync(node, null, cancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            Graph.Nodes<NullableCollectionElementNode>()
+                .Where(candidate => candidate.TestKey == node.TestKey)
+                .Select(candidate => new NullableCollectionNonNullableElementProjection(candidate.Values!))
+                .SingleAsync(cancellationToken));
+
+        Assert.Contains("Constructor parameter 'Values'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("at index 1", exception.Message, StringComparison.Ordinal);
+        Assert.Contains($"target element type '{typeof(string)}'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ToListAsync_NullReferenceScalarProjection_PreservesRowAndOrder()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -1182,3 +1204,5 @@ internal sealed record RequiredBioProjection(string Bio);
 internal sealed record NullableCollectionProjection(List<string?> Values);
 
 internal sealed record NonNullableCollectionProjection(List<string> Values);
+
+internal sealed record NullableCollectionNonNullableElementProjection(List<string>? Values);
