@@ -96,11 +96,9 @@ internal static class Serialization
         sb.AppendLine($"            Serialized? serializedValue;");
         sb.AppendLine();
 
-        if (isCollection)
-        {
-            GenerateCollectionSerialization(sb, propertyType, propertyName);
-        }
-        else if (isSimple)
+        // byte[] is both a recognized simple scalar and collection-shaped. Match the runtime
+        // EntityFactory precedence so binary properties never become SimpleCollection values.
+        if (isSimple)
         {
             // For value types that can't be null, always serialize. For reference/nullable types, check for null
             if (propertyType.IsValueType && !propertyType.IsNullable)
@@ -121,6 +119,10 @@ internal static class Serialization
                 sb.AppendLine($"                    Type: typeof({propertyType.TypeOfName})");
                 sb.AppendLine($"                );");
             }
+        }
+        else if (isCollection)
+        {
+            GenerateCollectionSerialization(sb, propertyType, propertyName);
         }
         else if (propertyType.IsValueType && !propertyType.IsNullable)
         {

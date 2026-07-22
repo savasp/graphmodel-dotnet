@@ -140,6 +140,8 @@ internal static class GraphValueConverter
             return Guid.Parse(value.ToString()!);
         if (underlyingType == typeof(Uri))
             return new Uri(value.ToString()!);
+        if (underlyingType == typeof(byte[]) && value is string base64)
+            return System.Convert.FromBase64String(base64);
 
         if (TryConvertCollection(
             value,

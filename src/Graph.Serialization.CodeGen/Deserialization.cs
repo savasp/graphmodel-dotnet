@@ -255,7 +255,19 @@ internal static class Deserialization
     {
         var indentStr = new string(' ', indent);
 
-        if (targetType.IsCollectionOfSimple || targetType.IsCollectionOfComplex)
+        // byte[] is both a recognized simple scalar and collection-shaped. Match the runtime
+        // EntityFactory precedence so binary properties are extracted from SimpleValue.
+        if (targetType.IsSimple)
+        {
+            var simpleValueName = identifiers.Allocate($"{propRepVarName.TrimStart('@')}SimpleValue");
+            sb.AppendLine($"{indentStr}// {GetSimpleValueExtractionComment(targetType)}");
+            sb.AppendLine($"{indentStr}{variableName} = {propRepVarName} is null");
+            sb.AppendLine($"{indentStr}    ? {missingValueExpression}");
+            sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is SimpleValue {simpleValueName}");
+            sb.AppendLine($"{indentStr}        ? {GetSimpleValueConversionExpression(targetType, $"{simpleValueName}.Object")}");
+            sb.AppendLine($"{indentStr}        : {GetInvalidSimpleValueExpression(propertyLabel, targetType)};");
+        }
+        else if (targetType.IsCollectionOfSimple || targetType.IsCollectionOfComplex)
         {
             GenerateCollectionDeserialization(
                 sb,
@@ -266,16 +278,6 @@ internal static class Deserialization
                 indent,
                 missingValueExpression,
                 identifiers);
-        }
-        else if (targetType.IsSimple)
-        {
-            var simpleValueName = identifiers.Allocate($"{propRepVarName.TrimStart('@')}SimpleValue");
-            sb.AppendLine($"{indentStr}// {GetSimpleValueExtractionComment(targetType)}");
-            sb.AppendLine($"{indentStr}{variableName} = {propRepVarName} is null");
-            sb.AppendLine($"{indentStr}    ? {missingValueExpression}");
-            sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is SimpleValue {simpleValueName}");
-            sb.AppendLine($"{indentStr}        ? {GetSimpleValueConversionExpression(targetType, $"{simpleValueName}.Object")}");
-            sb.AppendLine($"{indentStr}        : {GetInvalidSimpleValueExpression(propertyLabel, targetType)};");
         }
         else
         {

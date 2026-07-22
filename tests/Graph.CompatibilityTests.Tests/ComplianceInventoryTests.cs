@@ -90,7 +90,8 @@ public sealed class ComplianceInventoryTests
     // materialization and constructor projections, including independent container nullability.
     // +4 for #425: typed and dynamic nullable complex collections, real-child cascade cleanup,
     // and atomic dense/sparse/all-null/empty mutation transitions.
-    private const int ExpectedTotalTestMethods = 487;
+    // +1 for #520: native byte-array scalar create/read/update behavior across providers.
+    private const int ExpectedTotalTestMethods = 488;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

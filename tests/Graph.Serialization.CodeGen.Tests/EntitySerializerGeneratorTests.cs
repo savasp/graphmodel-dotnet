@@ -119,6 +119,57 @@ public class EntitySerializerGeneratorTests
     }
 
     [Fact]
+    public Task NodeWithByteArraySimpleValue()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            namespace BinaryValues;
+
+            [Node("Blob")]
+            public sealed record BlobNode : Node
+            {
+                public byte[] Data { get; set; } = [];
+            }
+            """;
+
+        return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
+    [Fact]
+    public void NodeWithByteArraySimpleValue_RoundTripsAsSimpleValue()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            namespace BinaryValues;
+
+            [Node("Blob")]
+            public sealed record BlobNode : Node
+            {
+                public byte[] Data { get; set; } = [];
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var nodeType = assembly.GetType("BinaryValues.BlobNode", throwOnError: true)!;
+        var serializerType = assembly.GetType("BinaryValues.Generated.BlobNodeSerializer", throwOnError: true)!;
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+        var expected = new byte[] { 0, 1, 127, 128, 255 };
+        var node = Activator.CreateInstance(nodeType)!;
+        nodeType.GetProperty("Data")!.SetValue(node, expected);
+
+        var entity = serializer.Serialize(node);
+        var property = entity.SimpleProperties["Data"];
+        var simpleValue = Assert.IsType<SimpleValue>(property.Value);
+        var roundTripped = serializer.Deserialize(entity);
+
+        Assert.Equal(PropertyType.Simple, serializer.GetSchema().SimpleProperties["Data"].PropertyType);
+        Assert.Equal(typeof(byte[]), simpleValue.Type);
+        Assert.Equal(expected, Assert.IsType<byte[]>(simpleValue.Object));
+        Assert.Equal(expected, Assert.IsType<byte[]>(nodeType.GetProperty("Data")!.GetValue(roundTripped)));
+    }
+
+    [Fact]
     public Task NodeWithNullableSimpleCollections()
     {
         const string source = """

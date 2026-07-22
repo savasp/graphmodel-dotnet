@@ -10,6 +10,25 @@ using global::Neo4j.Driver;
 public sealed class NativeGraphCommandTests(Neo4jHarness harness) : Neo4jTest(harness)
 {
     [Fact]
+    public async Task ByteArrayScalar_DoesNotWriteSimpleCollectionCompanions()
+    {
+        var marker = $"native-binary-{Guid.NewGuid():N}";
+        var expected = new byte[] { 0, 1, 127, 128, 255 };
+        await Graph.CreateNodeAsync(
+            new BinaryPropertyNode { TestKey = marker, Data = expected },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var record = await QueryRawSingleAsync(
+            "MATCH (node:BinaryPropertyNode {TestKey: $marker}) RETURN keys(node) AS keys, node.Data AS data",
+            new { marker });
+        var keys = record["keys"].As<List<string>>();
+
+        Assert.Contains(nameof(BinaryPropertyNode.Data), keys);
+        Assert.DoesNotContain(keys, key => key.StartsWith("__cvoya_sc:v1:", StringComparison.Ordinal));
+        Assert.Equal(expected, record["data"].As<byte[]>());
+    }
+
+    [Fact]
     public async Task UpdateAsync_FreezesDynamicTargetBeforeChangingEveryDomainProperty()
     {
         var label = $"NativeCommand{Guid.NewGuid():N}";
