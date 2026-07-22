@@ -540,6 +540,122 @@ public interface IQueryTests : IGraphTest
     }
 
     [Fact]
+    [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
+    public async Task StoredNullElements_NullablePropertySchema_PreservesPositionsAndOrder()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var testKey = $"stored-nullable-elements-{Guid.NewGuid():N}";
+        var values = new string?[] { null, "first", null, null, "last", null };
+        var allNullValues = new string?[] { null, null, null };
+        var node = new DynamicNode(
+            [nameof(NullableCollectionElementNode)],
+            new Dictionary<string, object?>
+            {
+                [nameof(NullableCollectionElementNode.TestKey)] = testKey,
+                ["stored_values"] = values,
+                ["all_null_values"] = allNullValues,
+            });
+
+        await Graph.CreateNodeAsync(node, null, cancellationToken);
+
+        var result = await Graph.Nodes<NullableCollectionElementNode>()
+            .Where(candidate => candidate.TestKey == testKey)
+            .SingleAsync(cancellationToken);
+
+        Assert.Equal(values, result.Values);
+        Assert.Equal(allNullValues, result.AllNullValues);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
+    public async Task StoredNullElements_NonNullablePropertySchema_RejectsFirstInvalidIndex()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var testKey = $"stored-non-nullable-elements-{Guid.NewGuid():N}";
+        var node = new DynamicNode(
+            [nameof(NonNullableCollectionElementNode)],
+            new Dictionary<string, object?>
+            {
+                [nameof(NonNullableCollectionElementNode.TestKey)] = testKey,
+                ["stored_values"] = new string?[] { "first", null, "third", null },
+            });
+
+        await Graph.CreateNodeAsync(node, null, cancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            Graph.Nodes<NonNullableCollectionElementNode>()
+                .Where(candidate => candidate.TestKey == testKey)
+                .SingleAsync(cancellationToken));
+
+        Assert.Contains("Collection property 'stored_values'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("at index 1", exception.Message, StringComparison.Ordinal);
+        Assert.Contains($"target element type '{typeof(string)}'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
+    public async Task ProjectedNullElements_NullableConstructorParameter_PreservesPositionsAndOrder()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var node = new NullableCollectionElementNode
+        {
+            Values = ["first", null, null, "last", null],
+        };
+        await Graph.CreateNodeAsync(node, null, cancellationToken);
+
+        var result = await Graph.Nodes<NullableCollectionElementNode>()
+            .Where(candidate => candidate.TestKey == node.TestKey)
+            .Select(candidate => new NullableCollectionProjection(candidate.Values))
+            .SingleAsync(cancellationToken);
+
+        Assert.Equal(node.Values, result.Values);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
+    public async Task ProjectedNullElements_NonNullableConstructorParameter_RejectsFirstInvalidIndex()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var node = new NullableCollectionElementNode
+        {
+            Values = ["first", null, "third", null],
+        };
+        await Graph.CreateNodeAsync(node, null, cancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            Graph.Nodes<NullableCollectionElementNode>()
+                .Where(candidate => candidate.TestKey == node.TestKey)
+                .Select(candidate => new NonNullableCollectionProjection(candidate.Values!))
+                .SingleAsync(cancellationToken));
+
+        Assert.Contains("Constructor parameter 'Values'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("at index 1", exception.Message, StringComparison.Ordinal);
+        Assert.Contains($"target element type '{typeof(string)}'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
+    public async Task ProjectedNullElements_NullableCollectionWithNonNullableElements_RejectsFirstInvalidIndex()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var node = new NullableCollectionElementNode
+        {
+            Values = ["first", null, "third", null],
+        };
+        await Graph.CreateNodeAsync(node, null, cancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            Graph.Nodes<NullableCollectionElementNode>()
+                .Where(candidate => candidate.TestKey == node.TestKey)
+                .Select(candidate => new NullableCollectionNonNullableElementProjection(candidate.Values!))
+                .SingleAsync(cancellationToken));
+
+        Assert.Contains("Constructor parameter 'Values'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("at index 1", exception.Message, StringComparison.Ordinal);
+        Assert.Contains($"target element type '{typeof(string)}'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ToListAsync_NullReferenceScalarProjection_PreservesRowAndOrder()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -1084,3 +1200,9 @@ public interface IQueryTests : IGraphTest
 }
 
 internal sealed record RequiredBioProjection(string Bio);
+
+internal sealed record NullableCollectionProjection(List<string?> Values);
+
+internal sealed record NonNullableCollectionProjection(List<string> Values);
+
+internal sealed record NullableCollectionNonNullableElementProjection(List<string>? Values);

@@ -664,6 +664,44 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_NamedConstructorProjection_UsesConstructorParameterAsAlias()
+    {
+        Expression<Func<Person, PersonDto>> selector = person => new PersonDto(person.Name);
+
+        var statement = planner.Plan(Model(
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector)));
+
+        var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
+        Assert.Equal(nameof(PersonDto.Name), item.Alias);
+    }
+
+    [Fact]
+    public void Plan_OptionalNamedConstructorProjection_UsesConstructorParameterAsAlias()
+    {
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            false,
+            "src",
+            "tgt")
+        {
+            IsOptional = true,
+        };
+        Expression<Func<Person, Person, PersonDto>> selector = (_, target) => new PersonDto(target.Name);
+
+        var statement = planner.Plan(Model(
+            traversal: [step],
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector)));
+
+        var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
+        Assert.Equal(nameof(PersonDto.Name), item.Alias);
+    }
+
+    [Fact]
     public void Plan_AllocatesParametersInExpressionOrder()
     {
         Expression<Func<Person, bool>> predicate = person => person.Age >= 18 && person.Name == "Ada";
