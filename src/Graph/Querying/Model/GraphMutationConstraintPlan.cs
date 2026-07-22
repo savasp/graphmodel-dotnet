@@ -168,10 +168,16 @@ internal sealed class GraphMutationConstraintPlan
 
     private static GraphMutationConstraintProperty CreateProperty(
         PropertySchemaInfo property,
-        IReadOnlyDictionary<string, GraphPropertyAssignment> assignments) =>
-        new(
+        IReadOnlyDictionary<string, GraphPropertyAssignment> assignments)
+    {
+        // Schema registration normally makes this guard redundant. Keep it at the last shared
+        // boundary before provider preflight so an unsupported collection constraint can never be
+        // compared through only its physical payload representation.
+        PropertyConstraintValidation.Validate(property.PropertyInfo);
+        return new GraphMutationConstraintProperty(
             property.Name,
             assignments.GetValueOrDefault(property.Name));
+    }
 
     private static Type GetEntityType(QueryRoot root) => root switch
     {

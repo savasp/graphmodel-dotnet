@@ -37,6 +37,12 @@ Runtime metadata properties are provider-populated. `INode.Labels` and `IRelatio
 
 `SchemaRegistry` reflects node and relationship schemas from CLR types and attributes. Providers are responsible for initializing schema and indexes before operations that require them. `RecreateManagedIndexesAsync()` may rebuild only artifacts whose ownership the provider can prove from deterministic names plus installed schema metadata; it must preserve unproven indexes and constraint-owned indexes, and successful completion means every rebuilt artifact is usable. A provider that owns no index artifacts implements the operation as a successful, cancellation-aware no-op. Neo4j owns current model-matching range indexes and two exact reserved full-text indexes; AGE and InMemory own none.
 
+The v1.0 constraint contract rejects `IsKey` and `IsUnique` on every simple-collection
+property, independent of element nullability. `SchemaRegistry` and generated `PropertySchema`
+construction apply the same provider-neutral validation before a provider can create a physical
+constraint or plan mutation uniqueness preflight. Providers must not define collection equality,
+hashing, or private-companion constraint semantics as an extension of these flags.
+
 ## Marker-Method Protocol
 
 Async terminal LINQ operators are represented in expression trees by internal marker methods in `src/Graph/GraphQueryable/QueryTerminals.cs`. `QueryableAsyncExtensions` builds `MethodCallExpression` nodes for these marker methods, then calls `IGraphQueryProvider.ExecuteAsync`. `QueryTerminals` is `internal`, not public API — a provider needs `InternalsVisibleTo` from `Cvoya.Graph` (already granted to `Cvoya.Graph.Neo4j`) to reference its members directly.

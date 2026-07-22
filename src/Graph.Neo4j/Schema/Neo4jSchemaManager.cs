@@ -101,6 +101,13 @@ internal class Neo4jSchemaManager
         {
             throw;
         }
+        catch (InvalidPropertyConstraintException ex)
+        {
+            // Keep provider-neutral schema diagnostics intact. No Neo4j schema read or write has
+            // occurred when registry validation fails.
+            _logger.LogErrorNeo4jSchemaManager98(ex);
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogErrorNeo4jSchemaManager98(ex);
