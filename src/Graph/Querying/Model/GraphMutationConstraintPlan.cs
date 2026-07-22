@@ -42,6 +42,16 @@ internal sealed class GraphMutationConstraintPlan
         ArgumentNullException.ThrowIfNull(mutation);
         ArgumentNullException.ThrowIfNull(schemaRegistry);
 
+        foreach (var property in mutation.Assignments
+                     .Select(assignment => assignment.Property)
+                     .OfType<PropertyInfo>())
+        {
+            // Keep this validation ahead of both the no-constraint fast path and schema access.
+            // That makes this boundary independent of registry initialization and prevents an
+            // unsupported collection constraint from reaching provider preflight.
+            PropertyConstraintValidation.Validate(property);
+        }
+
         var hasAffectedConstraint = mutation.Assignments.Any(assignment =>
         {
             var attribute = assignment.Property?.GetCustomAttribute<PropertyAttribute>(inherit: true);
@@ -168,16 +178,10 @@ internal sealed class GraphMutationConstraintPlan
 
     private static GraphMutationConstraintProperty CreateProperty(
         PropertySchemaInfo property,
-        IReadOnlyDictionary<string, GraphPropertyAssignment> assignments)
-    {
-        // Schema registration normally makes this guard redundant. Keep it at the last shared
-        // boundary before provider preflight so an unsupported collection constraint can never be
-        // compared through only its physical payload representation.
-        PropertyConstraintValidation.Validate(property.PropertyInfo);
-        return new GraphMutationConstraintProperty(
+        IReadOnlyDictionary<string, GraphPropertyAssignment> assignments) =>
+        new(
             property.Name,
             assignments.GetValueOrDefault(property.Name));
-    }
 
     private static Type GetEntityType(QueryRoot root) => root switch
     {
