@@ -337,6 +337,55 @@ public class EntitySerializerGeneratorTests
         }
         """;
 
+    private const string NullableComplexCollectionSource = """
+        #nullable enable
+        using System.Collections.Generic;
+        using Cvoya.Graph;
+
+        namespace NullableComplexCollections;
+
+        public record Address
+        {
+            public string Street { get; set; } = string.Empty;
+        }
+
+        [Node("Person")]
+        public record Person : Node
+        {
+            [Property(Label = "stored{addresses}")]
+            public List<Address?> Addresses { get; set; } = new();
+        }
+        """;
+
+    [Fact]
+    public void NodeWithNullableComplexCollection_PreservesNullSlotsAndSchema()
+    {
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(NullableComplexCollectionSource);
+        var nodeType = assembly.GetType("NullableComplexCollections.Person", throwOnError: true)!;
+        var addressType = assembly.GetType("NullableComplexCollections.Address", throwOnError: true)!;
+        var serializerType = assembly.GetType(
+            "NullableComplexCollections.Generated.PersonSerializer",
+            throwOnError: true)!;
+        var serializer = Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+
+        var addresses = (System.Collections.IList)Activator.CreateInstance(
+            typeof(List<>).MakeGenericType(addressType))!;
+        addresses.Add(Activator.CreateInstance(addressType));
+        addresses.Add(null);
+        addresses.Add(Activator.CreateInstance(addressType));
+        var node = Activator.CreateInstance(nodeType)!;
+        nodeType.GetProperty("Addresses")!.SetValue(node, addresses);
+
+        var serialized = serializer.Serialize(node);
+        var collection = Assert.IsType<EntityCollection>(serialized.ComplexProperties["stored{addresses}"].Value);
+        Assert.Collection(collection.Entities, Assert.NotNull, Assert.Null, Assert.NotNull);
+        Assert.True(serializer.GetSchema().ComplexProperties["stored{addresses}"].IsElementNullable);
+
+        var roundTripped = serializer.Deserialize(serialized);
+        var actual = (System.Collections.IList)nodeType.GetProperty("Addresses")!.GetValue(roundTripped)!;
+        Assert.Collection(actual.Cast<object?>(), Assert.NotNull, Assert.Null, Assert.NotNull);
+    }
+
     [Fact]
     public void NodeWithComplexCollection_RejectsNullElementOnWriteWithIndexedDiagnostic()
     {

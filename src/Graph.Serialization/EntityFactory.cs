@@ -134,21 +134,29 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         else if (GraphDataModel.IsCollectionOfComplex(propertyInfo.PropertyType))
         {
             var elementType = GetElementType(propertyInfo.PropertyType);
-            var entities = new List<EntityInfo>();
+            var entities = new List<EntityInfo?>();
+            var isElementNullable = NullabilityDerivation.IsElementNullable(propertyInfo, elementType);
             var index = 0;
             foreach (var item in (IEnumerable)value)
             {
                 if (item is null)
                 {
-                    throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
-                        storageName,
-                        elementType,
-                        index,
-                        actualType: null);
+                    if (!isElementNullable)
+                    {
+                        throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                            storageName,
+                            elementType,
+                            index,
+                            actualType: null);
+                    }
+
+                    entities.Add(null);
+                    index++;
+                    continue;
                 }
 
                 var actualType = item.GetType();
-                if (!elementType.IsAssignableFrom(actualType))
+                if (!IsAssignableComplexElement(elementType, actualType))
                 {
                     throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
                         storageName,
@@ -496,25 +504,24 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         return dictionary;
     }
 
-    private static List<Dictionary<string, object?>> MaterializeDynamicComplexCollection(
+    private static List<Dictionary<string, object?>?> MaterializeDynamicComplexCollection(
         string propertyName,
         EntityCollection collection)
     {
-        var values = new List<Dictionary<string, object?>>(collection.Entities.Count);
+        var values = new List<Dictionary<string, object?>?>(collection.Entities.Count);
         var index = 0;
         foreach (var entity in collection.Entities)
         {
             if (entity is null)
             {
-                throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
-                    propertyName,
-                    collection.Type,
-                    index,
-                    actualType: null);
+                values.Add(null);
+                index++;
+                continue;
             }
 
             if (collection.Type != typeof(object) &&
-                !collection.Type.IsAssignableFrom(entity.ActualType))
+                entity.ActualType != typeof(object) &&
+                !IsAssignableComplexElement(collection.Type, entity.ActualType))
             {
                 throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
                     propertyName,
@@ -628,7 +635,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         {
             // Collection of complex values
             var collection = (IEnumerable)propertyValue!;
-            var complexValues = new List<EntityInfo>();
+            var complexValues = new List<EntityInfo?>();
             var elementType = GetElementType(valueType);
 
             var index = 0;
@@ -636,15 +643,13 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             {
                 if (item is null)
                 {
-                    throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
-                        propertyName,
-                        elementType,
-                        index,
-                        actualType: null);
+                    complexValues.Add(null);
+                    index++;
+                    continue;
                 }
 
                 var actualType = item.GetType();
-                if (!elementType.IsAssignableFrom(actualType))
+                if (!IsAssignableComplexElement(elementType, actualType))
                 {
                     throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
                         propertyName,
@@ -676,7 +681,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
             try
             {
-                var complexValues = new List<EntityInfo>();
+                var complexValues = new List<EntityInfo?>();
                 var elementType = GetElementType(valueType);
 
                 var index = 0;
@@ -684,14 +689,12 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 {
                     if (item is null)
                     {
-                        throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
-                            propertyName,
-                            elementType,
-                            index,
-                            actualType: null);
+                        complexValues.Add(null);
+                        index++;
+                        continue;
                     }
 
-                    if (!elementType.IsAssignableFrom(item.GetType()))
+                    if (!IsAssignableComplexElement(elementType, item.GetType()))
                     {
                         throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
                             propertyName,
@@ -879,23 +882,31 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 {
                     // Collection of complex values
                     var collection = (IEnumerable)propertyValue;
-                    var complexValues = new List<EntityInfo>();
+                    var complexValues = new List<EntityInfo?>();
                     var elementType = GetElementType(propertyType);
+                    var isElementNullable = NullabilityDerivation.IsElementNullable(propertyInfo, elementType);
 
                     var index = 0;
                     foreach (var item in collection)
                     {
                         if (item is null)
                         {
-                            throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
-                                propertyName,
-                                elementType,
-                                index,
-                                actualType: null);
+                            if (!isElementNullable)
+                            {
+                                throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                                    propertyName,
+                                    elementType,
+                                    index,
+                                    actualType: null);
+                            }
+
+                            complexValues.Add(null);
+                            index++;
+                            continue;
                         }
 
                         var actualType = item.GetType();
-                        if (!elementType.IsAssignableFrom(actualType))
+                        if (!IsAssignableComplexElement(elementType, actualType))
                         {
                             throw Results.GraphValueConverter.CreateInvalidComplexCollectionElementException(
                                 propertyName,
@@ -945,23 +956,11 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
     private static Type GetElementType(Type collectionType)
     {
-        if (collectionType.IsArray)
-        {
-            return collectionType.GetElementType()!;
-        }
-
-        if (collectionType.IsGenericType)
-        {
-            var genericArguments = collectionType.GetGenericArguments();
-            if (genericArguments.Length > 0)
-            {
-                return genericArguments[0];
-            }
-        }
-
-        // Fallback to object if we can't determine the element type
-        return typeof(object);
+        return Results.GraphResultTypeHelpers.GetCollectionElementType(collectionType) ?? typeof(object);
     }
+
+    private static bool IsAssignableComplexElement(Type declaredType, Type actualType) =>
+        (Nullable.GetUnderlyingType(declaredType) ?? declaredType).IsAssignableFrom(actualType);
 
     private static string SanitizeTypeNameForStorage(Type type)
     {

@@ -109,7 +109,7 @@ internal static class SimpleCollectionStorageCodec
         var decoded = new Dictionary<string, GraphValue>(StringComparer.Ordinal);
         foreach (var (physicalName, value) in physicalProperties)
         {
-            if (IsCompanionProperty(physicalName))
+            if (IsCompanionProperty(physicalName) || ComplexCollectionStorageCodec.IsMetadataProperty(physicalName))
             {
                 continue;
             }
@@ -177,7 +177,9 @@ internal static class SimpleCollectionStorageCodec
 
         foreach (var physicalName in physicalProperties.Keys.Where(name => name.StartsWith(Prefix, StringComparison.Ordinal)))
         {
-            if (!IsCompanionProperty(physicalName) && !physicalName.StartsWith(UserPropertyPrefix, StringComparison.Ordinal))
+            if (!IsCompanionProperty(physicalName) &&
+                !physicalName.StartsWith(UserPropertyPrefix, StringComparison.Ordinal) &&
+                !ComplexCollectionStorageCodec.IsMetadataProperty(physicalName))
             {
                 throw new GraphException($"Invalid private simple-collection property '{physicalName}'.");
             }
@@ -189,6 +191,15 @@ internal static class SimpleCollectionStorageCodec
         }
 
         return decoded;
+    }
+
+    internal static IReadOnlyDictionary<string, GraphValue> ExtractComplexCollectionMetadata(
+        IReadOnlyDictionary<string, GraphValue> physicalProperties)
+    {
+        ArgumentNullException.ThrowIfNull(physicalProperties);
+        return physicalProperties
+            .Where(pair => ComplexCollectionStorageCodec.IsMetadataProperty(pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
     }
 
     internal static string GetTypeIdentity(Type type)

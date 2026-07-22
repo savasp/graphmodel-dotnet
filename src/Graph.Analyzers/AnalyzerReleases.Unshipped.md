@@ -6,5 +6,4 @@ CG013   | Cvoya.Graph | Error    | Both [Node] and [Relationship] applied to the
 CG014   | Cvoya.Graph | Error    | Graph entity types must be reference types
 CG015   | Cvoya.Graph | Warning  | ComplexPropertyAttribute has no effect
 CG016   | Cvoya.Graph | Error    | Open generic graph entities are not supported
-CG017   | Cvoya.Graph | Error    | Nullable complex collection elements are not supported
 CG018   | Cvoya.Graph | Error    | Invalid graph key or ignored property declaration

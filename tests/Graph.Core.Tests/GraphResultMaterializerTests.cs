@@ -395,19 +395,30 @@ public class GraphResultMaterializerTests
     }
 
     [Fact]
-    public void ComplexCollectionParameter_RejectsNullRegardlessOfDeclaredElementNullability()
+    public void ComplexCollectionParameter_PreservesNullForNullableElement()
     {
-        var collection = new EntityCollection(typeof(MaterializedAddress), [null!]);
+        var collection = new EntityCollection(typeof(MaterializedAddress), [null]);
 
-        var exception = Assert.Throws<GraphException>(() =>
+        var result = Assert.IsType<List<MaterializedAddress?>>(
             InvokeComplexCollectionMaterialization<NullableComplexCollectionProjection>(
                 collection,
                 "stored{addresses}"));
 
-        Assert.Equal(
-            "Complex collection property 'stored{addresses}' contains a null element at index 0, " +
-            $"but its target element type '{typeof(MaterializedAddress)}' does not allow null elements.",
-            exception.Message);
+        Assert.Single(result);
+        Assert.Null(result[0]);
+    }
+
+    [Fact]
+    public void ComplexCollectionParameter_RejectsNullForNonNullableElement()
+    {
+        var collection = new EntityCollection(typeof(MaterializedAddress), [null]);
+
+        var exception = Assert.Throws<GraphException>(() =>
+            InvokeComplexCollectionMaterialization<ComplexCollectionProjection>(
+                collection,
+                "stored{addresses}"));
+
+        Assert.Contains("null element at index 0", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -453,7 +464,7 @@ public class GraphResultMaterializerTests
     }
 
     [Fact]
-    public void ComplexCollectionSchema_DoesNotAdvertiseNullableElements()
+    public void ComplexCollectionSchema_DerivesNullableElements()
     {
         var property = typeof(NullableComplexCollectionProjection)
             .GetProperty(nameof(NullableComplexCollectionProjection.Addresses))!;
@@ -463,11 +474,11 @@ public class GraphResultMaterializerTests
             PropertyType.ComplexCollection,
             typeof(MaterializedAddress));
 
-        Assert.False(schema.IsElementNullable);
+        Assert.True(schema.IsElementNullable);
     }
 
     [Fact]
-    public void ComplexCollectionSchema_RejectsExplicitNullableElementOverride()
+    public void ComplexCollectionSchema_PreservesExplicitNullableElementOverride()
     {
         var property = typeof(NullableComplexCollectionProjection)
             .GetProperty(nameof(NullableComplexCollectionProjection.Addresses))!;
@@ -480,11 +491,11 @@ public class GraphResultMaterializerTests
             IsElementNullable = true,
         };
 
-        Assert.False(schema.IsElementNullable);
+        Assert.True(schema.IsElementNullable);
     }
 
     [Fact]
-    public void ComplexCollectionSchema_RejectsNullableElementStateCopiedFromSimpleCollection()
+    public void ComplexCollectionSchema_PreservesNullableElementStateCopiedFromSimpleCollection()
     {
         var simpleProperty = typeof(NameCollectionProjection)
             .GetProperty(nameof(NameCollectionProjection.Names))!;
@@ -507,7 +518,7 @@ public class GraphResultMaterializerTests
             ElementType = typeof(MaterializedAddress),
         };
 
-        Assert.False(schema.IsElementNullable);
+        Assert.True(schema.IsElementNullable);
     }
 
     [Fact]

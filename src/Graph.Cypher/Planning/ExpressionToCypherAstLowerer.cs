@@ -741,6 +741,7 @@ internal sealed class ExpressionToCypherAstLowerer(
                     PatternSubqueryKind.Exists,
                     patternInfo.Pattern,
                     new AstUnaryExpression(CypherUnaryOperator.Not, predicate))),
+            nameof(Enumerable.Count) when predicate is null => LowerComplexCollectionLength(member, aliases),
             nameof(Enumerable.Count) => new PatternSubqueryExpression(PatternSubqueryKind.Count, patternInfo.Pattern, predicate),
             nameof(Enumerable.Select) => new PatternComprehensionExpression(patternInfo.Pattern, projection),
             _ => throw Unsupported(node, $"Complex collection method '{node.Method.Name}' requires a predicate."),
@@ -816,9 +817,26 @@ internal sealed class ExpressionToCypherAstLowerer(
             return false;
         }
 
-        var pattern = BuildComplexPattern(collection, aliases);
-        expression = new PatternSubqueryExpression(PatternSubqueryKind.Count, pattern.Pattern);
+        expression = LowerComplexCollectionLength(collection, aliases);
         return true;
+    }
+
+    private PhysicalPropertyAccess LowerComplexCollectionLength(
+        MemberExpression collection,
+        IReadOnlyDictionary<ParameterExpression, string> aliases)
+    {
+        if (collection.Member is not PropertyInfo property)
+        {
+            throw Unsupported(collection, "A complex-property collection must be declared by a property.");
+        }
+
+        // The final collection relationship is intentionally not traversed: its real child count
+        // excludes null slots. The collection's owner carries the authoritative logical length.
+        var owner = Lower(collection.Expression!, aliases);
+        var logicalName = Labels.GetLabelFromProperty(property);
+        return new PhysicalPropertyAccess(
+            owner,
+            ComplexCollectionStorageNames.GetLengthPropertyName(logicalName));
     }
 
     private bool TryLowerEnumerableAggregation(

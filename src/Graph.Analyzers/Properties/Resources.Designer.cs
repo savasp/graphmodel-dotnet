@@ -293,21 +293,6 @@ internal class Resources
     internal static string CG016_Title => ResourceManager.GetString("CG016_Title", resourceCulture)!;
 
     /// <summary>
-    ///   Looks up a localized string similar to The provider-neutral wire model stores a collection of complex values as a sequence of serialized entities and has no representation for an empty slot....
-    /// </summary>
-    internal static string CG017_Description => ResourceManager.GetString("CG017_Description", resourceCulture)!;
-
-    /// <summary>
-    ///   Looks up a localized string similar to Property '{0}' in type '{1}' is declared as '{2}', a collection of complex types with a nullable element type....
-    /// </summary>
-    internal static string CG017_MessageFormat => ResourceManager.GetString("CG017_MessageFormat", resourceCulture)!;
-
-    /// <summary>
-    ///   Looks up a localized string similar to Nullable complex collection elements are not supported.
-    /// </summary>
-    internal static string CG017_Title => ResourceManager.GetString("CG017_Title", resourceCulture)!;
-
-    /// <summary>
     ///   Looks up a localized string similar to Opt-in domain keys must be non-nullable graph-storable scalar values. A property ignored from graph storage cannot also request key, unique, index, or required schema behavior..
     /// </summary>
     internal static string CG018_Description => ResourceManager.GetString("CG018_Description", resourceCulture)!;

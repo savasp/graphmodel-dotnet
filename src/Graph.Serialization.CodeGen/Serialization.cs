@@ -189,11 +189,6 @@ internal static class Serialization
             // and captures derived-only properties, falling back to the declared element type's
             // serializer only when no serializer is registered for the runtime type.
             //
-            // A null element throws at its original index rather than being filtered out:
-            // EntityCollection.Entities has no representation for an empty slot, so dropping the
-            // element would silently shrink the collection and shift every later element. The
-            // analyzer (CG017) rejects nullable complex-element declarations for the same reason,
-            // so this check fails closed on a runtime null in a non-nullable declaration.
             var canBeNull = elementType.IsReferenceType || elementType.IsNullable;
 
             sb.AppendLine("            serializedValue = value is null");
@@ -206,7 +201,14 @@ internal static class Serialization
             {
                 var escapedLabel = Utils.EscapeForGeneratedInterpolatedString(propertyLabel);
                 sb.AppendLine("                        .Select((item, index) => item is null");
-                sb.AppendLine($"                            ? throw new GraphException($\"Complex collection property '{escapedLabel}' contains a null element at index {{index}}, but its target element type '{{typeof({elementType.TypeOfName})}}' does not allow null elements.\")");
+                if (elementType.IsNullable)
+                {
+                    sb.AppendLine("                            ? null");
+                }
+                else
+                {
+                    sb.AppendLine($"                            ? throw new GraphException($\"Complex collection property '{escapedLabel}' contains a null element at index {{index}}, but its target element type '{{typeof({elementType.TypeOfName})}}' does not allow null elements.\")");
+                }
                 sb.AppendLine("                            : (_serializerRegistry.GetSerializer(item.GetType())");
             }
             else

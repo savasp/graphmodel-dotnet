@@ -244,6 +244,26 @@ public sealed class GraphMutationModelBuilderTests
     }
 
     [Fact]
+    public void BuildUpdate_AcceptsNullableComplexSlotsAndRejectsRuntimeNullForNonNullableElements()
+    {
+        List<Address?> nullable = [null, new() { City = "Seattle" }, null];
+        Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> nullableSetter = builder =>
+            builder.SetProperty(person => person.NullablePreviousHomes, nullable);
+
+        var mutation = GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), nullableSetter));
+
+        Assert.True(Assert.IsType<GraphConstantPropertyAssignment>(Assert.Single(mutation.Assignments)).IsComplex);
+
+        List<Address> invalid = [new() { City = "Portland" }, null!];
+        Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> invalidSetter = builder =>
+            builder.SetProperty(person => person.PreviousHomes, invalid);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphMutationModelBuilder.Build(UpdateCall(Root<Person>(), invalidSetter)));
+        Assert.Contains("null element at index 1", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BuildUpdate_RejectsComputedComplexValueAndNestedSelector()
     {
         Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> computed = builder =>
@@ -446,6 +466,8 @@ public sealed class GraphMutationModelBuilderTests
         public Address Home { get; init; } = new();
 
         public List<Address> PreviousHomes { get; init; } = [];
+
+        public List<Address?> NullablePreviousHomes { get; init; } = [];
 
         public RecursiveAddress? RecursiveHome { get; init; }
     }

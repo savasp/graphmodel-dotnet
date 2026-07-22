@@ -230,6 +230,7 @@ public sealed class GraphResultProcessor
         if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
         {
             simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(node.Properties);
+            RemoveComplexCollectionStorageProperties(simpleProperties);
         }
         else
         {
@@ -250,9 +251,6 @@ public sealed class GraphResultProcessor
         var directComplexProps = allComplexProperties
             .Where(cp => cp.ParentNode.ElementId == node.ElementId)
             .ToList();
-
-        if (directComplexProps.Count == 0)
-            return entityInfo;
 
         // Resolve the schema from the DISCOVERED concrete type, not the declared/target type.
         // For a base-typed complex property holding a derived instance (e.g. a PoliceDogDescription
@@ -278,29 +276,41 @@ public sealed class GraphResultProcessor
                 .Where(cp => cp.Relationship.Type == expectedRelType)
                 .ToList();
 
-            if (matchingProps.Count == 0)
-                continue;
-
-            var childType = propertySchema.PropertyInfo.PropertyType.IsGenericType
-                ? propertySchema.PropertyInfo.PropertyType.GetGenericArguments()[0]
+            var childType = propertySchema.PropertyType == PropertyType.ComplexCollection
+                ? propertySchema.ElementType!
                 : propertySchema.PropertyInfo.PropertyType;
 
             if (propertySchema.PropertyType == PropertyType.ComplexCollection)
             {
                 var children = matchingProps
-                    .OrderBy(cp => cp.SequenceNumber)
-                    .Select(cp => DeserializeComplexPropertiesForTypedNode(
-                        cp.Property, allComplexProperties, childType, depth + 1, visitedNodeIds))
+                    .Select(cp => (
+                        cp.SequenceNumber,
+                        DeserializeComplexPropertiesForTypedNode(
+                            cp.Property, allComplexProperties, childType, depth + 1, visitedNodeIds)))
                     .ToList();
+                var collection = ComplexCollectionStorageCodec.Rehydrate(
+                    propertySchema.PropertyName,
+                    childType,
+                    node.StorageEntries,
+                    children);
+                if (collection is null)
+                {
+                    continue;
+                }
 
                 entityInfo.ComplexProperties[propertyName] = new Property(
                     propertySchema.PropertyInfo,
                     propertySchema.PropertyName,
                     propertySchema.IsNullable,
-                    new EntityCollection(propertySchema.ElementType!, children));
+                    collection);
             }
             else if (propertySchema.PropertyType == PropertyType.Complex)
             {
+                if (matchingProps.Count == 0)
+                {
+                    continue;
+                }
+
                 var child = DeserializeComplexPropertiesForTypedNode(
                     matchingProps[0].Property, allComplexProperties, childType, depth + 1, visitedNodeIds);
 
@@ -339,6 +349,7 @@ public sealed class GraphResultProcessor
         Dictionary<string, Property> simpleProperties;
 
         simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(node.Properties);
+        RemoveComplexCollectionStorageProperties(simpleProperties);
         if (depth > 0)
         {
             RemoveDynamicComplexValueStructuralProperties(simpleProperties);
@@ -356,27 +367,51 @@ public sealed class GraphResultProcessor
             .Where(cp => cp.ParentNode.ElementId == node.ElementId)
             .ToList();
 
-        // For dynamic nodes, attach all direct complex properties using the property name derived
-        // from the relationship type. Multiple relationships of the same type are a stored
-        // collection and must materialize as one - assigning them to a single slot would keep only
-        // the last item. (A one-item collection is indistinguishable from a single value without a
-        // schema and materializes as a single value.)
-        foreach (var group in directComplexProps.GroupBy(cp => cp.Relationship.Type))
+        var relationshipGroups = directComplexProps
+            .GroupBy(cp => GraphDataModel.RelationshipTypeNameToPropertyName(cp.Relationship.Type))
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+        var metadataNames = ComplexCollectionStorageCodec.GetMetadataLogicalNames(node.StorageEntries);
+        var propertyNames = relationshipGroups.Keys
+            .Concat(metadataNames)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
+
+        foreach (var propertyName in propertyNames)
         {
-            var propertyName = group.Key;
-            var children = group
-                .OrderBy(cp => cp.SequenceNumber)
-                .Select(cp => DeserializeComplexPropertiesForDynamicNode(
-                    cp.Property, allComplexProperties, typeof(object), depth + 1, visitedNodeIds))
+            var matches = relationshipGroups.GetValueOrDefault(propertyName) ?? [];
+            var children = matches
+                .Select(cp => (
+                    cp.SequenceNumber,
+                    DeserializeComplexPropertiesForDynamicNode(
+                        cp.Property, allComplexProperties, typeof(object), depth + 1, visitedNodeIds)))
                 .ToList();
+
+            Serialized value;
+            if (ComplexCollectionStorageCodec.HasMetadata(propertyName, node.StorageEntries))
+            {
+                value = ComplexCollectionStorageCodec.Rehydrate(
+                    propertyName,
+                    typeof(object),
+                    node.StorageEntries,
+                    children) ?? throw new GraphException(
+                        $"Complex collection metadata for '{propertyName}' did not produce a collection.");
+            }
+            else
+            {
+                var denseChildren = children
+                    .OrderBy(child => child.SequenceNumber)
+                    .Select(child => child.Item2)
+                    .ToList();
+                value = denseChildren.Count == 1
+                    ? denseChildren[0]
+                    : new EntityCollection(typeof(object), denseChildren);
+            }
 
             entityInfo.ComplexProperties[propertyName] = new Property(
                 PropertyInfo: null!,
                 Label: propertyName,
                 IsNullable: true,
-                Value: children.Count == 1
-                    ? children[0]
-                    : new EntityCollection(typeof(object), children)
+                Value: value
             );
         }
 
@@ -696,9 +731,16 @@ public sealed class GraphResultProcessor
             return false;
         }
 
-        var entities = new List<EntityInfo>();
+        var entities = new List<EntityInfo?>();
+        var hasStructuredElement = false;
         foreach (var element in sequence)
         {
+            if (element is null)
+            {
+                entities.Add(null);
+                continue;
+            }
+
             if (element is not IReadOnlyDictionary<string, object> map)
             {
                 return false;
@@ -712,9 +754,10 @@ public sealed class GraphResultProcessor
                 typeof(object)) with
             { ActualType = null! };
             entities.Add(elementInfo);
+            hasStructuredElement = true;
         }
 
-        if (entities.Count == 0)
+        if (!hasStructuredElement)
         {
             return false;
         }
@@ -870,6 +913,17 @@ public sealed class GraphResultProcessor
         simpleProperties.Remove(nameof(Graph.INode.Labels));
     }
 
+    private static void RemoveComplexCollectionStorageProperties(
+        Dictionary<string, Property> simpleProperties)
+    {
+        foreach (var name in simpleProperties.Keys
+            .Where(ComplexCollectionStorageCodec.IsMetadataProperty)
+            .ToArray())
+        {
+            simpleProperties.Remove(name);
+        }
+    }
+
     private static Type InferDynamicCollectionElementType(IReadOnlyList<object?> items)
     {
         var elementTypes = items
@@ -906,6 +960,7 @@ public sealed class GraphResultProcessor
         if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
         {
             simpleProperties = ExtractAllSimplePropertiesForDynamicEntity(node.Properties);
+            RemoveComplexCollectionStorageProperties(simpleProperties);
         }
         else
         {

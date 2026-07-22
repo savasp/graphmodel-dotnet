@@ -538,7 +538,9 @@ internal sealed class KennelSerializer : IEntitySerializer
             ? new System.Collections.Generic.List<TestNamespace.AnimalDescription>()
             : animalsPropRep.Value is EntityCollection animalsPropRepEntityCollection
                 ? animalsPropRepEntityCollection.Entities
-                    .Select((entityItem, index) => (_serializerRegistry.GetSerializer(entityItem.ActualType)
+                    .Select((entityItem, index) => entityItem is null
+                        ? throw new GraphException($"Complex collection property 'Animals' contains a null element at index {index}, but its target element type '{typeof(TestNamespace.AnimalDescription)}' does not allow null elements.")
+                        : (_serializerRegistry.GetSerializer(entityItem.ActualType)
                         ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.AnimalDescription))
                         ?? throw new InvalidOperationException($"No serializer found for element type {entityItem.ActualType}"))
                         .Deserialize(entityItem) switch
@@ -706,7 +708,7 @@ internal sealed class KennelSerializer : IEntitySerializer
                 IsNullable: false,
                 NestedSchema: TestNamespace.Generated.AnimalDescriptionSerializer.GetSchemaStatic(),
                 RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
-            );
+            ) { IsElementNullable = false };
         }
 
 

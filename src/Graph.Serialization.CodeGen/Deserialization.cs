@@ -364,14 +364,20 @@ internal static class Deserialization
             // back to the statically-declared element type only when no serializer is registered for
             // ActualType (e.g. legacy data serialized before ActualType was recorded per element).
             //
-            // A null or wrongly-typed element throws at its original index rather than being filtered
-            // out: silently dropping it would shrink the collection and shift every later element,
-            // hiding the data defect behind a plausible-looking result.
             sb.AppendLine($"{indentStr}{variableName} = {propRepVarName} is null");
             sb.AppendLine($"{indentStr}    ? {missingValueExpression}");
             sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is EntityCollection {entityCollectionName}");
             sb.AppendLine($"{indentStr}        ? {entityCollectionName}.Entities");
-            sb.AppendLine($"{indentStr}            .Select((entityItem, index) => (_serializerRegistry.GetSerializer(entityItem.ActualType)");
+            sb.AppendLine($"{indentStr}            .Select((entityItem, index) => entityItem is null");
+            if (elementType.IsNullable)
+            {
+                sb.AppendLine($"{indentStr}                ? default({elementType.DisplayName})");
+            }
+            else
+            {
+                sb.AppendLine($"{indentStr}                ? throw new GraphException($\"Complex collection property '{escapedLabel}' contains a null element at index {{index}}, but its target element type '{{typeof({elementType.TypeOfName})}}' does not allow null elements.\")");
+            }
+            sb.AppendLine($"{indentStr}                : (_serializerRegistry.GetSerializer(entityItem.ActualType)");
             sb.AppendLine($"{indentStr}                ?? _serializerRegistry.GetSerializer(typeof({elementType.TypeOfName}))");
             sb.AppendLine($"{indentStr}                ?? throw new InvalidOperationException($\"No serializer found for element type {{entityItem.ActualType}}\"))");
             sb.AppendLine($"{indentStr}                .Deserialize(entityItem) switch");

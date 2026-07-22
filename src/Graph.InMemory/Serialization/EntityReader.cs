@@ -64,17 +64,32 @@ internal sealed class EntityReader(EntityFactory entityFactory)
                     ?? GraphDataModel.GetComplexPropertyRelationshipType(propertySchema.PropertyInfo);
 
                 var children = state.ComplexEdges(record.Key, relationshipType)
-                    .Select(edge => ChildInfo(edge, state))
-                    .OfType<EntityInfo>()
+                    .Select(edge => (edge.SequenceNumber, Entity: ChildInfo(edge, state)))
+                    .Where(item => item.Entity is not null)
+                    .Select(item => (item.SequenceNumber, item.Entity!))
                     .ToList();
 
                 if (propertySchema.PropertyType == PropertyType.ComplexCollection)
                 {
+                    var elementType = propertySchema.ElementType ?? typeof(object);
+                    var collection = record.ComplexCollections.TryGetValue(name, out var storedCollection)
+                        ? ComplexCollectionStorageCodec.Rehydrate(
+                            name,
+                            elementType,
+                            storedCollection.Length,
+                            storedCollection.NullIndexes,
+                            storedCollection.ElementType,
+                            children)
+                        : new EntityCollection(
+                            elementType,
+                            [.. children
+                                .OrderBy(item => item.SequenceNumber)
+                                .Select(item => (EntityInfo?)item.Item2)]);
                     complexProperties[name] = new Property(
                         propertySchema.PropertyInfo,
                         name,
                         propertySchema.IsNullable,
-                        new EntityCollection(propertySchema.ElementType ?? typeof(object), children),
+                        collection,
                         relationshipType);
                 }
                 else if (children.Count > 0)
@@ -83,7 +98,7 @@ internal sealed class EntityReader(EntityFactory entityFactory)
                         propertySchema.PropertyInfo,
                         name,
                         propertySchema.IsNullable,
-                        children[0],
+                        children[0].Item2,
                         relationshipType);
                 }
             }
@@ -119,25 +134,58 @@ internal sealed class EntityReader(EntityFactory entityFactory)
         }
 
         var complexProperties = new Dictionary<string, Property>();
-        foreach (var group in state.ComplexEdges(record.Key).GroupBy(e => e.Type, StringComparer.Ordinal))
+        var relationshipGroups = state.ComplexEdges(record.Key)
+            .GroupBy(edge => GraphDataModel.RelationshipTypeNameToPropertyName(edge.Type), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+        var propertyNames = relationshipGroups.Keys
+            .Concat(record.ComplexCollections.Keys)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
+        foreach (var propertyName in propertyNames)
         {
-            var children = group.OrderBy(e => e.SequenceNumber)
-                .Select(edge => DynamicChildInfo(edge, state))
-                .OfType<EntityInfo>()
+            var edges = relationshipGroups.GetValueOrDefault(propertyName) ?? [];
+            var children = edges
+                .Select(edge => (edge.SequenceNumber, Entity: DynamicChildInfo(edge, state)))
+                .Where(item => item.Entity is not null)
+                .Select(item => (item.SequenceNumber, item.Entity!))
                 .ToList();
 
-            if (children.Count == 0)
+            if (children.Count == 0 && !record.ComplexCollections.ContainsKey(propertyName))
             {
                 continue;
             }
 
-            var propertyName = GraphDataModel.RelationshipTypeNameToPropertyName(group.Key);
+            Serialized value;
+            string relationshipType;
+            if (record.ComplexCollections.TryGetValue(propertyName, out var storedCollection))
+            {
+                relationshipType = storedCollection.RelationshipType;
+                value = ComplexCollectionStorageCodec.Rehydrate(
+                    propertyName,
+                    typeof(object),
+                    storedCollection.Length,
+                    storedCollection.NullIndexes,
+                    storedCollection.ElementType,
+                    children);
+            }
+            else
+            {
+                relationshipType = edges[0].Type;
+                var denseChildren = children
+                    .OrderBy(item => item.SequenceNumber)
+                    .Select(item => item.Item2)
+                    .ToList();
+                value = denseChildren.Count == 1
+                    ? denseChildren[0]
+                    : new EntityCollection(typeof(object), denseChildren);
+            }
+
             complexProperties[propertyName] = new Property(
                 PropertyInfo: null!,
                 propertyName,
                 IsNullable: false,
-                children.Count == 1 ? children[0] : new EntityCollection(typeof(object), children),
-                group.Key);
+                value,
+                relationshipType);
         }
 
         return new EntityInfo(

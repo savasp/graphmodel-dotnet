@@ -45,6 +45,7 @@ public sealed class ComplexPropertyMutationFragmentTests
             "target",
             replacement,
             ["HOME ADDRESS"],
+            [nameof(ComplexMutationOwner.Address)],
             ["old scalar"]);
 
         Assert.StartsWith(
@@ -62,6 +63,9 @@ public sealed class ComplexPropertyMutationFragmentTests
             StringComparison.Ordinal);
         Assert.Contains("DETACH DELETE __complexPropertyNode", fragment.Cypher, StringComparison.Ordinal);
         Assert.Contains("REMOVE target.`old scalar`", fragment.Cypher, StringComparison.Ordinal);
+        Assert.Contains("target.`__cvoya_sc:v1:c:l:QWRkcmVzcw`", fragment.Cypher, StringComparison.Ordinal);
+        Assert.Contains("target.`__cvoya_sc:v1:c:n:QWRkcmVzcw`", fragment.Cypher, StringComparison.Ordinal);
+        Assert.Contains("target.`__cvoya_sc:v1:c:t:QWRkcmVzcw`", fragment.Cypher, StringComparison.Ordinal);
         Assert.Contains("CREATE (target)-[__complexRelationship0:`HOME ADDRESS`]", fragment.Cypher, StringComparison.Ordinal);
         Assert.Equal(
             ["HOME ADDRESS"],

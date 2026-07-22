@@ -407,31 +407,30 @@ public sealed class GraphResultMaterializer
         var index = 0;
         foreach (var entity in collection.Entities)
         {
-            var value = MaterializeSingleElement<object>(entity, elementType);
+            var value = entity is null
+                ? null
+                : MaterializeSingleElement<object>(entity, elementType);
             if (value is null)
             {
-                if (isComplexCollection)
-                {
-                    throw GraphValueConverter.CreateInvalidComplexCollectionElementException(
-                        propertyLabel,
-                        elementType,
-                        index,
-                        actualType: null);
-                }
-
                 isElementNullable ??= NullabilityDerivation.IsElementNullable(parameter, elementType);
                 if (isElementNullable is false)
                 {
-                    throw GraphValueConverter.CreateNullElementException(
-                        $"Constructor parameter '{ParameterName(parameter)}'",
-                        elementType,
-                        index);
+                    throw isComplexCollection
+                        ? GraphValueConverter.CreateInvalidComplexCollectionElementException(
+                            propertyLabel,
+                            elementType,
+                            index,
+                            actualType: null)
+                        : GraphValueConverter.CreateNullElementException(
+                            $"Constructor parameter '{ParameterName(parameter)}'",
+                            elementType,
+                            index);
                 }
             }
             else if (isComplexCollection)
             {
                 var actualType = value.GetType();
-                if (!elementType.IsAssignableFrom(actualType))
+                if (!(Nullable.GetUnderlyingType(elementType) ?? elementType).IsAssignableFrom(actualType))
                 {
                     throw GraphValueConverter.CreateInvalidComplexCollectionElementException(
                         propertyLabel,

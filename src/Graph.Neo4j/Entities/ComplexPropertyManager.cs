@@ -100,9 +100,14 @@ internal sealed class ComplexPropertyManager(GraphContext context)
                         var index = 0;
                         foreach (var item in collection.Entities)
                         {
-                            specs.Add(BuildValueNodeSpec(
-                                parentVariable, rootVariable, ref counter, propertyName, complexProperty, item,
-                                index++, queue, depth));
+                            if (item is not null)
+                            {
+                                specs.Add(BuildValueNodeSpec(
+                                    parentVariable, rootVariable, ref counter, propertyName, complexProperty, item,
+                                    index, queue, depth));
+                            }
+
+                            index++;
                         }
                         break;
 
@@ -128,11 +133,13 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         string rootVariable,
         EntityInfo replacementEntity,
         IReadOnlyList<string> relationshipTypesToClear,
+        IReadOnlyList<string> propertyNamesToClear,
         IReadOnlyList<string> rootScalarPropertiesToClear)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootVariable);
         ArgumentNullException.ThrowIfNull(replacementEntity);
         ArgumentNullException.ThrowIfNull(relationshipTypesToClear);
+        ArgumentNullException.ThrowIfNull(propertyNamesToClear);
         ArgumentNullException.ThrowIfNull(rootScalarPropertiesToClear);
         if (relationshipTypesToClear.Count == 0)
         {
@@ -169,6 +176,27 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             var properties = rootScalarPropertiesToClear.Select(propertyName =>
                 $"{rootVariable}.{CypherIdentifier.Escape(propertyName, "dynamic property name")}");
             cypher.AppendLine(FormattableString.Invariant($"REMOVE {string.Join(", ", properties)}"));
+        }
+
+        var companionPropertiesToClear = propertyNamesToClear
+            .SelectMany(ComplexCollectionStorageCodec.GetCompanionPropertyNames)
+            .Select(propertyName =>
+                $"{rootVariable}.{CypherIdentifier.Escape(propertyName, "complex-collection companion name")}")
+            .ToArray();
+        if (companionPropertiesToClear.Length > 0)
+        {
+            cypher.AppendLine(FormattableString.Invariant(
+                $"REMOVE {string.Join(", ", companionPropertiesToClear)}"));
+        }
+
+        var collectionMetadata = ComplexCollectionStorageCodec.EncodeProperties(
+            replacementEntity.ComplexProperties,
+            static value => value);
+        if (collectionMetadata.Count > 0)
+        {
+            parameters["__complexCollectionMetadata"] = collectionMetadata;
+            cypher.AppendLine(FormattableString.Invariant(
+                $"SET {rootVariable} += $__complexCollectionMetadata"));
         }
 
         var specs = CollectValueNodeSpecs(rootVariable, replacementEntity);
@@ -267,9 +295,14 @@ internal sealed class ComplexPropertyManager(GraphContext context)
                         var index = 0;
                         foreach (var item in collection.Entities)
                         {
-                            pending.Add(CreatePendingValueNode(
-                                parentElementId, propertyName, complexProperty, item,
-                                index++));
+                            if (item is not null)
+                            {
+                                pending.Add(CreatePendingValueNode(
+                                    parentElementId, propertyName, complexProperty, item,
+                                    index));
+                            }
+
+                            index++;
                         }
                         break;
 

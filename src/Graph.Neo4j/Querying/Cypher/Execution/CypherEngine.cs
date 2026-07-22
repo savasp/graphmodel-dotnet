@@ -269,6 +269,7 @@ internal sealed class CypherEngine
             "target",
             complexPlan.ReplacementEntity,
             complexPlan.RelationshipTypesToClear,
+            complexPlan.PropertyNamesToClear,
             complexPlan.RootScalarPropertiesToClear);
         foreach (var (name, value) in fragment.Parameters)
         {

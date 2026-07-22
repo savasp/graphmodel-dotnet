@@ -639,6 +639,90 @@ public interface IGraphCommandTests : IGraphTest
     }
 
     [Fact]
+    public async Task NullableComplexUpdate_ReplacesDenseSparseAllNullAndEmptyLayouts()
+    {
+        var marker = $"nullable-complex-update-{Guid.NewGuid():N}";
+        var node = new NullableComplexCollectionNode
+        {
+            Marker = marker,
+            Animals =
+            [
+                new AnimalDescription { Name = "first" },
+                new DogDescription { Name = "second", Breed = "old" },
+            ],
+        };
+        await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+
+        List<AnimalDescription?> sparse =
+        [
+            null,
+            new DogDescription { Name = "Rex", Breed = "Labrador" },
+            null,
+            null,
+            new PoliceDogDescription { Name = "K9", Breed = "Shepherd", Badge = "42" },
+            null,
+        ];
+        var affected = await Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Animals, sparse),
+                TestContext.Current.CancellationToken);
+        var stored = await Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Collection(
+            stored.Animals,
+            Assert.Null,
+            animal => Assert.IsType<DogDescription>(animal),
+            Assert.Null,
+            Assert.Null,
+            animal => Assert.IsType<PoliceDogDescription>(animal),
+            Assert.Null);
+
+        List<AnimalDescription?> dense =
+        [
+            new AnimalDescription { Name = "dense-one" },
+            new DogDescription { Name = "dense-two", Breed = "new" },
+        ];
+        affected = await Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Animals, dense),
+                TestContext.Current.CancellationToken);
+        stored = await Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Collection(stored.Animals, Assert.NotNull, Assert.NotNull);
+
+        List<AnimalDescription?> allNull = [null, null, null];
+        affected = await Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Animals, allNull),
+                TestContext.Current.CancellationToken);
+        stored = await Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(3, stored.Animals.Count);
+        Assert.All(stored.Animals, Assert.Null);
+
+        List<AnimalDescription?> empty = [];
+        affected = await Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Animals, empty),
+                TestContext.Current.CancellationToken);
+        stored = await Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Empty(stored.Animals);
+    }
+
+    [Fact]
     public async Task DynamicComplexUpdate_ReplacesComplexAndScalarRepresentationsWithoutSyntheticIdentity()
     {
         var label = $"CommandComplexDynamic{Guid.NewGuid():N}";

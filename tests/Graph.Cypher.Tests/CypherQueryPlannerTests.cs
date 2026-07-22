@@ -67,7 +67,7 @@ public class CypherQueryPlannerTests
     [Fact]
     public void Plan_MissingPatternSizeCapabilityFailsAtTranslation()
     {
-        Expression<Func<Person, bool>> predicate = person => person.Offices.Count > 1;
+        Expression<Func<Person, bool>> predicate = person => person.Offices.Count(office => office.IsOpen) > 1;
 
         AssertMissingCapability(
             GraphCapability.PatternSizeProjection,
@@ -764,8 +764,8 @@ public class CypherQueryPlannerTests
         var where = Assert.IsType<WhereClause>(statement.Clauses[1]);
         Assert.Contains(Descendants(where.Predicate), expression => expression is PatternSubqueryExpression
         { Kind: PatternSubqueryKind.Exists });
-        Assert.Contains(Descendants(where.Predicate), expression => expression is PatternSubqueryExpression
-        { Kind: PatternSubqueryKind.Count });
+        Assert.Contains(Descendants(where.Predicate), expression => expression is PhysicalPropertyAccess
+        { Property: "__cvoya_sc:v1:c:l:T2ZmaWNlcw" });
         new CypherAstValidator().Run(statement);
     }
 

@@ -1660,12 +1660,10 @@ public interface IAdvancedQueryTests : IGraphTest
     }
 
     /// <summary>
-    /// Certifies <see cref="GraphCapability.PatternSizeProjection"/>: counting a complex-property
-    /// collection (<c>owner.Collection.Count</c>) lowers to a pattern-size subquery
-    /// (<c>COUNT { (owner)-[:PROPERTY]-&gt;() }</c>) that a provider evaluates server-side.
+    /// Certifies that counting a complex-property collection reads its logical slot count rather
+    /// than counting only the relationships for non-null values.
     /// </summary>
     [Fact]
-    [RequiresCapability(GraphCapability.PatternSizeProjection)]
     [RequiresCapability(GraphCapability.ComplexPropertyCascade)]
     public async Task CanProjectComplexCollectionSize()
     {
@@ -1684,6 +1682,19 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(quiet, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(empty, null, TestContext.Current.CancellationToken);
 
+        var sparse = new NullableComplexCollectionNode
+        {
+            Marker = $"nullable-complex-count-sparse-{Guid.NewGuid():N}",
+            Animals = [null, new DogDescription { Name = "Rover", Breed = "Collie" }, null],
+        };
+        var allNull = new NullableComplexCollectionNode
+        {
+            Marker = $"nullable-complex-count-all-null-{Guid.NewGuid():N}",
+            Animals = [null, null],
+        };
+        await this.Graph.CreateNodeAsync(sparse, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(allNull, null, TestContext.Current.CancellationToken);
+
         var sizes = await this.Graph.Nodes<Kennel>()
             .Select(k => new { k.Name, Count = k.Animals.Count })
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -1692,5 +1703,13 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Contains(sizes, s => s.Name == "Busy" && s.Count == 3);
         Assert.Contains(sizes, s => s.Name == "Quiet" && s.Count == 1);
         Assert.Contains(sizes, s => s.Name == "Empty" && s.Count == 0);
+
+        var nullableSizes = await this.Graph.Nodes<NullableComplexCollectionNode>()
+            .Where(node => node.Marker == sparse.Marker || node.Marker == allNull.Marker)
+            .Select(node => new { node.Marker, Count = node.Animals.Count })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains(nullableSizes, item => item.Marker == sparse.Marker && item.Count == 3);
+        Assert.Contains(nullableSizes, item => item.Marker == allNull.Marker && item.Count == 2);
     }
 }

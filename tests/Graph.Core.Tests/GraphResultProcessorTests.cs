@@ -410,6 +410,38 @@ public class GraphResultProcessorTests
     }
 
     [Fact]
+    public async Task NestedProjectionCollections_PreserveNullableComplexSlots()
+    {
+        var records = new[]
+        {
+            ProjectionRecord(
+                "Alice",
+                [
+                    GraphValue.Scalar(null),
+                    GraphValue.Map(new Dictionary<string, GraphValue>
+                    {
+                        ["Name"] = GraphValue.Scalar("Bob"),
+                        ["Age"] = GraphValue.Scalar(25),
+                    }),
+                    GraphValue.Scalar(null),
+                ]),
+        };
+        var materializer = new GraphResultMaterializer(factory, loggerFactory: null);
+
+        var results = await materializer.MaterializeAsync<List<NullableCollectionProjection>>(
+            records,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(results);
+        var result = Assert.Single(results);
+        Assert.Collection(
+            result.Friends,
+            Assert.Null,
+            friend => Assert.Equal("Bob", friend!.Name),
+            Assert.Null);
+    }
+
+    [Fact]
     public void WireFactories_CopyInputsAndRejectInvalidPaths()
     {
         var labels = new List<string> { "Person" };
@@ -530,6 +562,8 @@ public class GraphResultProcessorTests
         });
 
     private sealed record CollectionProjection(string Name, FriendProjection[] Friends);
+
+    private sealed record NullableCollectionProjection(string Name, FriendProjection?[] Friends);
 
     private sealed record FriendProjection(string Name, int Age);
 

@@ -125,6 +125,21 @@ public record Person : Node
 }
 ```
 
+Complex collections may declare nullable elements with normal C# nullable annotations:
+
+```csharp
+public record DeliveryRoute : Node
+{
+    public List<Address?> Stops { get; set; } = [];
+    public Address?[] AlternateStops { get; set; } = [];
+}
+```
+
+Creation, loading, replacement, and entity projection preserve the exact count, order, and null
+positions, including empty and all-null collections. Polymorphic non-null elements retain their
+runtime types. A non-nullable declaration such as `List<Address>` remains fail-closed if a runtime
+value contains null. Dynamic complex collections use `List<Dictionary<string, object?>?>`.
+
 The developer-facing type remains a value object, but its stored representation is first-class graph
 structure. Neo4j creates a separate `:Address` value node for each occurrence and connects it with
 `:HomeAddress` or `:WorkAddress`. Use
@@ -157,6 +172,9 @@ var regional = await graph.Nodes<Company>()
     .Select(c => c.Offices.Select(office => office.City))
     .ToListAsync();
 ```
+
+`Offices.Count` reads the collection's stored logical length, so null slots count even though only
+non-null values have backing graph relationships.
 
 Comparing a complex property with `null` tests whether its relationship exists; it does not read a
 scalar property from the owner node. Declared complex properties auto-load recursively with a five-level
