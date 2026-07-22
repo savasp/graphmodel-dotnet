@@ -4,12 +4,18 @@
 namespace Cvoya.Graph;
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 
 /// <summary>
 /// Registry for schema information that can be shared between strongly-typed and dynamic entities.
 /// This registry discovers and manages schema information for all INode and IRelationship types.
 /// </summary>
+/// <remarks>
+/// If an assembly can only be loaded partially, schemas from its loadable types are registered and
+/// the loader failures are written to <see cref="Trace"/>. The assembly remains eligible for discovery
+/// and is retried on a later schema miss; successfully registered types may be encountered again safely.
+/// </remarks>
 public class SchemaRegistry : IDisposable
 {
     // ConcurrentDictionary rather than Dictionary: writes only ever happen under _semaphore (so
@@ -25,7 +31,22 @@ public class SchemaRegistry : IDisposable
     private readonly ConcurrentDictionary<string, EntitySchemaInfo> _relationshipSchemas = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Assembly> _scannedAssemblies = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
+    private readonly Action<Assembly, IReadOnlyList<Exception>> _partialScanDiagnostic;
     private volatile bool _isInitialized;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SchemaRegistry"/> class.
+    /// </summary>
+    public SchemaRegistry()
+        : this(TracePartialScan)
+    {
+    }
+
+    internal SchemaRegistry(Action<Assembly, IReadOnlyList<Exception>> partialScanDiagnostic)
+    {
+        ArgumentNullException.ThrowIfNull(partialScanDiagnostic);
+        _partialScanDiagnostic = partialScanDiagnostic;
+    }
 
     /// <summary>
     /// Gets whether the schema registry has been initialized.
@@ -701,19 +722,31 @@ public class SchemaRegistry : IDisposable
         // AppDomain.AssemblyLoad so the registry has no event-subscription lifetime to manage.
         foreach (var assembly in assemblies)
         {
-            if (!_scannedAssemblies.Add(assembly))
+            if (_scannedAssemblies.Contains(assembly))
             {
                 continue;
             }
 
-            var (nodeTypes, relationshipTypes) = DiscoverGraphEntityTypes(assembly);
+            var discovery = DiscoverGraphEntityTypes(assembly);
+            if (discovery.IsComplete)
+            {
+                // Mark complete before registration so the existing fatal-collision behavior retains
+                // its scanned-assembly mark when registration throws.
+                _scannedAssemblies.Add(assembly);
+            }
+            else
+            {
+                // A later schema miss will retry this assembly. Types registered below can be
+                // encountered again safely because registration is idempotent by type identity.
+                _partialScanDiagnostic(assembly, discovery.LoaderExceptions);
+            }
 
-            foreach (var nodeType in nodeTypes)
+            foreach (var nodeType in discovery.NodeTypes)
             {
                 RegisterNodeType(nodeType, collisions);
             }
 
-            foreach (var relationshipType in relationshipTypes)
+            foreach (var relationshipType in discovery.RelationshipTypes)
             {
                 RegisterRelationshipType(relationshipType, collisions);
             }
@@ -727,19 +760,23 @@ public class SchemaRegistry : IDisposable
         }
     }
 
-    private static (List<Type> nodeTypes, List<Type> relationshipTypes) DiscoverGraphEntityTypes(Assembly assembly)
+    private static GraphEntityTypeDiscovery DiscoverGraphEntityTypes(Assembly assembly)
     {
         var nodeTypes = new List<Type>();
         var relationshipTypes = new List<Type>();
+        IReadOnlyList<Exception> loaderExceptions = [];
+        var isComplete = true;
 
         Type[] types;
         try
         {
             types = assembly.GetTypes();
         }
-        catch (ReflectionTypeLoadException)
+        catch (ReflectionTypeLoadException exception)
         {
-            return (nodeTypes, relationshipTypes);
+            types = [.. exception.Types.OfType<Type>()];
+            loaderExceptions = exception.LoaderExceptions?.OfType<Exception>().ToArray() ?? [];
+            isComplete = false;
         }
 
         foreach (var type in types.Where(static type => !type.IsAbstract && !type.IsInterface))
@@ -756,8 +793,30 @@ public class SchemaRegistry : IDisposable
             }
         }
 
-        return (nodeTypes, relationshipTypes);
+        return new GraphEntityTypeDiscovery(nodeTypes, relationshipTypes, isComplete, loaderExceptions);
     }
+
+    private static void TracePartialScan(Assembly assembly, IReadOnlyList<Exception> loaderExceptions)
+    {
+        var details = loaderExceptions.Count == 0
+            ? "No loader exception details were provided."
+            : string.Join(
+                Environment.NewLine,
+                loaderExceptions.Select(exception => $"{exception.GetType().FullName}: {exception.Message}"));
+
+        Trace.TraceWarning(
+            "Schema discovery partially loaded assembly '{0}'. Loadable graph entity types were registered; " +
+            "the assembly will be retried on a later schema miss.{1}{2}",
+            assembly.FullName,
+            Environment.NewLine,
+            details);
+    }
+
+    private sealed record GraphEntityTypeDiscovery(
+        IReadOnlyList<Type> NodeTypes,
+        IReadOnlyList<Type> RelationshipTypes,
+        bool IsComplete,
+        IReadOnlyList<Exception> LoaderExceptions);
 
     /// <summary>
     /// Disposes the semaphore used for concurrency control.
