@@ -237,7 +237,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     internal static Dictionary<string, object?> BuildElementBoundNodeProperties(EntityInfo entity)
     {
         return SerializationHelpers.SerializeSimpleProperties(entity)
-            .Where(pair => pair.Key != nameof(Graph.INode.Labels))
+            .Where(pair => pair.Key != SimpleCollectionStorageCodec.GetPayloadPropertyName(nameof(Graph.INode.Labels)) &&
+                pair.Key != SimpleCollectionStorageCodec.GetNullIndexesPropertyName(nameof(Graph.INode.Labels)) &&
+                pair.Key != SimpleCollectionStorageCodec.GetElementTypePropertyName(nameof(Graph.INode.Labels)))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
     }
 

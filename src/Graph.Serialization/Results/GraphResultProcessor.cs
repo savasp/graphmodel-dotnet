@@ -842,7 +842,9 @@ public sealed class GraphResultProcessor
             if (value is IEnumerable enumerable and not string and not byte[] and not IDictionary)
             {
                 var items = enumerable.Cast<object?>().ToList();
-                var elementType = InferDynamicCollectionElementType(items);
+                var elementType = enumerable is GraphValue.TypedGraphValueList typed
+                    ? typed.ElementType
+                    : InferDynamicCollectionElementType(items);
                 serializedValue = CreateSimpleCollection(key, items, elementType);
             }
             else

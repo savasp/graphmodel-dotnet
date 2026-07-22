@@ -43,22 +43,13 @@ internal sealed class CypherParameterBuilder
         // Use EntityFactory to serialize the entity
         var entityInfo = _entityFactory.Serialize(entity);
 
-        // Add simple properties only - complex properties are handled as separate nodes
-        foreach (var (name, property) in entityInfo.SimpleProperties)
+        // Add simple properties only - complex properties are handled as separate nodes.
+        foreach (var (name, value) in SimpleCollectionStorageCodec.EncodeProperties(
+            entityInfo.SimpleProperties,
+            omitNullPayloads: false,
+            SerializationBridge.ToAgeValue))
         {
-            if (property.Value is SimpleValue simpleValue)
-            {
-                parameters[name] = SerializationBridge.ToAgeValue(simpleValue.Object);
-            }
-            else if (property.Value is SimpleCollection simpleCollection)
-            {
-                var list = new List<object?>();
-                foreach (var item in simpleCollection.Values)
-                {
-                    list.Add(SerializationBridge.ToAgeValue(item));
-                }
-                parameters[name] = list;
-            }
+            parameters[name] = value;
         }
 
         return parameters;

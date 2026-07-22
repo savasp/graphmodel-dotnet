@@ -528,6 +528,14 @@ internal sealed class AgeEntityProjectionPass : ICypherPass
                 EscapedPropertyAccess property => new EscapedPropertyAccess(
                     Rewrite(property.Target),
                     property.Property),
+                PhysicalPropertyAccess property => new PhysicalPropertyAccess(Rewrite(property.Target), property.Property),
+                CollectionPropertyAccess property => new CollectionPropertyAccess(
+                    Rewrite(property.Target),
+                    property.Property,
+                    property.Escape),
+                CollectionContainsExpression contains => new CollectionContainsExpression(
+                    Rewrite(contains.Collection),
+                    Rewrite(contains.Item)),
                 FunctionCall function => RewriteFunction(function),
                 LabelTest label => new LabelTest(Rewrite(label.Target), label.Labels),
                 ListExpression list => new ListExpression(list.Items.Select(Rewrite).ToArray()),

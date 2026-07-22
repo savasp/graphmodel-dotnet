@@ -48,6 +48,7 @@ public sealed class AgeFullTextSearchTests
 
         Assert.Contains("jsonb_each((properties::text::jsonb))", sql, StringComparison.Ordinal);
         Assert.Contains("jsonb_typeof(age_fulltext_value.value) = 'string'", sql, StringComparison.Ordinal);
+        Assert.Contains("NOT IN ('__cvoya_sc:v1:n:', '__cvoya_sc:v1:t:')", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("age_fulltext_blob", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("NOT IN ('Id'", sql, StringComparison.Ordinal);
     }

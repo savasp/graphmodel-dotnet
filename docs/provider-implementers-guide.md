@@ -96,7 +96,7 @@ During typed materialization, a null collection element is valid only when the c
 
 #### Null-bearing simple collections
 
-`GraphCapability.NullElementsInSimpleCollections` certifies the complete logical contract: simple-property collections on typed and dynamic nodes and relationships preserve their count, order, null positions, and element type through create, replacement, read, delete, projection, and supported predicates. A provider must not declare the capability for a partial implementation.
+`GraphCapability.NullElementsInSimpleCollections` certifies the complete logical contract: simple-property collections on typed and dynamic nodes and relationships preserve their count, order, null positions, and element type through create, replacement, read, delete, and supported predicates. A provider must not declare the capability for a partial implementation.
 
 Providers whose native property lists accept null elements may keep the collection native. Neo4j property lists cannot contain nulls, so the Neo4j provider uses this versioned physical representation for every simple collection:
 
@@ -105,7 +105,9 @@ Providers whose native property lists accept null elements may keep the collecti
 - `__cvoya_sc:v1:t:<name>` stores the version-independent assembly-qualified element-type token; and
 - `<name>` in each companion is the Base64Url-encoded UTF-8 logical property name.
 
-The logical length is the payload count plus the null-index count, so leading, middle, trailing, repeated, empty, and all-null values are unambiguous. Query property access reconstructs the logical list with a server-side list expression before projection or predicate evaluation; `Contains` preserves .NET null-membership semantics. Unsupported collection operations still fail during model validation or planning, before provider I/O.
+The logical length is the payload count plus the null-index count, so leading, middle, trailing, repeated, empty, and all-null values are unambiguous. Query property access reconstructs the logical list with a server-side list expression before supported predicate evaluation; `Contains` preserves .NET null-membership semantics. Unsupported collection operations still fail during model validation or planning, before provider I/O.
+
+AGE uses the same versioned companion names and element-type token, but keeps nulls in its native payload list; its null-index companion must exactly match those native positions. The in-memory provider retains `SimpleCollection.ElementType` directly and needs no physical companions. These choices still produce the same provider-neutral typed and dynamic materialization.
 
 The namespace is collision-free for provider writes. A caller property whose logical name starts `__cvoya_sc:v1:` is stored as `__cvoya_sc:v1:u:<name>`, using the same reversible Base64Url encoding. Unreserved property names remain byte-for-byte native. Readers reverse user-name escaping, consume only a complete valid companion set, and never expose companions through typed or dynamic materialization. Entity replacement writes the payload and companions together and removes stale state; set-based property replacement writes or clears the complete set in one statement; entity deletion removes it with the owner. This is the stable-v1 representation only—there is no alpha-database reader, migration, or dual-write path.
 
@@ -430,6 +432,7 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `RelationshipPredicates` | `IQueryTraversalTests.VariableTraversal_RelationshipPredicateFiltersEveryExpandedHop`, `IQueryTraversalTests.WhereHasRelationship_RespectsDirectionPredicateAndSelfRelationships` | method | pass | pass | skip |
 | `ShortestPath` | `IQueryTraversalTests.ShortestPaths_PinSelectionEndpointDirectionNoPathAndSameNodeSemantics` | method | pass | pass | skip |
 | `SetOperations` | `IQueryTraversalTests.TypedUnionAndConcat_PinDistinctBagAndScalarProjectionSemantics` | method | pass | pass | skip |
+| `NullElementsInSimpleCollections` | `IBasicTests` and `IGraphCommandTests` null-bearing collection cases | method | pass | pass | pass |
 
 The correlated grouped-projection grammar (`GroupBy(seg => seg.StartNode).Select(g => new { … })`)
 is a shared contract, not a per-provider concern: the recognized per-member operations (`Select`,

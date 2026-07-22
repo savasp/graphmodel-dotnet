@@ -95,6 +95,14 @@ internal sealed class AgeTemporalParameterArithmeticPass : ICypherPass
                 EscapedPropertyAccess property => new EscapedPropertyAccess(
                     Rewrite(property.Target),
                     property.Property),
+                PhysicalPropertyAccess property => new PhysicalPropertyAccess(Rewrite(property.Target), property.Property),
+                CollectionPropertyAccess property => new CollectionPropertyAccess(
+                    Rewrite(property.Target),
+                    property.Property,
+                    property.Escape),
+                CollectionContainsExpression contains => new CollectionContainsExpression(
+                    Rewrite(contains.Collection),
+                    Rewrite(contains.Item)),
                 NativeElementIdentity identity => new NativeElementIdentity(Rewrite(identity.Target)),
                 FunctionCall function => RewriteFunction(function),
                 LabelTest label => new LabelTest(Rewrite(label.Target), label.Labels),

@@ -31,6 +31,16 @@ public record AtomicMutationNode : Node
     public string Marker { get; set; } = string.Empty;
 }
 
+public record NullableCollectionCommandNode : Node
+{
+    [Property(IsUnique = true)]
+    public string UniqueValue { get; set; } = string.Empty;
+
+    public string Marker { get; set; } = string.Empty;
+
+    public List<string?> Values { get; set; } = [];
+}
+
 [Node("AtomicOrdinaryIdNode")]
 #pragma warning disable CG002, CG011 // This direct implementation verifies a domain property named Id.
 public record AtomicOrdinaryIdNode : INode

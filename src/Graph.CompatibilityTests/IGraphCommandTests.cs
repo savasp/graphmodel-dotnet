@@ -10,6 +10,135 @@ using Cvoya.Graph.Querying.Commands;
 public interface IGraphCommandTests : IGraphTest
 {
     [Fact]
+    [RequiresCapability(GraphCapability.NullElementsInSimpleCollections)]
+    public async Task SimpleCollectionUpdate_PreservesNullTransitionsAndDynamicType()
+    {
+        var marker = $"command-null-collection-{Guid.NewGuid():N}";
+        var originalUniqueValue = $"collection-original-{Guid.NewGuid():N}";
+        var updatedUniqueValue = $"collection-updated-{Guid.NewGuid():N}";
+        var node = new NullableCollectionCommandNode
+        {
+            Marker = marker,
+            UniqueValue = originalUniqueValue,
+            Values = ["before"],
+        };
+        await Graph.CreateNodeAsync(node, cancellationToken: TestContext.Current.CancellationToken);
+
+        var mixed = new List<string?> { null, "middle", null, null };
+        var affected = await Graph.Nodes<NullableCollectionCommandNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Values, mixed),
+                TestContext.Current.CancellationToken);
+        var stored = await Graph.Nodes<NullableCollectionCommandNode>()
+            .SingleAsync(candidate => candidate.Marker == marker, TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(mixed, stored.Values);
+
+        affected = await Graph.Nodes<NullableCollectionCommandNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .UpdateAsync(
+                setters => setters
+                    .SetProperty(candidate => candidate.UniqueValue, updatedUniqueValue)
+                    .SetProperty(candidate => candidate.Values, mixed),
+                TestContext.Current.CancellationToken);
+        stored = await Graph.Nodes<NullableCollectionCommandNode>()
+            .SingleAsync(candidate => candidate.Marker == marker, TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(updatedUniqueValue, stored.UniqueValue);
+        Assert.Equal(mixed, stored.Values);
+
+        var allNull = new List<string?> { null, null };
+        affected = await Graph.Nodes<NullableCollectionCommandNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Values, allNull),
+                TestContext.Current.CancellationToken);
+        stored = await Graph.Nodes<NullableCollectionCommandNode>()
+            .SingleAsync(candidate => candidate.Marker == marker, TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(allNull, stored.Values);
+
+        var empty = new List<string?>();
+        affected = await Graph.Nodes<NullableCollectionCommandNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Values, empty),
+                TestContext.Current.CancellationToken);
+        stored = await Graph.Nodes<NullableCollectionCommandNode>()
+            .SingleAsync(candidate => candidate.Marker == marker, TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Empty(stored.Values);
+
+        var nonNull = new List<string?> { "after-empty" };
+        affected = await Graph.Nodes<NullableCollectionCommandNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Values, nonNull),
+                TestContext.Current.CancellationToken);
+        stored = await Graph.Nodes<NullableCollectionCommandNode>()
+            .SingleAsync(candidate => candidate.Marker == marker, TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(nonNull, stored.Values);
+
+        var occupiedUniqueValue = $"collection-occupied-{Guid.NewGuid():N}";
+        await Graph.CreateNodeAsync(
+            new NullableCollectionCommandNode
+            {
+                Marker = $"{marker}-blocker",
+                UniqueValue = occupiedUniqueValue,
+                Values = ["blocker"],
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<GraphException>(() => Graph.Nodes<NullableCollectionCommandNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .UpdateAsync(
+                setters => setters
+                    .SetProperty(candidate => candidate.UniqueValue, occupiedUniqueValue)
+                    .SetProperty(candidate => candidate.Values, new List<string?> { null, "must-not-commit" }),
+                TestContext.Current.CancellationToken));
+        stored = await Graph.Nodes<NullableCollectionCommandNode>()
+            .SingleAsync(candidate => candidate.Marker == marker, TestContext.Current.CancellationToken);
+        Assert.Equal(updatedUniqueValue, stored.UniqueValue);
+        Assert.Equal(nonNull, stored.Values);
+
+        var label = $"DynamicNullCollection{Guid.NewGuid():N}";
+        await Graph.CreateNodeAsync(
+            new DynamicNode([label], new Dictionary<string, object?> { ["value"] = new string?[] { null, "before" } }),
+            cancellationToken: TestContext.Current.CancellationToken);
+        affected = await Graph.DynamicNodes().OfLabel(label)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Properties["value"], "scalar"),
+                TestContext.Current.CancellationToken);
+        var dynamicStored = await Graph.DynamicNodes().OfLabel(label)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal("scalar", dynamicStored.Properties["value"]);
+
+        var dynamicAllNull = new int?[] { null, null, null };
+        affected = await Graph.DynamicNodes().OfLabel(label)
+            .UpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.Properties["value"], dynamicAllNull),
+                TestContext.Current.CancellationToken);
+        dynamicStored = await Graph.DynamicNodes().OfLabel(label)
+            .SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, affected);
+        Assert.Equal(dynamicAllNull, Assert.IsType<List<int?>>(dynamicStored.Properties["value"]));
+
+        var deletedTyped = await Graph.Nodes<NullableCollectionCommandNode>()
+            .Where(candidate => candidate.Marker == marker)
+            .DeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var deletedDynamic = await Graph.DynamicNodes().OfLabel(label)
+            .DeleteAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(1, deletedTyped);
+        Assert.Equal(1, deletedDynamic);
+        Assert.Null(await Graph.Nodes<NullableCollectionCommandNode>()
+            .SingleOrDefaultAsync(candidate => candidate.Marker == marker, TestContext.Current.CancellationToken));
+        Assert.Null(await Graph.DynamicNodes().OfLabel(label)
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task KeyAndUniqueUpdate_CommitsCompleteFinalStateAndExactCount()
     {
         var marker = $"command-constraint-single-{Guid.NewGuid():N}";

@@ -24,7 +24,8 @@ public sealed record GraphValue
         string? startNodeElementId,
         string? endNodeElementId,
         IReadOnlyDictionary<string, GraphValue>? entries,
-        IReadOnlyList<GraphValue>? items)
+        IReadOnlyList<GraphValue>? items,
+        Type? collectionElementType = null)
     {
         Kind = kind;
         this.scalar = scalar is byte[] bytes ? bytes.ToArray() : scalar;
@@ -35,6 +36,7 @@ public sealed record GraphValue
         EndNodeElementId = endNodeElementId;
         Entries = entries ?? EmptyMap;
         Items = items ?? [];
+        CollectionElementType = collectionElementType;
     }
 
     /// <summary>Gets this value's discriminant.</summary>
@@ -63,6 +65,8 @@ public sealed record GraphValue
 
     /// <summary>Gets list or path items.</summary>
     public IReadOnlyList<GraphValue> Items { get; }
+
+    internal Type? CollectionElementType { get; }
 
     /// <summary>Creates a scalar wire value.</summary>
     public static GraphValue Scalar(object? value)
@@ -128,6 +132,22 @@ public sealed record GraphValue
         null,
         CopyItems(items, nameof(items)));
 
+    internal static GraphValue List(IReadOnlyList<GraphValue> items, Type elementType)
+    {
+        ArgumentNullException.ThrowIfNull(elementType);
+        return new GraphValue(
+            GraphValueKind.List,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            CopyItems(items, nameof(items)),
+            elementType);
+    }
+
     /// <summary>Creates a string-keyed map wire value.</summary>
     public static GraphValue Map(IReadOnlyDictionary<string, GraphValue> entries) => new(
         GraphValueKind.Map,
@@ -169,6 +189,9 @@ public sealed record GraphValue
         {
             GraphValueKind.Scalar => ScalarValue,
             GraphValueKind.Node or GraphValueKind.Relationship => this,
+            GraphValueKind.List when CollectionElementType is not null => new TypedGraphValueList(
+                Items.Select(item => item.ToObject()),
+                CollectionElementType),
             GraphValueKind.List or GraphValueKind.Path => Items.Select(item => item.ToObject()).ToList(),
             GraphValueKind.Map => Entries.ToDictionary(pair => pair.Key, pair => pair.Value.ToObject()!, StringComparer.Ordinal),
             _ => throw new GraphException($"Unsupported graph wire value kind '{Kind}'."),
@@ -219,5 +242,10 @@ public sealed record GraphValue
         }
 
         return new ReadOnlyDictionary<string, GraphValue>(copy);
+    }
+
+    internal sealed class TypedGraphValueList(IEnumerable<object?> items, Type elementType) : List<object?>(items)
+    {
+        internal Type ElementType { get; } = elementType;
     }
 }

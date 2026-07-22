@@ -38,6 +38,7 @@ public sealed class InMemoryHarness : IGraphProviderTestHarness
         GraphCapability.RelationshipPredicates,
         GraphCapability.ShortestPath,
         GraphCapability.SetOperations,
+        GraphCapability.NullElementsInSimpleCollections,
         // The interpreter groups rows by any scalar key and runs the real projection lambda over
         // each IGrouping, so scalar-key aggregation grouping executes natively; see #306.
         GraphCapability.GroupByAggregation);

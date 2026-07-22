@@ -5,6 +5,7 @@ using System.Text;
 using Cvoya.Graph.Cypher;
 using Cvoya.Graph.Cypher.Ast;
 using Cvoya.Graph.Neo4j.Entities;
+using Cvoya.Graph.Serialization;
 
 namespace Cvoya.Graph.Neo4j.Querying.Cypher;
 
@@ -26,7 +27,8 @@ public sealed class Neo4jDialect : ICypherDialect
         GraphCapability.GroupByAggregation,
         GraphCapability.RelationshipPredicates,
         GraphCapability.ShortestPath,
-        GraphCapability.SetOperations);
+        GraphCapability.SetOperations,
+        GraphCapability.NullElementsInSimpleCollections);
 
     /// <summary>Gets the shared Neo4j dialect instance.</summary>
     public static Neo4jDialect Instance { get; } = new();
@@ -61,6 +63,12 @@ public sealed class Neo4jDialect : ICypherDialect
     public string RenderPropertyAccess(string target, string property, bool escape)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
+        if (string.IsNullOrWhiteSpace(property))
+        {
+            _ = CypherIdentifier.Escape(property, "property name");
+        }
+
+        property = SimpleCollectionStorageCodec.GetPayloadPropertyName(property);
         // A compile-time data-model property identifier (escape == false, including custom
         // [Property(Label = ...)] names) is escaped only when it is not a plain symbolic name, so
         // ordinary properties stay byte-stable while spaces/punctuation/backticks can no longer break
@@ -69,6 +77,55 @@ public sealed class Neo4jDialect : ICypherDialect
             ? CypherIdentifier.Escape(property, "property name")
             : CypherIdentifier.EscapeIfNeeded(property, "property name"))}";
     }
+
+    /// <inheritdoc/>
+    public string RenderPhysicalPropertyAccess(string target, string property)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(target);
+        return $"{target}.{CypherIdentifier.Escape(property, "physical property name")}";
+    }
+
+    /// <inheritdoc/>
+    public string RenderCollectionPropertyAccess(string target, string property, bool escape)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(target);
+        var payload = RenderPhysicalPropertyAccess(
+            target,
+            SimpleCollectionStorageCodec.GetPayloadPropertyName(property));
+        var nullIndexes = RenderPhysicalPropertyAccess(
+            target,
+            SimpleCollectionStorageCodec.GetNullIndexesPropertyName(property));
+        var logicalLength = $"size({payload}) + size({nullIndexes})";
+        return $"CASE WHEN {nullIndexes} IS NULL THEN {payload} " +
+            $"WHEN {logicalLength} = 0 THEN [] ELSE " +
+            $"[__cvoya_i IN range(0, {logicalLength} - 1) | " +
+            $"CASE WHEN __cvoya_i IN {nullIndexes} THEN null ELSE " +
+            $"{payload}[__cvoya_i - size([__cvoya_n IN {nullIndexes} WHERE __cvoya_n < __cvoya_i])] END] END";
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<CypherStoredPropertyValue> EncodePropertyValue(
+        string property,
+        Type? declaredType,
+        object? value) =>
+        SimpleCollectionStorageCodec.EncodeValue(
+                property,
+                declaredType,
+                value,
+                omitNullPayloads: true,
+                static item => item,
+                clearCollectionCompanionsForScalar: declaredType is null ||
+                    GraphDataModel.IsCollectionOfSimple(declaredType))
+            .Select(item => new CypherStoredPropertyValue(item.StorageName, item.Value))
+            .ToArray();
+
+    /// <inheritdoc/>
+    public string GetPropertyStorageName(string property) =>
+        SimpleCollectionStorageCodec.GetPayloadPropertyName(property);
+
+    /// <inheritdoc/>
+    public IReadOnlyList<string> GetPropertyCompanionStorageNames(string property) =>
+        SimpleCollectionStorageCodec.GetCompanionPropertyNames(property);
 
     /// <inheritdoc/>
     public string RenderNativeElementIdentity(string target)

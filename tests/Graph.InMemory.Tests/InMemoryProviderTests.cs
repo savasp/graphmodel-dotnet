@@ -205,5 +205,6 @@ public sealed class InMemoryProviderTests
         Assert.False(capabilities.Has(GraphCapability.OrderByEntity));
         Assert.True(capabilities.Has(GraphCapability.ShortestPath));
         Assert.True(capabilities.Has(GraphCapability.SetOperations));
+        Assert.True(capabilities.Has(GraphCapability.NullElementsInSimpleCollections));
     }
 }

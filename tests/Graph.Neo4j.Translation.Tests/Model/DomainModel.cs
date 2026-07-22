@@ -38,6 +38,8 @@ public record Person : Node
 
     public List<string> Nicknames { get; set; } = [];
 
+    public List<string?> NullableNicknames { get; set; } = [];
+
     public EmploymentStatus Status { get; set; }
 }
 

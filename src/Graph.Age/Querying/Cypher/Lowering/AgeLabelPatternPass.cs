@@ -100,6 +100,16 @@ internal sealed class AgeLabelPatternPass : ICypherPass
             EscapedPropertyAccess property => new EscapedPropertyAccess(
                 RewriteLogicalRelationshipType(property.Target),
                 property.Property),
+            PhysicalPropertyAccess property => new PhysicalPropertyAccess(
+                RewriteLogicalRelationshipType(property.Target),
+                property.Property),
+            CollectionPropertyAccess property => new CollectionPropertyAccess(
+                RewriteLogicalRelationshipType(property.Target),
+                property.Property,
+                property.Escape),
+            CollectionContainsExpression contains => new CollectionContainsExpression(
+                RewriteLogicalRelationshipType(contains.Collection),
+                RewriteLogicalRelationshipType(contains.Item)),
             FunctionCall { Name: "type", Arguments: [var target] } => LogicalRelationshipType(target),
             FunctionCall function => new FunctionCall(
                 function.Name,

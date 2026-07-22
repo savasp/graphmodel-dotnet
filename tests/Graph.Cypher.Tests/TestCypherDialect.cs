@@ -9,7 +9,8 @@ internal sealed class TestCypherDialect(
     CapabilitySet capabilities,
     string name = "TestCypher",
     IReadOnlySet<string>? clientEvaluatedFunctions = null,
-    IReadOnlySet<string>? unsupportedFunctions = null) : ICypherDialect
+    IReadOnlySet<string>? unsupportedFunctions = null,
+    bool usesCollectionCompanions = false) : ICypherDialect
 {
     public static TestCypherDialect Full { get; } = new(CapabilitySet.All);
 
@@ -26,6 +27,9 @@ internal sealed class TestCypherDialect(
     public string RenderPropertyAccess(string target, string property, bool escape) => $"{target}.{property}";
 
     public string RenderNativeElementIdentity(string target) => $"nativeId({target})";
+
+    public IReadOnlyList<string> GetPropertyCompanionStorageNames(string property) =>
+        usesCollectionCompanions ? [$"__nulls:{property}", $"__type:{property}"] : [];
 
     public string RenderFunctionName(string function) => function;
 

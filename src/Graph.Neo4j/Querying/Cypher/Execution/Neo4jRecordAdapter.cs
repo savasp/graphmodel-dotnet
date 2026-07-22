@@ -2,6 +2,7 @@
 // See LICENSE in the project root for full license terms.
 
 using System.Collections;
+using Cvoya.Graph.Serialization;
 using Cvoya.Graph.Serialization.Results;
 using global::Neo4j.Driver;
 using Neo4jNode = global::Neo4j.Driver.INode;
@@ -46,20 +47,23 @@ internal sealed class Neo4jRecordAdapter
     private GraphValue AdaptNode(Neo4jNode node) => GraphValue.Node(
         node.ElementId,
         node.Labels,
-        node.Properties.ToDictionary(
-            pair => pair.Key,
-            pair => AdaptValue(pair.Value),
-            StringComparer.Ordinal));
+        AdaptProperties(node.Properties));
 
     private GraphValue AdaptRelationship(Neo4jRelationship relationship) => GraphValue.Relationship(
         relationship.ElementId,
         relationship.Type,
         relationship.StartNodeElementId,
         relationship.EndNodeElementId,
-        relationship.Properties.ToDictionary(
-            pair => pair.Key,
-            pair => AdaptValue(pair.Value),
-            StringComparer.Ordinal));
+        AdaptProperties(relationship.Properties));
+
+    private IReadOnlyDictionary<string, GraphValue> AdaptProperties(
+        IReadOnlyDictionary<string, object> properties) =>
+        SimpleCollectionStorageCodec.DecodeProperties(
+            properties.ToDictionary(
+                pair => pair.Key,
+                pair => AdaptValue(pair.Value),
+                StringComparer.Ordinal),
+            payloadOmitsNulls: true);
 
     private GraphValue AdaptPath(IPath path)
     {

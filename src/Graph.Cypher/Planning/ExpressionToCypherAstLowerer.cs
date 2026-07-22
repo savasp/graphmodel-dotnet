@@ -139,7 +139,10 @@ internal sealed class ExpressionToCypherAstLowerer(
         var propertyName = node.Member is PropertyInfo property
             ? Labels.GetLabelFromProperty(property)
             : node.Member.Name;
-        return new PropertyAccess(target, propertyName);
+        return node.Member is PropertyInfo collectionProperty &&
+            GraphDataModel.IsCollectionOfSimple(collectionProperty.PropertyType)
+                ? new CollectionPropertyAccess(target, propertyName, escape: false)
+                : new PropertyAccess(target, propertyName);
     }
 
     private bool TryLowerStructuralGraphMember(
@@ -622,7 +625,12 @@ internal sealed class ExpressionToCypherAstLowerer(
         expression = node.Method.Name switch
         {
             "GetProperty" when node.Arguments.Count == 2 =>
-                new EscapedPropertyAccess(target, RequireConstantIdentifier(node.Arguments[1], node.Method.Name)),
+                GraphDataModel.IsCollectionOfSimple(node.Type)
+                    ? new CollectionPropertyAccess(
+                        target,
+                        RequireConstantIdentifier(node.Arguments[1], node.Method.Name),
+                        escape: true)
+                    : new EscapedPropertyAccess(target, RequireConstantIdentifier(node.Arguments[1], node.Method.Name)),
             "HasProperty" when node.Arguments.Count == 2 =>
                 new AstUnaryExpression(
                     CypherUnaryOperator.IsNotNull,
@@ -675,7 +683,10 @@ internal sealed class ExpressionToCypherAstLowerer(
                 "explicit property comparisons instead.");
         }
 
-        expression = new AstBinaryExpression(CypherBinaryOperator.In, Lower(item, aliases), Lower(source, aliases));
+        var loweredSource = Lower(source, aliases);
+        expression = loweredSource is CollectionPropertyAccess
+            ? new CollectionContainsExpression(loweredSource, Lower(item, aliases))
+            : new AstBinaryExpression(CypherBinaryOperator.In, Lower(item, aliases), loweredSource);
         return true;
     }
 

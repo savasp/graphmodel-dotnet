@@ -96,5 +96,11 @@ public enum GraphCapability
     RelationshipPredicates,
 
     /// <summary>Typed distinct union and bag-preserving concatenation of compatible query shapes.</summary>
-    SetOperations
+    SetOperations,
+
+    /// <summary>
+    /// Simple-property collections preserve null elements, their positions, and their declared
+    /// element type across persistence, materialization, updates, and supported predicates.
+    /// </summary>
+    NullElementsInSimpleCollections
 }

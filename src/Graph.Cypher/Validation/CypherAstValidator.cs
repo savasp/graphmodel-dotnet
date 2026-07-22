@@ -145,7 +145,7 @@ public sealed class CypherAstValidator : ICypherPass
                 case SetClause set:
                     foreach (var item in set.Items)
                     {
-                        if (item.Target is not PropertyAccess and not EscapedPropertyAccess)
+                        if (item.Target is not PropertyAccess and not EscapedPropertyAccess and not PhysicalPropertyAccess)
                         {
                             throw new GraphException("A Cypher SET target must be a property access.");
                         }
@@ -269,6 +269,19 @@ public sealed class CypherAstValidator : ICypherPass
 
             case EscapedPropertyAccess property:
                 ValidateExpression(property.Target, scope, parameters);
+                break;
+
+            case PhysicalPropertyAccess property:
+                ValidateExpression(property.Target, scope, parameters);
+                break;
+
+            case CollectionPropertyAccess property:
+                ValidateExpression(property.Target, scope, parameters);
+                break;
+
+            case CollectionContainsExpression contains:
+                ValidateExpression(contains.Collection, scope, parameters);
+                ValidateExpression(contains.Item, scope, parameters);
                 break;
 
             case NativeElementIdentity identity:

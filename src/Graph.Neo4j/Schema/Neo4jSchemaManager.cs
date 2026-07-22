@@ -7,6 +7,7 @@ using System.Linq;
 using Cvoya.Graph;
 using Cvoya.Graph.Neo4j.Core;
 using Cvoya.Graph.Neo4j.Querying.Cypher;
+using Cvoya.Graph.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -270,7 +271,7 @@ internal class Neo4jSchemaManager
                             Neo4jSchemaObjectKind.NodeUniquenessConstraint,
                             Neo4jSchemaEntityType.Node,
                             [label],
-                            keyPropertyNames),
+                            keyPropertyNames.Select(StoragePropertyName).ToArray()),
                         $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(keyConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE {keyExpression} IS UNIQUE"),
                     existingSchema,
                     cancellationToken).ConfigureAwait(false);
@@ -299,7 +300,7 @@ internal class Neo4jSchemaManager
                                 Neo4jSchemaObjectKind.NodeUniquenessConstraint,
                                 Neo4jSchemaEntityType.Node,
                                 [label],
-                                [propertySchema.Name]),
+                                [StoragePropertyName(propertySchema.Name)]),
                             $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(uniqueConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE {EscapedProperty("n", propertySchema.Name)} IS UNIQUE"),
                         existingSchema,
                         cancellationToken).ConfigureAwait(false);
@@ -337,7 +338,7 @@ internal class Neo4jSchemaManager
                             Neo4jSchemaObjectKind.NodePropertyExistenceConstraint,
                             Neo4jSchemaEntityType.Node,
                             [label],
-                            [propertySchema.Name]),
+                            [StoragePropertyName(propertySchema.Name)]),
                         $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(notNullConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE {EscapedProperty("n", propertySchema.Name)} IS NOT NULL"),
                     existingSchema,
                     cancellationToken).ConfigureAwait(false);
@@ -383,7 +384,7 @@ internal class Neo4jSchemaManager
                             Neo4jSchemaObjectKind.RelationshipUniquenessConstraint,
                             Neo4jSchemaEntityType.Relationship,
                             [type],
-                            keyPropertyNames),
+                            keyPropertyNames.Select(StoragePropertyName).ToArray()),
                         $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(keyConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE {keyExpression} IS UNIQUE"),
                     existingSchema,
                     cancellationToken).ConfigureAwait(false);
@@ -412,7 +413,7 @@ internal class Neo4jSchemaManager
                                 Neo4jSchemaObjectKind.RelationshipUniquenessConstraint,
                                 Neo4jSchemaEntityType.Relationship,
                                 [type],
-                                [propertySchema.Name]),
+                                [StoragePropertyName(propertySchema.Name)]),
                             $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(uniqueConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE {EscapedProperty("r", propertySchema.Name)} IS UNIQUE"),
                         existingSchema,
                         cancellationToken).ConfigureAwait(false);
@@ -442,7 +443,7 @@ internal class Neo4jSchemaManager
                             Neo4jSchemaObjectKind.RelationshipPropertyExistenceConstraint,
                             Neo4jSchemaEntityType.Relationship,
                             [type],
-                            [propertySchema.Name]),
+                            [StoragePropertyName(propertySchema.Name)]),
                         $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(notNullConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE {EscapedProperty("r", propertySchema.Name)} IS NOT NULL"),
                     existingSchema,
                     cancellationToken).ConfigureAwait(false);
@@ -899,7 +900,7 @@ internal class Neo4jSchemaManager
                         Neo4jSchemaObjectKind.RangeIndex,
                         Neo4jSchemaEntityType.Node,
                         [label],
-                        [property.Name]),
+                        [StoragePropertyName(property.Name)]),
                     $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR (n:{EscapedLabel(label)}) ON ({EscapedProperty("n", property.Name)})");
             })
             .OrderBy(index => index.Descriptor.Name, StringComparer.Ordinal)
@@ -931,7 +932,7 @@ internal class Neo4jSchemaManager
                         Neo4jSchemaObjectKind.RangeIndex,
                         Neo4jSchemaEntityType.Relationship,
                         [type],
-                        [property.Name]),
+                        [StoragePropertyName(property.Name)]),
                     $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR ()-[r:{EscapedType(type)}]-() ON ({EscapedProperty("r", property.Name)})");
             })
             .OrderBy(index => index.Descriptor.Name, StringComparer.Ordinal)
@@ -972,7 +973,7 @@ internal class Neo4jSchemaManager
                     Neo4jSchemaObjectKind.FullTextIndex,
                     Neo4jSchemaEntityType.Node,
                     orderedLabels,
-                    orderedProperties),
+                    orderedProperties.Select(StoragePropertyName).ToArray()),
                 $"CREATE FULLTEXT INDEX {NodeFullTextIndexName} FOR (n:{labelList}) ON EACH [{propertyList}]"));
         }
 
@@ -1006,7 +1007,7 @@ internal class Neo4jSchemaManager
                     Neo4jSchemaObjectKind.FullTextIndex,
                     Neo4jSchemaEntityType.Relationship,
                     orderedTypes,
-                    orderedProperties),
+                    orderedProperties.Select(StoragePropertyName).ToArray()),
                 $"CREATE FULLTEXT INDEX {RelationshipFullTextIndexName} FOR ()-[r:{typeList}]-() ON EACH [{propertyList}]"));
         }
 
@@ -1092,11 +1093,14 @@ internal class Neo4jSchemaManager
     private static string EscapedType(string type) =>
         CypherIdentifier.EscapeIfNeeded(type, "relationship type");
 
+    private static string StoragePropertyName(string propertyName) =>
+        SimpleCollectionStorageCodec.GetPayloadPropertyName(propertyName);
+
     // Property names can be custom [Property(Label = ...)] storage names containing spaces,
-    // punctuation, or backticks; escape them before interpolating into constraint/index DDL, while
-    // leaving the descriptor's stored property list on the original name for discovery comparison (#367).
+    // punctuation, backticks, or the private simple-collection prefix. Map and escape them before
+    // interpolating into DDL; descriptors use the same physical name for discovery comparison (#367).
     private static string EscapedProperty(string alias, string propertyName) =>
-        $"{alias}.{CypherIdentifier.EscapeIfNeeded(propertyName, "property name")}";
+        $"{alias}.{CypherIdentifier.EscapeIfNeeded(StoragePropertyName(propertyName), "property name")}";
 
     /// <summary>
     /// Clears the processed schemas cache and resets the initialization state.

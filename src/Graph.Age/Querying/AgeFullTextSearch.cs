@@ -9,6 +9,7 @@ using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.Age.Schema;
 using Cvoya.Graph.Age.Serialization;
 using Cvoya.Graph.Querying;
+using Cvoya.Graph.Serialization;
 
 /// <summary>
 /// Phase 1 of AGE's two-phase full-text search. PostgreSQL searches the physical AGE label tables
@@ -205,7 +206,7 @@ internal static class AgeFullTextSearch
                 .Where(property => !property.Ignore
                     && property.PropertyInfo.PropertyType == typeof(string)
                     && property.IncludeInFullTextSearch)
-                .Select(property => property.Name)
+                .Select(property => SimpleCollectionStorageCodec.GetPayloadPropertyName(property.Name))
                 .ToArray();
             if (searchable.Length > 0)
             {
@@ -285,7 +286,10 @@ internal static class AgeFullTextSearch
     private static string FallbackPredicate =>
         "to_tsvector('simple', (SELECT string_agg(age_fulltext_value.value #>> '{}', ' ') " +
         $"FROM jsonb_each({Props}) AS age_fulltext_value(key, value) " +
-        "WHERE jsonb_typeof(age_fulltext_value.value) = 'string')) " +
+        "WHERE jsonb_typeof(age_fulltext_value.value) = 'string' " +
+        $"AND left(age_fulltext_value.key, {SimpleCollectionStorageCodec.NullIndexesPrefix.Length}) " +
+        $"NOT IN ({SqlString(SimpleCollectionStorageCodec.NullIndexesPrefix)}, " +
+        $"{SqlString(SimpleCollectionStorageCodec.ElementTypePrefix)}))) " +
         "@@ plainto_tsquery('simple', @query)";
 
     private static string BuildSearchSql(

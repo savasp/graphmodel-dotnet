@@ -69,6 +69,18 @@ public class WhereTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public void Where_NullableSimpleCollectionContains_ReconstructsAndUsesNullAwareMembership()
+    {
+        var query = Root.Nodes<Person>().Where(person => person.NullableNicknames.Contains(null));
+
+        var translation = CypherTranslator.Translate(query);
+
+        Assert.Contains("__cvoya_sc:v1:n:", translation, StringComparison.Ordinal);
+        Assert.Contains("size([__cvoya_collection_item", translation, StringComparison.Ordinal);
+        Assert.DoesNotContain("client", translation, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public Task Where_ComplexPropertyNavigation()
     {
         var query = Root.Nodes<Person>().Where(p => p.HomeAddress!.City == "Seattle");
