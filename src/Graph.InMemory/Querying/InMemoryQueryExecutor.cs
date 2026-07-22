@@ -8,6 +8,7 @@ using System.Reflection;
 using Cvoya.Graph.Querying;
 using Cvoya.Graph.Querying.Commands;
 using Cvoya.Graph.Serialization;
+using Cvoya.Graph.Serialization.Results;
 
 /// <summary>
 /// Interprets a <see cref="GraphQueryModel"/> with LINQ-to-objects over one store snapshot.
@@ -1451,6 +1452,14 @@ internal sealed class InMemoryQueryExecutor(
                     throw new GraphException(
                         $"Cannot materialize null into non-nullable type '{parameters[index].ParameterType.FullName}' " +
                         $"for '{parameters[index].Name ?? $"param{index}"}'.");
+                }
+
+                if (GraphDataModel.IsCollectionOfSimple(constructionMember.Type))
+                {
+                    _ = GraphValueConverter.ConvertTo(
+                        constructionProperty.GetValue(input),
+                        parameters[index].ParameterType,
+                        parameters[index]);
                 }
             }
         }

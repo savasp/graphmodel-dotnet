@@ -86,7 +86,9 @@ public sealed class ComplianceInventoryTests
     // cases were retired with those pre-v1 surfaces.
     // +4 for #403: nullable simple collections across typed/dynamic nodes and relationships, plus
     // atomic set-based transition and rollback behavior.
-    private const int ExpectedTotalTestMethods = 478;
+    // +4 for #423/#433: nullable and non-nullable collection-element schemas across stored-property
+    // materialization and constructor projections.
+    private const int ExpectedTotalTestMethods = 482;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

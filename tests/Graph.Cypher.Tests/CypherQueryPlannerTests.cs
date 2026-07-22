@@ -664,6 +664,18 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_NamedConstructorProjection_UsesConstructorParameterAsAlias()
+    {
+        Expression<Func<Person, PersonDto>> selector = person => new PersonDto(person.Name);
+
+        var statement = planner.Plan(Model(
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector)));
+
+        var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
+        Assert.Equal(nameof(PersonDto.Name), item.Alias);
+    }
+
+    [Fact]
     public void Plan_AllocatesParametersInExpressionOrder()
     {
         Expression<Func<Person, bool>> predicate = person => person.Age >= 18 && person.Name == "Ada";

@@ -1742,7 +1742,7 @@ public sealed class CypherQueryPlanner
             {
                 var items = optionalNew.Arguments.Select((argument, index) => new ReturnItem(
                     LowerOptionalProjectionItem(argument, aliases, lowerer),
-                    optionalNew.Members?[index].Name ?? $"Property{index}"));
+                    ProjectionMemberName(optionalNew, index)));
                 return ProjectionPlan.Scalar(items.ToArray());
             }
 
@@ -1796,7 +1796,7 @@ public sealed class CypherQueryPlanner
         {
             var items = @new.Arguments.Select((argument, index) => new ReturnItem(
                 LowerProjectionItem(argument, selector, state, lowerer),
-                @new.Members?[index].Name ?? $"Property{index}"));
+                ProjectionMemberName(@new, index)));
             return ProjectionPlan.Scalar(items.ToArray());
         }
 
@@ -2758,6 +2758,11 @@ public sealed class CypherQueryPlanner
 
         return expression;
     }
+
+    private static string ProjectionMemberName(NewExpression projection, int index) =>
+        projection.Members?[index].Name
+        ?? projection.Constructor?.GetParameters()[index].Name
+        ?? $"Property{index}";
 
     private static FunctionCall Function(string name, params CypherExpression[] arguments) => new(name, arguments);
 
