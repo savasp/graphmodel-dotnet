@@ -95,6 +95,11 @@ public class GraphDataModelTypeClassificationTests
         { typeof(IEnumerable<DateOnly>), true },
         { typeof(HashSet<TimeOnly>), true },
         { typeof(List<byte[]>), true },
+        { typeof(TaggedCollection<FlatValueObject, int>), true },
+        { typeof(TaggedCollection<int, FlatValueObject>), false },
+        { typeof(SimpleItemCollection), true },
+        { typeof(ComplexItemCollection), false },
+        { typeof(AmbiguousItemCollection), false },
         { typeof(ArrayList), false },
         { typeof(List<object>), false },
         { typeof(List<List<int>>), false },
@@ -119,6 +124,11 @@ public class GraphDataModelTypeClassificationTests
         { typeof(List<RecursiveValueObject>), true },
         { typeof(List<SimpleStruct>), true },
         { typeof(List<System.Drawing.Point>), true },
+        { typeof(TaggedCollection<FlatValueObject, int>), false },
+        { typeof(TaggedCollection<int, FlatValueObject>), true },
+        { typeof(SimpleItemCollection), false },
+        { typeof(ComplexItemCollection), true },
+        { typeof(AmbiguousItemCollection), false },
         { typeof(List<List<FlatValueObject>>), false },
         { typeof(Dictionary<string, FlatValueObject>), false },
         { typeof(IDictionary<string, FlatValueObject>), false },
@@ -304,6 +314,36 @@ public class GraphDataModelTypeClassificationTests
     private sealed class RecursiveValueObject
     {
         public RecursiveValueObject? Next { get; set; }
+    }
+
+    private sealed class TaggedCollection<TTag, TItem> : IEnumerable<TItem>
+    {
+        public IEnumerator<TItem> GetEnumerator() => throw new NotSupportedException();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class SimpleItemCollection : IEnumerable<int>
+    {
+        public IEnumerator<int> GetEnumerator() => throw new NotSupportedException();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class ComplexItemCollection : IEnumerable<FlatValueObject>
+    {
+        public IEnumerator<FlatValueObject> GetEnumerator() => throw new NotSupportedException();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class AmbiguousItemCollection : IEnumerable<int>, IEnumerable<FlatValueObject>
+    {
+        IEnumerator<int> IEnumerable<int>.GetEnumerator() => throw new NotSupportedException();
+
+        IEnumerator<FlatValueObject> IEnumerable<FlatValueObject>.GetEnumerator() => throw new NotSupportedException();
+
+        IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException();
     }
 
     private sealed record AttributedNode : Node

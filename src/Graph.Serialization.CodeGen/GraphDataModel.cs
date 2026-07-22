@@ -79,36 +79,8 @@ internal static class GraphDataModel
         if (IsDictionaryType(type))
             return false;
 
-        // Handle arrays first
-        if (type is IArrayTypeSymbol arrayType)
-        {
-            return IsSimple(arrayType.ElementType);
-        }
-
-        if (type is not INamedTypeSymbol namedType)
-            return false;
-
-        // Check if it implements IEnumerable<T>
-        var enumerableInterface = namedType.AllInterfaces
-            .FirstOrDefault(i =>
-                i.IsGenericType &&
-                i.ConstructedFrom.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T);
-
-        if (enumerableInterface != null)
-        {
-            var elementType = enumerableInterface.TypeArguments.FirstOrDefault();
-            return elementType != null && IsSimple(elementType);
-        }
-
-        // Check if the type itself is IEnumerable<T>
-        if (namedType.IsGenericType &&
-            namedType.ConstructedFrom.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T)
-        {
-            var elementType = namedType.TypeArguments.FirstOrDefault();
-            return elementType != null && IsSimple(elementType);
-        }
-
-        return false;
+        var elementType = GetCollectionElementType(type);
+        return elementType is not null && IsSimple(elementType);
     }
 
     internal static bool IsCollectionOfComplex(ITypeSymbol type)
@@ -302,23 +274,36 @@ internal static class GraphDataModel
             return arrayType.ElementType;
         }
 
-        if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
+        if (type is not INamedTypeSymbol namedType)
+            return null;
+
+        // Require one distinct IEnumerable<T> element type so classification cannot depend on the
+        // order in which Roslyn returns implemented interfaces.
+        ITypeSymbol? elementType = null;
+
+        if (IsGenericEnumerable(namedType))
+            elementType = namedType.TypeArguments[0];
+
+        foreach (var interfaceType in namedType.AllInterfaces)
         {
-            var enumerableInterface = namedType.AllInterfaces
-                .FirstOrDefault(i => i.IsGenericType &&
-                                     i.ConstructedFrom.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T);
+            if (!IsGenericEnumerable(interfaceType))
+                continue;
 
-            if (enumerableInterface != null)
+            var candidate = interfaceType.TypeArguments[0];
+            if (elementType is null)
             {
-                return enumerableInterface.TypeArguments.FirstOrDefault();
+                elementType = candidate;
             }
-
-            if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T)
+            else if (!SymbolEqualityComparer.Default.Equals(elementType, candidate))
             {
-                return namedType.TypeArguments.FirstOrDefault();
+                return null;
             }
         }
 
-        return null;
+        return elementType;
     }
+
+    private static bool IsGenericEnumerable(INamedTypeSymbol type) =>
+        type.IsGenericType &&
+        type.ConstructedFrom.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T;
 }

@@ -305,14 +305,9 @@ public static class GraphDataModel
     /// </summary>
     public static bool IsCollectionOfSimple(Type type) =>
         type != typeof(string)
-        && typeof(IEnumerable).IsAssignableFrom(type) is true
         && IsDictionary(type) is false
-        && type switch
-        {
-            { IsArray: true } => IsSimple(type.GetElementType()!),
-            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } arg && IsSimple(arg),
-            _ => false
-        };
+        && GetCollectionElementType(type) is { } elementType
+        && IsSimple(elementType);
 
     /// <summary>
     /// Checks if a type is a collection of complex types. See <see cref="IsComplex(Type)"/> for what is considered a complex type.
@@ -320,14 +315,43 @@ public static class GraphDataModel
     /// </summary>
     public static bool IsCollectionOfComplex(Type type) =>
         type != typeof(string)
-        && typeof(IEnumerable).IsAssignableFrom(type) is true
         && IsDictionary(type) is false
-        && type switch
+        && GetCollectionElementType(type) is { } elementType
+        && IsComplex(elementType);
+
+    private static Type? GetCollectionElementType(Type type)
+    {
+        if (type.IsArray)
+            return type.GetElementType();
+
+        // A type can implement IEnumerable<T> more than once with different element types. Such a
+        // shape has no single element type and must not depend on reflection's interface ordering.
+        Type? elementType = null;
+
+        if (IsGenericEnumerable(type))
+            elementType = type.GetGenericArguments()[0];
+
+        foreach (var interfaceType in type.GetInterfaces())
         {
-            { IsArray: true } => IsComplex(type.GetElementType()!),
-            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } arg && IsComplex(arg),
-            _ => false
-        };
+            if (!IsGenericEnumerable(interfaceType))
+                continue;
+
+            var candidate = interfaceType.GetGenericArguments()[0];
+            if (elementType is null)
+            {
+                elementType = candidate;
+            }
+            else if (elementType != candidate)
+            {
+                return null;
+            }
+        }
+
+        return elementType;
+    }
+
+    private static bool IsGenericEnumerable(Type type) =>
+        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>);
 
     /// <summary>
     /// Checks if an object has reference cycles (true cycles, not just shared references).
@@ -522,15 +546,9 @@ public static class GraphDataModel
 
     private static bool IsCollectionOfDictionaries(Type type) =>
         type != typeof(string) &&
-        typeof(IEnumerable).IsAssignableFrom(type) &&
         !IsDictionary(type) &&
-        type switch
-        {
-            { IsArray: true } => IsDictionary(type.GetElementType()!),
-            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } itemType &&
-                IsDictionary(itemType),
-            _ => false,
-        };
+        GetCollectionElementType(type) is { } itemType &&
+        IsDictionary(itemType);
 
     /// <summary>
     /// An equality comparer that uses reference equality (<see cref="object.ReferenceEquals"/>) for comparisons.
