@@ -30,7 +30,7 @@ module CvoyaDocumentation
   end
 
   class MarkdownLinkValidator
-    INLINE_LINK = /!?\[[^\]\n]*\]\(\s*(?<target><[^>\n]+>|(?:\\.|[^)\s\n])+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\s*\)/.freeze
+    INLINE_LINK = /!?\[[^\]\n]*\]\(\s*(?<target><[^>\n]+>|(?:\\[^\n]|[^\\)\s\n])+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\s*\)/.freeze
     REFERENCE_LINK = /^\s{0,3}\[[^\]\n]+\]:\s*(?<target><[^>\n]+>|\S+)/.freeze
     HTML_LINK = /<(?:a|img|source)\b[^>]*\b(?:href|src|srcset)=["'](?<target>[^"']+)["'][^>]*>/i.freeze
     EXPLICIT_ANCHOR = /<[^>]+\b(?:id|name)=["'](?<anchor>[^"']+)["'][^>]*>/i.freeze
@@ -185,14 +185,42 @@ module CvoyaDocumentation
     end
 
     def github_slug(heading)
-      value = heading.dup
-      value.gsub!(/<[^>]+>/, "")
+      value = text_without_html_tags(heading)
       value.gsub!(/!\[([^\]]*)\]\([^)]+\)/, '\1')
       value.gsub!(/\[([^\]]+)\]\([^)]+\)/, '\1')
       value.gsub!(/[`*_~]/, "")
       value.downcase!
       value.gsub!(/[^\p{L}\p{N}\s_-]/u, "")
       value.strip.gsub(/\s+/, "-")
+    end
+
+    def text_without_html_tags(value)
+      text = +""
+      tag = nil
+      quote = nil
+
+      value.each_char do |character|
+        if tag.nil?
+          if character == "<"
+            tag = +"<"
+          else
+            text << character
+          end
+          next
+        end
+
+        tag << character
+        if quote
+          quote = nil if character == quote
+        elsif character == '"' || character == "'"
+          quote = character
+        elsif character == ">"
+          tag = nil
+        end
+      end
+
+      text << tag unless tag.nil?
+      text
     end
 
     def uri_unescape(value)

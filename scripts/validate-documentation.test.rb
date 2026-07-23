@@ -54,6 +54,25 @@ class DocumentationValidatorTest < Minitest::Test
     assert errors.any? { |error| error.include?("README.md:4:") && error.include?("anchor '#not-there'") }
   end
 
+  def test_malformed_inline_link_with_many_escapes_is_ignored_without_backtracking
+    write("README.md", "[](#{'\\!' * 10_000}\n")
+
+    errors = link_validator.validate(markdown_files)
+
+    assert_empty errors
+  end
+
+  def test_html_in_heading_is_removed_when_generating_anchor
+    write("README.md", "[Guide](docs/guide.md#release-notes)\n")
+    write("docs/guide.md", <<~MARKDOWN)
+      # <span title="1 > 0">Release</span> notes
+    MARKDOWN
+
+    errors = link_validator.validate(markdown_files)
+
+    assert_empty errors
+  end
+
   def test_checked_snippet_matches_compiled_example_region
     write("examples/Sample/Sample.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n")
     write("examples/Sample/Snippets.cs", <<~CSHARP)
