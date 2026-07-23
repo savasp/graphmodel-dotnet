@@ -268,13 +268,14 @@ internal sealed class AgeLabelPatternPass : ICypherPass
         bool optional)
     {
         var relationships = new VariableRef(alias);
+        var hasLogicalType = relationship.Types.Count > 0;
         if (relationship.Depth is null)
         {
             return ConjoinRelationshipPredicates(
-                relationship.Types.Count == 0
-                    ? null
-                    : AgeElementMatcher.RelationshipPredicate(relationships, relationship.Types),
-                StorageRelationshipPredicate(relationships, relationship.IsComplexProperty));
+                hasLogicalType
+                    ? AgeElementMatcher.RelationshipPredicate(relationships, relationship.Types)
+                    : null,
+                StorageRelationshipPredicate(relationships, relationship.IsComplexProperty, hasLogicalType));
         }
 
         if (optional)
@@ -283,10 +284,13 @@ internal sealed class AgeLabelPatternPass : ICypherPass
                 relationships,
                 ToInteger(new Literal(0)));
             return ConjoinRelationshipPredicates(
-                relationship.Types.Count == 0
-                    ? null
-                    : AgeElementMatcher.RelationshipPredicate(optionalRelationship, relationship.Types),
-                StorageRelationshipPredicate(optionalRelationship, relationship.IsComplexProperty));
+                hasLogicalType
+                    ? AgeElementMatcher.RelationshipPredicate(optionalRelationship, relationship.Types)
+                    : null,
+                StorageRelationshipPredicate(
+                    optionalRelationship,
+                    relationship.IsComplexProperty,
+                    hasLogicalType));
         }
 
         var indexes = Function(
@@ -300,10 +304,13 @@ internal sealed class AgeLabelPatternPass : ICypherPass
             relationships,
             ToInteger(new VariableRef(HopAlias)));
         var hopPredicate = ConjoinRelationshipPredicates(
-            relationship.Types.Count == 0
-                ? null
-                : AgeElementMatcher.RelationshipPredicate(relationshipAtIndex, relationship.Types),
-            StorageRelationshipPredicate(relationshipAtIndex, relationship.IsComplexProperty));
+            hasLogicalType
+                ? AgeElementMatcher.RelationshipPredicate(relationshipAtIndex, relationship.Types)
+                : null,
+            StorageRelationshipPredicate(
+                relationshipAtIndex,
+                relationship.IsComplexProperty,
+                hasLogicalType));
         if (hopPredicate is null)
         {
             return null;
@@ -357,9 +364,10 @@ internal sealed class AgeLabelPatternPass : ICypherPass
 
     private static BinaryExpression? StorageRelationshipPredicate(
         CypherExpression relationship,
-        bool isComplexProperty)
+        bool isComplexProperty,
+        bool hasLogicalType)
     {
-        if (isComplexProperty)
+        if (isComplexProperty && hasLogicalType)
         {
             return null;
         }
@@ -374,7 +382,11 @@ internal sealed class AgeLabelPatternPass : ICypherPass
                         ComplexPropertyStorage.RelationshipMarkerProperty),
                     new Literal(false),
                 ]),
-            new Literal(false));
+            new Literal(isComplexProperty));
+        if (isComplexProperty)
+        {
+            return hasExpectedMarker;
+        }
 
         var avoidsReservedStorageType = new BinaryExpression(
             CypherBinaryOperator.NotEqual,

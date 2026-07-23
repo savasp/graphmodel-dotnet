@@ -227,6 +227,29 @@ public sealed class AgeLabelPatternPassTests
                 StringSplitOptions.None).Length - 1);
     }
 
+    [Fact]
+    public void ComplexPropertyNavigationWithoutLogicalType_StaysMarkerIsolated()
+    {
+        var statement = Statement(
+            Match(
+                optional: false,
+                new NodePattern("src", []),
+                Relationship(
+                    "primary",
+                    [],
+                    isComplexProperty: true),
+                new NodePattern("address", [])),
+            Return("src"));
+
+        var rendered = renderer.Render(pass.Run(statement));
+
+        Assert.Contains(
+            "coalesce(primary.__graphModelComplexProperty, false) = true",
+            rendered.Text,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("type(primary) <> 'CvoyaRelationship'", rendered.Text, StringComparison.Ordinal);
+    }
+
     private static CypherStatement Statement(params ICypherClause[] clauses) =>
         new(clauses, new Dictionary<string, object?>(StringComparer.Ordinal));
 
