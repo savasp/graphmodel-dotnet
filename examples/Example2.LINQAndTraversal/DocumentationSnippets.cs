@@ -16,6 +16,7 @@ internal static class DocumentationSnippets
         var ageRange = await graph.Nodes<Person>()
             .Where(person => person.Age >= 28 && person.Age <= 32)
             .ToListAsync();
+        Console.WriteLine($"Found {newYorkers.Count} New Yorker(s) and {ageRange.Count} person(s) in the age range.");
         // snippet-end: query-roots
     }
 
@@ -31,6 +32,8 @@ internal static class DocumentationSnippets
             .Where(person => person.Name == "Alice")
             .Traverse<Knows, Person>(2)
             .ToListAsync();
+        Console.WriteLine(
+            $"Found {directConnections.Count} direct connection(s) and {twoHopConnections.Count} two-hop connection(s).");
         // snippet-end: traversal
     }
 
@@ -41,6 +44,7 @@ internal static class DocumentationSnippets
             .Where(person => person.Name == "Alice")
             .PathSegments<Person, Knows, Person>()
             .ToListAsync();
+        Console.WriteLine($"Found {connections.Count} path segment(s).");
         // snippet-end: path-segments
     }
 }

@@ -100,7 +100,7 @@ internal sealed class EntityReader(EntityFactory entityFactory)
                             elementType,
                             [.. children
                                 .OrderBy(item => item.SequenceNumber)
-                                .Select(item => (EntityInfo?)item.Item2)]);
+                                .Select(item => item.Item2)]);
                     }
 
                     complexProperties[name] = new Property(

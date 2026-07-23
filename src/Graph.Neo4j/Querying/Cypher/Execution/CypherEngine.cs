@@ -214,14 +214,17 @@ internal sealed class CypherEngine
             constraintPlan.Properties.Select(property => property.StorageName).ToArray(),
             acquireWriteLock: true);
         var records = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
-        var rows = records.Select(record => new GraphMutationConstraintRow(
-            global::Neo4j.Driver.ValueExtensions.As<string>(record["__nativeId"]),
-            constraintPlan.Properties.Select((property, index) => new
+        var rows = records.Select(record =>
+        {
+            var values = constraintPlan.Properties.Select((property, index) =>
             {
-                property.StorageName,
-                Value = (object?)record[CypherMutationPlanner.ConstraintValueColumn(index)],
-            })
-                .ToDictionary(item => item.StorageName, item => item.Value, StringComparer.Ordinal)))
+                object? value = record[CypherMutationPlanner.ConstraintValueColumn(index)];
+                return new KeyValuePair<string, object?>(property.StorageName, value);
+            }).ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+            return new GraphMutationConstraintRow(
+                global::Neo4j.Driver.ValueExtensions.As<string>(record["__nativeId"]),
+                values);
+        })
             .ToArray();
         GraphMutationConstraintPlan.ValidateTargetRows(nativeIdentities, rows);
         return rows;

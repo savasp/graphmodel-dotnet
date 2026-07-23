@@ -380,20 +380,23 @@ public sealed class GraphMutationModelBuilderTests
     {
         Expression<Func<InvalidCollectionConstraintMetadata, List<string>>> invalidSelector =
             metadata => metadata.Values;
+        Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>> setters =
+            builder => builder.SetProperty(person => person.Nicknames, Array.Empty<string>());
         var selection = GraphMutationModelBuilder.Build(UpdateCall(
             Root<Person>(),
-            (Expression<Func<GraphPropertySetters<Person>, GraphPropertySetters<Person>>>)(builder =>
-                builder.SetProperty(person => person.Nicknames, Array.Empty<string>())))).Selection;
+            setters)).Selection;
         var property = typeof(InvalidCollectionConstraintMetadata).GetProperty(
             nameof(InvalidCollectionConstraintMetadata.Values))!;
         var scalarProperty = typeof(InvalidCollectionConstraintMetadata).GetProperty(
             nameof(InvalidCollectionConstraintMetadata.ScalarValue))!;
+        Expression<Func<InvalidCollectionConstraintMetadata, string>> scalarSelector =
+            metadata => metadata.ScalarValue;
         var mutation = new GraphMutationModel(
             GraphMutationKind.Update,
             selection,
             [
                 new GraphConstantPropertyAssignment(
-                    (Expression<Func<InvalidCollectionConstraintMetadata, string>>)(metadata => metadata.ScalarValue),
+                    scalarSelector,
                     scalarProperty,
                     nameof(InvalidCollectionConstraintMetadata.ScalarValue),
                     dynamic: false,

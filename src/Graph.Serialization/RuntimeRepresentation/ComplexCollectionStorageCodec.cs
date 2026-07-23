@@ -94,7 +94,7 @@ internal static class ComplexCollectionStorageCodec
             // deployed-storage compatibility promise: every newly persisted collection has metadata.
             return new EntityCollection(
                 expectedElementType,
-                [.. storedEntities.OrderBy(item => item.SequenceNumber).Select(item => (EntityInfo?)item.Entity)]);
+                [.. storedEntities.OrderBy(item => item.SequenceNumber).Select(item => item.Entity)]);
         }
 
         if (expectedElementType != typeof(object) && metadata.ElementType != expectedElementType)
