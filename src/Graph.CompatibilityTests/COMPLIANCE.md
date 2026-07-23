@@ -48,3 +48,8 @@ GRAPHMODEL_COMPLIANCE_STRICT=1 dotnet test <your-test-project> --report-trx
 ```
 
 A failed run (any `Failed` count above 0, or the `ComplianceGuard` assembly fixture throwing) means the provider is not compliant with this suite version. A skip is only compliant when it carries a capability skip reason of the form `Capability '<Name>' not declared by provider '<ProviderName>' (Cvoya.Graph.CompatibilityTests <version>)` for a capability the table above marks "No" - any other skip or failure needs investigation.
+
+The strict guard also rejects a provider binding that replaces a packaged default test body. Such
+an override can execute assertions opposite to the inherited method name while recording the same
+inventory identity. Legitimate divergence must be represented by a truthfully named packaged TCK
+method and an explicit capability/expectation gate.

@@ -373,6 +373,21 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
         // it renders as a skip locally, and a failure under GRAPHMODEL_COMPLIANCE_STRICT=1.
     }
 
+    public ValueTask SeedExternalGraphAsync(IGraph graph, string marker, CancellationToken ct)
+    {
+        // Use the backend's native API (not CVOYA writes/provisioning) to create the two keyless
+        // ContractExternalNode rows and outgoing ContractExternalRelationship fixture described by
+        // IGraphProviderTestHarness. This certifies typed/dynamic/native interoperability.
+    }
+
+    public ValueTask<IReadOnlyCollection<string>> GetStoreArtifactsAsync(
+        IGraph graph,
+        CancellationToken ct)
+    {
+        // Return stable, sorted identities for backend labels/tables, indexes, constraints,
+        // functions, and equivalent infrastructure. The read-only contract compares snapshots.
+    }
+
     public ValueTask<int> CountNodesByPropertyAsync(
         IGraph graph,
         string label,
@@ -406,6 +421,7 @@ One line per suite interface (see `src/Cvoya.Graph.CompatibilityTests/I*.cs` for
 ```csharp
 public class BasicTests(MyProviderHarness h) : MyProviderTest(h), IBasicTests;
 public class FullTextSearchTests(MyProviderHarness h) : MyProviderTest(h, StoreIsolation.FreshStore), IFullTextSearchTests;
+public class ProviderContractTests(MyProviderHarness h) : MyProviderTest(h, StoreIsolation.FreshStore), IProviderContractTests;
 // ... one per interface
 ```
 
@@ -428,6 +444,10 @@ acquisition, then compares those identities with the exact capability-eligible i
 rows of one `[Theory]` still cover only that one method, and provider-specific tests cannot cover a
 missing TCK method. A failure lists every missing identity and the declared capability set. Strict
 mode also fails with a wiring error when the xUnit host does not expose the running `MethodInfo`.
+Provider binding classes must inherit default test bodies unchanged: replacing one can assert the
+opposite behavior while retaining its interface method identity, so the guard rejects every such
+mapping. Put a legitimate divergence in a truthfully named packaged TCK method and gate it with the
+applicable capability/expectation instead.
 
 ### 5. Read the results
 
@@ -450,7 +470,7 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `PatternSizeProjection` | `IAdvancedQueryTests.CanProjectRelationshipCounts` (node degree via `CountRelationships<TRel>(direction)`) | method | pass | pass | pass |
 | `MultiLabelMatch` | `IAdvancedQueryTests.CanQueryPolymorphicBaseTypeAcrossSubtypeLabels` | method | pass | pass | pass |
 | `LabelFiltering` | `IQueryTraversalTests.LabelFilters_PinSubtypeDynamicAnyAllEmptyCompositionAndSafetySemantics` | method | pass | pass | pass |
-| `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | pass |
+| `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | skip |
 | `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*`, `IQueryTraversalTests.OptionalTraverse_PreservesUnmatchedRowsAndPinsMatchDirectionAndProjectionSemantics`, `IQueryTraversalTests.OptionalTraverse_SourceLabelFilterEliminatesRowsBeforeTheLeftMatch` (also gated on `LabelFiltering`) | method | pass | pass | pass |
 | `GroupByAggregation` | `IGroupByTests` (all methods) | interface | pass | pass | pass |
 | `NestedTransactions` | _record only_ | — | — | — | — |

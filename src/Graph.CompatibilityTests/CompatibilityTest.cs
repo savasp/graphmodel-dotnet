@@ -51,7 +51,7 @@ public abstract class CompatibilityTest(
 
         graph = await harness.GetGraphAsync(isolation, TestContext.Current.CancellationToken);
 
-        ComplianceGuard.RecordExecution(testMethod, declaredCapabilities);
+        ComplianceGuard.RecordExecution(testMethod, declaredCapabilities, GetType());
     }
 
     /// <summary>

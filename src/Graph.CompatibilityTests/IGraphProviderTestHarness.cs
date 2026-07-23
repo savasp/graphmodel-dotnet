@@ -51,6 +51,39 @@ public interface IGraphProviderTestHarness : IAsyncLifetime
     ValueTask<IGraph> GetGraphAsync(StoreIsolation isolation, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Seeds the compatibility suite's external node/relationship fixture through the provider's
+    /// native storage API, bypassing CVOYA graph writes and provisioning helpers.
+    /// </summary>
+    /// <param name="graph">A graph previously returned by this harness.</param>
+    /// <param name="marker">The unique marker stored on both nodes and their relationship.</param>
+    /// <param name="cancellationToken">A cancellation token for the native seed operation.</param>
+    /// <remarks>
+    /// The seed contains two <see cref="ContractExternalNode"/> values (roles <c>source</c> and
+    /// <c>target</c>) joined by one outgoing <see cref="ContractExternalRelationship"/>. A provider
+    /// without external infrastructure, such as the in-memory reference provider, may use its
+    /// lowest-level supported write path; database providers must execute native commands without
+    /// invoking CVOYA schema or label provisioning.
+    /// </remarks>
+    ValueTask SeedExternalGraphAsync(
+        IGraph graph,
+        string marker,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Captures a stable, sorted description of backend schema/provisioning artifacts visible to
+    /// the provider test store.
+    /// </summary>
+    /// <param name="graph">A graph previously returned by this harness.</param>
+    /// <param name="cancellationToken">A cancellation token for the inspection.</param>
+    /// <returns>
+    /// Artifact identities sufficient to detect a read creating labels/tables, indexes,
+    /// constraints, functions, or equivalent provider infrastructure.
+    /// </returns>
+    ValueTask<IReadOnlyCollection<string>> GetStoreArtifactsAsync(
+        IGraph graph,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Counts store nodes carrying <paramref name="label"/> whose <paramref name="propertyName"/>
     /// value is one of <paramref name="values"/>. The compatibility suite uses this narrow probe
     /// only for store-level orphan assertions that cannot be expressed through typed

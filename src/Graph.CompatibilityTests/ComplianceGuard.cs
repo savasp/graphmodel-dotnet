@@ -31,6 +31,7 @@ public sealed class ComplianceGuard : IAsyncDisposable
 
     private static readonly Lock recordLock = new();
     private static readonly HashSet<string> executedMethodIdentities = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> providerOverrideMappings = new(StringComparer.Ordinal);
     private static long recordedCaseCount;
     private static int missingMethodMetadataCount;
     private static bool capabilitiesRecorded;
@@ -49,7 +50,12 @@ public sealed class ComplianceGuard : IAsyncDisposable
     /// <param name="method">The running test method, or <see langword="null"/> when the host did
     /// not expose method metadata.</param>
     /// <param name="declaredCapabilities">The executing provider's declared capabilities.</param>
-    internal static void RecordExecution(MethodInfo? method, CapabilitySet declaredCapabilities)
+    /// <param name="bindingType">The concrete provider test binding, when recorded by the runtime
+    /// compatibility fixture. Meta-tests may omit it when exercising only the method ledger.</param>
+    internal static void RecordExecution(
+        MethodInfo? method,
+        CapabilitySet declaredCapabilities,
+        Type? bindingType = null)
     {
         lock (recordLock)
         {
@@ -64,6 +70,10 @@ public sealed class ComplianceGuard : IAsyncDisposable
             else
             {
                 executedMethodIdentities.Add(ComplianceInventory.MethodIdentity(method));
+                if (bindingType is not null && ProviderOverrideMapping(method, bindingType) is { } mapping)
+                {
+                    providerOverrideMappings.Add(mapping);
+                }
             }
         }
     }
@@ -122,6 +132,7 @@ public sealed class ComplianceGuard : IAsyncDisposable
         {
             recordedCaseCount = 0;
             executedMethodIdentities.Clear();
+            providerOverrideMappings.Clear();
             missingMethodMetadataCount = 0;
             capabilitiesRecorded = false;
             recordedCapabilities = default;
@@ -171,6 +182,20 @@ public sealed class ComplianceGuard : IAsyncDisposable
                 "compatibility interfaces as documented.");
         }
 
+        if (snapshot.ProviderOverrideMappings.Count > 0)
+        {
+            var mappings = string.Join(
+                Environment.NewLine,
+                snapshot.ProviderOverrideMappings.Order(StringComparer.Ordinal).Select(mapping => $"  - {mapping}"));
+            throw new InvalidOperationException(
+                $"GraphModel compliance guard: {snapshot.ProviderOverrideMappings.Count} provider " +
+                "binding override(s) replaced packaged compatibility-test bodies. A provider-specific " +
+                "implementation can assert behavior opposite to the inherited method name while still " +
+                "recording the same inventory identity. Bind default test bodies unchanged; represent " +
+                "a legitimate divergence as an explicitly named, capability/expectation-gated method " +
+                $"in the packaged TCK.{Environment.NewLine}Provider override mappings:{Environment.NewLine}{mappings}");
+        }
+
         var expected = ComplianceInventory.ExpectedMethodIdentities(snapshot.DeclaredCapabilities);
         var missing = expected
             .Except(snapshot.ExecutedMethodIdentities, StringComparer.Ordinal)
@@ -201,6 +226,7 @@ public sealed class ComplianceGuard : IAsyncDisposable
             return new LedgerSnapshot(
                 recordedCaseCount,
                 executedMethodIdentities.ToHashSet(StringComparer.Ordinal),
+                providerOverrideMappings.ToHashSet(StringComparer.Ordinal),
                 missingMethodMetadataCount,
                 capabilitiesRecorded,
                 recordedCapabilities);
@@ -217,9 +243,39 @@ public sealed class ComplianceGuard : IAsyncDisposable
         return declared.Length == 0 ? "none" : string.Join(", ", declared);
     }
 
+    private static string? ProviderOverrideMapping(MethodInfo method, Type bindingType)
+    {
+        var declaringInterface = method.DeclaringType;
+        if (declaringInterface is null || !declaringInterface.IsInterface)
+        {
+            return null;
+        }
+
+        var map = bindingType.GetInterfaceMap(declaringInterface);
+        for (var index = 0; index < map.InterfaceMethods.Length; index++)
+        {
+            if (!SameMethod(map.InterfaceMethods[index], method))
+            {
+                continue;
+            }
+
+            var target = map.TargetMethods[index];
+            return SameMethod(target, method)
+                ? null
+                : $"{bindingType.FullName}: {ComplianceInventory.MethodIdentity(method)} -> " +
+                    $"{target.DeclaringType?.FullName}.{target.Name}";
+        }
+
+        return $"{bindingType.FullName}: {ComplianceInventory.MethodIdentity(method)} -> <unresolved>";
+    }
+
+    private static bool SameMethod(MethodInfo left, MethodInfo right) =>
+        left.Module == right.Module && left.MetadataToken == right.MetadataToken;
+
     private readonly record struct LedgerSnapshot(
         long RecordedCaseCount,
         IReadOnlySet<string> ExecutedMethodIdentities,
+        IReadOnlySet<string> ProviderOverrideMappings,
         int MissingMethodMetadataCount,
         bool CapabilitiesRecorded,
         CapabilitySet DeclaredCapabilities);

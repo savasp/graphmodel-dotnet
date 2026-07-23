@@ -58,6 +58,50 @@ public sealed class Neo4jHarness : IGraphProviderTestHarness
     }
 
     /// <inheritdoc/>
+    public async ValueTask SeedExternalGraphAsync(
+        IGraph graph,
+        string marker,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        ArgumentException.ThrowIfNullOrWhiteSpace(marker);
+        await using var transaction = await graph.GetTransactionAsync(cancellationToken);
+        var native = transaction as GraphTransaction
+            ?? throw new ArgumentException("The graph was not created by the Neo4j harness.", nameof(graph));
+        var result = await native.Transaction.RunAsync(
+            """
+            CREATE (source:ContractExternalNode {Marker: $marker, Role: 'source'})
+            CREATE (target:ContractExternalNode {Marker: $marker, Role: 'target'})
+            CREATE (source)-[:CONTRACT_EXTERNAL_RELATIONSHIP {Marker: $marker}]->(target)
+            """,
+            new { marker });
+        await result.ConsumeAsync();
+        await transaction.CommitAsync();
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<IReadOnlyCollection<string>> GetStoreArtifactsAsync(
+        IGraph graph,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        await using var transaction = await graph.GetTransactionAsync(cancellationToken);
+        var native = transaction as GraphTransaction
+            ?? throw new ArgumentException("The graph was not created by the Neo4j harness.", nameof(graph));
+        var indexes = await (await native.Transaction.RunAsync(
+                "SHOW INDEXES YIELD name RETURN name ORDER BY name"))
+            .ToListAsync(cancellationToken);
+        var constraints = await (await native.Transaction.RunAsync(
+                "SHOW CONSTRAINTS YIELD name RETURN name ORDER BY name"))
+            .ToListAsync(cancellationToken);
+        await transaction.CommitAsync();
+        return indexes.Select(record => $"index:{record["name"].As<string>()}")
+            .Concat(constraints.Select(record => $"constraint:{record["name"].As<string>()}"))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    /// <inheritdoc/>
     public async ValueTask<int> CountNodesByPropertyAsync(
         IGraph graph,
         string label,

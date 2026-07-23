@@ -5,4 +5,6 @@ namespace Cvoya.Graph.InMemory.Tests.GraphTests;
 
 using Cvoya.Graph.CompatibilityTests;
 
-public class ErrorHandlingTests(InMemoryHarness harness) : InMemoryTest(harness), IErrorHandlingTests;
+public sealed class ProviderContractTests(InMemoryHarness harness) :
+    InMemoryTest(harness, StoreIsolation.FreshStore),
+    IProviderContractTests;

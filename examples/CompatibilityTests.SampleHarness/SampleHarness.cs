@@ -41,6 +41,19 @@ public sealed class SampleHarness : IGraphProviderTestHarness
         throw new GraphProviderUnavailableException("The sample harness has no backing store.");
 
     /// <inheritdoc/>
+    public ValueTask SeedExternalGraphAsync(
+        IGraph graph,
+        string marker,
+        CancellationToken cancellationToken) =>
+        throw new GraphProviderUnavailableException("The sample harness has no backing store.");
+
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyCollection<string>> GetStoreArtifactsAsync(
+        IGraph graph,
+        CancellationToken cancellationToken) =>
+        throw new GraphProviderUnavailableException("The sample harness has no backing store.");
+
+    /// <inheritdoc/>
     public ValueTask<int> CountNodesByPropertyAsync(
         IGraph graph,
         string label,

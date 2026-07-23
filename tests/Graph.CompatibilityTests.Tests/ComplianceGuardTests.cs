@@ -21,6 +21,8 @@ public sealed class ComplianceGuardTests
 {
     private static readonly MethodInfo TheoryMethod = typeof(IQueryTests)
         .GetMethod(nameof(IQueryTests.CanQueryWithTakeEdgeCases))!;
+    private static readonly MethodInfo OverriddenMethod = typeof(IErrorHandlingTests)
+        .GetMethod(nameof(IErrorHandlingTests.CreateDuplicateNode_SameOrdinaryId_CreatesDistinctNodes))!;
 
     [Fact]
     public async Task DisposeAsyncCore_NotStrict_ZeroExecuted_DoesNotThrow()
@@ -128,6 +130,27 @@ public sealed class ComplianceGuardTests
     }
 
     [Fact]
+    public async Task DisposeAsyncCore_Strict_ProviderOverrideOfDefaultTest_ThrowsActionableVariantError()
+    {
+        ComplianceGuard.ResetForTesting();
+        foreach (var method in ComplianceInventory.ExpectedTestMethods(CapabilitySet.All))
+        {
+            ComplianceGuard.RecordExecution(
+                method,
+                CapabilitySet.All,
+                method == OverriddenMethod ? typeof(OppositeBehaviorBinding) : null);
+        }
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ComplianceGuard.DisposeAsyncCore(strict: true).AsTask());
+
+        Assert.Contains("provider binding override(s)", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(ComplianceInventory.MethodIdentity(OverriddenMethod), exception.Message, StringComparison.Ordinal);
+        Assert.Contains(typeof(OppositeBehaviorBinding).FullName!, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("explicitly named, capability/expectation-gated method", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RecordExecution_ConcurrentDuplicateRows_RemainsThreadSafe()
     {
         ComplianceGuard.ResetForTesting();
@@ -163,5 +186,15 @@ public sealed class ComplianceGuardTests
             () => ComplianceGuard.DisposeAsyncCore(strict: true).AsTask());
 
         Assert.Null(exception);
+    }
+
+    private sealed class OppositeBehaviorBinding : IErrorHandlingTests
+    {
+        public IGraphProviderTestHarness Harness => throw new NotSupportedException();
+
+        public IGraph Graph => throw new NotSupportedException();
+
+        Task IErrorHandlingTests.CreateDuplicateNode_SameOrdinaryId_CreatesDistinctNodes() =>
+            Task.CompletedTask;
     }
 }
