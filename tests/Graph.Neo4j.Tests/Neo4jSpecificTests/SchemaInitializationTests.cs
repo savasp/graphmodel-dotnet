@@ -87,12 +87,33 @@ public sealed class SchemaInitializationTests : Neo4jTest
             configuredIndexes,
             indexName => Assert.True(beforeIndexIds.ContainsKey(indexName), $"Missing configured index {indexName}"));
 
-        await Graph.RecreateManagedIndexesAsync(cancellationToken);
+        var schemaCommands = new List<string>();
+        using var unusedBarrier = new Barrier(1);
+        await using var recordingDriver = new SchemaCommandBarrierDriver(
+            Neo4jHarness.CreateIndependentDriver(),
+            unusedBarrier,
+            cypher =>
+            {
+                schemaCommands.Add(cypher);
+                return false;
+            });
+        await using var recordingStore = new Neo4jGraphStore(recordingDriver, harness.CurrentDatabaseName);
+
+        await recordingStore.Graph.RecreateManagedIndexesAsync(cancellationToken);
 
         var recreatedIndexes = await GetManagedIndexNamesAsync();
         var afterIndexIds = await GetIndexIdsAsync();
-        Assert.All(configuredIndexes, indexName => Assert.NotEqual(beforeIndexIds[indexName], afterIndexIds[indexName]));
         var indexStates = await GetIndexStatesAsync();
+        var expectedDropCommands = configuredIndexes
+            .Select(indexName =>
+                $"DROP INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} IF EXISTS")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        var observedDropCommands = schemaCommands
+            .Where(command => command.StartsWith("DROP INDEX ", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(expectedDropCommands, observedDropCommands);
         Assert.All(configuredIndexes, indexName => Assert.Equal("ONLINE", indexStates[indexName]));
         Assert.Equal(beforeIndexIds[staleIndexName], afterIndexIds[staleIndexName]);
         Assert.Equal(beforeIndexIds[externalRangeIndexName], afterIndexIds[externalRangeIndexName]);
@@ -102,6 +123,8 @@ public sealed class SchemaInitializationTests : Neo4jTest
         Assert.Contains(externalFullTextIndexName, recreatedIndexes);
         Assert.Contains(externalConstraintName, await GetManagedConstraintNamesAsync());
 
+        // Neo4j may reuse an internal schema ID after an index is dropped, so the observed DROP
+        // commands prove replacement while the external ID assertions prove preservation.
         var fullTextLabels = await GetIndexLabelsOrTypesAsync("node_fulltext_index");
         Assert.DoesNotContain("StaleLabel", fullTextLabels);
         Assert.Contains("Class1", fullTextLabels);
