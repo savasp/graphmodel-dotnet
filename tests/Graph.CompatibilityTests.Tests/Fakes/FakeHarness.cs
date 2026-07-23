@@ -22,6 +22,15 @@ public sealed class FakeHarness : IGraphProviderTestHarness
     public ValueTask<IGraph> GetGraphAsync(StoreIsolation isolation, CancellationToken cancellationToken) =>
         ValueTask.FromResult<IGraph>(new FakeGraph());
 
+    public ValueTask SeedExternalGraphAsync(
+        IGraph graph,
+        string marker,
+        CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+    public ValueTask<IReadOnlyCollection<string>> GetStoreArtifactsAsync(
+        IGraph graph,
+        CancellationToken cancellationToken) => ValueTask.FromResult<IReadOnlyCollection<string>>([]);
+
     public ValueTask<int> CountNodesByPropertyAsync(
         IGraph graph,
         string label,

@@ -5,7 +5,7 @@
 | Provider | `Cvoya.Graph.Age` (issue #86 implementation) |
 | Compliance suite | Repository build (`Cvoya.Graph.CompatibilityTests` 0.0.0-dev) |
 | Backing store | Apache AGE 1.7.0 / PostgreSQL 18 |
-| Date / run | 2026-07-21 / local strict certifying run; CI uses the same lane |
+| Date / run | 2026-07-22 / local strict certifying run; CI uses the same lane |
 
 ## Declared capabilities
 
@@ -25,6 +25,7 @@
 | GroupByAggregation | Yes | The shared structured `WITH` plan uses AGE-native grouping and aggregate functions. |
 | RelationshipPredicates | Yes | Per-hop predicates use indexed list filtering; anchored existence uses optional-match count stages. |
 | SetOperations | Yes | Every nested `Union`/`Concat` branch runs through the complete AGE lowering pipeline with disjoint parameters and normalized projection aliases. |
+| NullElementsInSimpleCollections | Yes | Typed storage metadata preserves element type and null positions without entering public property bags. |
 
 ## Structured Cypher lowering
 
@@ -87,6 +88,12 @@ grammar, while concrete external rows need no CVOYA metadata. Graph creation pro
 graph; an authorized write discovers or creates only the native label table it needs under the
 graph-scoped advisory lock. Read transactions verify graph existence and perform no DDL.
 
+The packaged provider-boundary contract seeds a keyless node/relationship fixture through native
+AGE commands and reads it back through typed nodes, dynamic nodes, typed/dynamic relationship
+roots, and oriented path segments. Exact public property bags exclude graphids and provider marker
+metadata. A before/after inventory of graph labels, indexes, constraints, and graph-schema
+functions proves the read path creates no store artifacts.
+
 Full-text discovery covers native logical and genuinely external tables and excludes the reserved
 `CvoyaNode` / `CvoyaRelationship` tables from root search. Registered labels use their declared
 included properties; the global all-string fallback applies only to unregistered external labels.
@@ -102,24 +109,28 @@ validation, cancellation, or database failure.
 
 | Inventory test methods | Executed | Capability-skipped | Statically skipped | Failed |
 |---|---|---|---|---|
-| 465 | 463 | 2 | 0 | 0 |
+| 501 | 499 | 2 | 0 | 0 |
 
-The compatibility inventory contains 465 runnable test methods. For this capability set,
-`ComplianceInventory.MinimumExecuted(declared)` is 463 methods and the strict compliance guard
-passes with 2 expected skips for the undeclared `ShortestPath` and `OrderByEntity` capabilities.
+The compatibility inventory contains 501 runnable test methods. For this capability set,
+`ComplianceInventory.MinimumExecuted(declared)` is 499 methods and the strict compliance guard
+passes with 2 expected skips: one for undeclared `ShortestPath` and one for undeclared
+`OrderByEntity`. The retained provider run reports 727 runtime cases: 725 passed, 2 capability
+skipped, and 0 failed.
 The provider-neutral shortest-path contract remains in `IQueryTraversalTests` and pins one/all
 shortest-path selection, endpoint direction, no-path, and same-node semantics; AGE skips that
-contract until AGE 1.8 supplies the native capability tracked by #355. Theory data rows make the
-runtime case count slightly larger than the method inventory. The provider-specific adapter,
+contract until AGE 1.8 supplies the native capability tracked by #355. Reachable shortest-path use
+is rejected before execution with `GraphQueryTranslationException`; `AgeShortestPathTranslationTests`
+pins that deterministic rejection. Theory data rows make the runtime case count larger than the
+method inventory. The provider-specific adapter,
 dialect, SQL-envelope, full-text, and security tests are excluded from the table.
 
 Reproduce:
 
 ```bash
-scripts/containers/start-age.sh
+./scripts/containers/start-age.sh
 export AGE_CONNECTION_STRING='Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres'
-DiffEngine_Disabled=true GRAPHMODEL_COMPLIANCE_STRICT=1 \
-  dotnet test tests/Graph.Age.Tests/Graph.Age.Tests.csproj --configuration Debug
+GRAPHMODEL_COMPLIANCE_STRICT=1 ./scripts/run-tests.sh --configuration Debug --lane age \
+  --disable-diff-engine --report-trx
 ```
 
 Every runtime skip counted in the capability column carries the suite's declared-capability

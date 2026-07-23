@@ -34,14 +34,15 @@ public abstract class CompatibilityTest(
             "Graph is not available: InitializeAsync has not completed, or the test was skipped.");
 
     /// <summary>
-    /// Skips the test if it requires a <see cref="GraphCapability"/> the harness does not
-    /// declare, then acquires the store from the harness and records the execution with
-    /// <see cref="ComplianceGuard"/>.
+    /// Records the provider binding, skips the test if it requires a
+    /// <see cref="GraphCapability"/> the harness does not declare, then acquires the store and
+    /// records the execution with <see cref="ComplianceGuard"/>.
     /// </summary>
     public virtual async ValueTask InitializeAsync()
     {
         var testMethod = GetTestMethod();
         var declaredCapabilities = harness.Capabilities;
+        ComplianceGuard.RecordBinding(testMethod, GetType());
 
         foreach (var capability in GetRequiredCapabilities(testMethod).Where(c => !declaredCapabilities.Has(c)))
         {

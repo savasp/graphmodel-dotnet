@@ -97,6 +97,69 @@ public sealed class AgeHarness(AgeGraphCleanupFixture graphCleanup) : IGraphProv
         }
     }
 
+    public async ValueTask SeedExternalGraphAsync(
+        IGraph graph,
+        string marker,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        ArgumentException.ThrowIfNullOrWhiteSpace(marker);
+        await using var transaction = await graph.GetTransactionAsync(cancellationToken);
+        var native = transaction as AgeGraphTransaction
+            ?? throw new ArgumentException("The graph was not created by the AGE harness.", nameof(graph));
+        await using var result = await native.Runner.RunAsync(
+            """
+            CREATE (source:ContractExternalNode)
+            SET source.Marker = $marker, source.Role = 'source'
+            CREATE (target:ContractExternalNode)
+            SET target.Marker = $marker, target.Role = 'target'
+            CREATE (source)-[relationship:CONTRACT_EXTERNAL_RELATIONSHIP]->(target)
+            SET relationship.Marker = $marker
+            RETURN true AS created
+            """,
+            new { marker },
+            cancellationToken);
+        _ = await result.SingleAsync(cancellationToken);
+        await transaction.CommitAsync();
+    }
+
+    public async ValueTask<IReadOnlyCollection<string>> GetStoreArtifactsAsync(
+        IGraph graph,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        await using var transaction = await graph.GetTransactionAsync(cancellationToken);
+        var native = transaction as AgeGraphTransaction
+            ?? throw new ArgumentException("The graph was not created by the AGE harness.", nameof(graph));
+        var artifacts = await native.Runner.QueryScalarStringsAsync(
+            """
+            SELECT artifact
+            FROM (
+                SELECT 'label:' || label.name || ':' || label.kind::text AS artifact
+                FROM ag_catalog.ag_label AS label
+                JOIN ag_catalog.ag_graph AS graph ON graph.graphid = label.graph
+                WHERE graph.name = @query
+                UNION ALL
+                SELECT 'index:' || indexname || ':' || indexdef AS artifact
+                FROM pg_indexes
+                WHERE schemaname = @query
+                UNION ALL
+                SELECT 'constraint:' || constraint_name || ':' || constraint_type AS artifact
+                FROM information_schema.table_constraints
+                WHERE constraint_schema = @query
+                UNION ALL
+                SELECT 'function:' || routine_name || ':' || coalesce(routine_definition, '') AS artifact
+                FROM information_schema.routines
+                WHERE routine_schema = @query
+            ) AS artifacts
+            ORDER BY artifact
+            """,
+            native.Runner.GraphName,
+            cancellationToken);
+        await transaction.CommitAsync();
+        return artifacts;
+    }
+
     public async ValueTask<int> CountNodesByPropertyAsync(
         IGraph graph,
         string label,

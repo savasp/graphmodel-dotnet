@@ -162,6 +162,24 @@ public interface IErrorHandlingTests : IGraphTest
     }
 
     [Fact]
+    public async Task CreateDuplicateNode_SameOrdinaryId_CreatesDistinctNodes()
+    {
+        var id = Guid.NewGuid().ToString("N");
+        await Graph.CreateNodeAsync(
+            new NodeWithOrdinaryId { Id = id, Name = "First" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(
+            new NodeWithOrdinaryId { Id = id, Name = "Second" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            2,
+            await Graph.Nodes<NodeWithOrdinaryId>()
+                .Where(node => node.Id == id)
+                .CountAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task Query_WithInvalidExpression_HandlesGracefully()
     {
         // Test with a complex expression that might cause issues
