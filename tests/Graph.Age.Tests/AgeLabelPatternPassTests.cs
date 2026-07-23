@@ -202,6 +202,31 @@ public sealed class AgeLabelPatternPassTests
         Assert.Contains("knows.__graphModelComplexProperty", rendered.Text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ComplexPropertyNavigation_AcceptsOwnedAndCollidingDomainRelationships()
+    {
+        var statement = Statement(
+            Match(
+                optional: false,
+                new NodePattern("src", []),
+                Relationship(
+                    "primary",
+                    ["ContractPrimaryAddress"],
+                    isComplexProperty: true),
+                new NodePattern("address", ["ContractAddressValue"])),
+            Return("src"));
+
+        var rendered = renderer.Render(pass.Run(statement));
+
+        Assert.Contains("type(primary) = 'ContractPrimaryAddress'", rendered.Text, StringComparison.Ordinal);
+        Assert.Contains("'ContractPrimaryAddress' IN coalesce(primary.inheritance_labels, [])", rendered.Text, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            rendered.Text.Split(
+                "primary.__graphModelComplexProperty",
+                StringSplitOptions.None).Length - 1);
+    }
+
     private static CypherStatement Statement(params ICypherClause[] clauses) =>
         new(clauses, new Dictionary<string, object?>(StringComparer.Ordinal));
 
@@ -211,8 +236,9 @@ public sealed class AgeLabelPatternPassTests
     private static RelationshipPattern Relationship(
         string? alias,
         IReadOnlyList<string> types,
-        DepthRange? depth = null) =>
-        new(alias, CypherDirection.Outgoing, depth, types);
+        DepthRange? depth = null,
+        bool isComplexProperty = false) =>
+        new(alias, CypherDirection.Outgoing, depth, types, isComplexProperty);
 
     private static ReturnClause Return(string alias) =>
         new([new ReturnItem(new VariableRef(alias), null)], distinct: false);

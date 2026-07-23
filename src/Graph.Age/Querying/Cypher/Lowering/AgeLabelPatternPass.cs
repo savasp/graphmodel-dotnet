@@ -194,10 +194,12 @@ internal sealed class AgeLabelPatternPass : ICypherPass
         {
             var pattern = match.Patterns[patternIndex];
             // Provider-owned value nodes are connected only through relationships carrying the
-            // complex-property marker. A relationship pattern already excludes those edges below,
-            // which also excludes the value nodes at either end. Keep the more expensive incoming
-            // ownership check for node-only root scans; adding it to optional/lowered traversals
-            // would turn their zero-row semantics into another correlated subquery problem.
+            // complex-property marker. Ordinary relationship patterns exclude those edges below,
+            // which also excludes the value nodes at either end. Complex-property navigation
+            // deliberately matches both owned storage edges and colliding domain edges with the
+            // declared logical type. Keep the more expensive incoming ownership check for
+            // node-only root scans; adding it to optional/lowered traversals would turn their
+            // zero-row semantics into another correlated subquery problem.
             var requiresRootIsolation = !match.Optional &&
                 !pattern.Elements.OfType<RelationshipPattern>().Any();
             var elements = new PatternElement[pattern.Elements.Count];
@@ -229,10 +231,10 @@ internal sealed class AgeLabelPatternPass : ICypherPass
                     case RelationshipPattern relationship:
                         {
                             var alias = relationship.Alias ?? aliasGenerator.NextRelationshipAlias();
-                            relationshipPredicates.Add(RelationshipPredicate(
-                                alias,
-                                relationship,
-                                match.Optional));
+                            if (RelationshipPredicate(alias, relationship, match.Optional) is { } predicate)
+                            {
+                                relationshipPredicates.Add(predicate);
+                            }
                             elements[elementIndex] = new RelationshipPattern(
                                 alias,
                                 relationship.Direction,
@@ -260,7 +262,7 @@ internal sealed class AgeLabelPatternPass : ICypherPass
         return changed ? new MatchClause(patterns, match.Optional) : match;
     }
 
-    private static CypherExpression RelationshipPredicate(
+    private static CypherExpression? RelationshipPredicate(
         string alias,
         RelationshipPattern relationship,
         bool optional)
@@ -297,14 +299,20 @@ internal sealed class AgeLabelPatternPass : ICypherPass
         var relationshipAtIndex = new IndexExpression(
             relationships,
             ToInteger(new VariableRef(HopAlias)));
+        var hopPredicate = ConjoinRelationshipPredicates(
+            relationship.Types.Count == 0
+                ? null
+                : AgeElementMatcher.RelationshipPredicate(relationshipAtIndex, relationship.Types),
+            StorageRelationshipPredicate(relationshipAtIndex, relationship.IsComplexProperty));
+        if (hopPredicate is null)
+        {
+            return null;
+        }
+
         var matchingIndexes = new ListComprehensionExpression(
             indexes,
             HopAlias,
-            predicate: ConjoinRelationshipPredicates(
-                relationship.Types.Count == 0
-                    ? null
-                    : AgeElementMatcher.RelationshipPredicate(relationshipAtIndex, relationship.Types),
-                StorageRelationshipPredicate(relationshipAtIndex, relationship.IsComplexProperty)));
+            predicate: hopPredicate);
         return new BinaryExpression(
             CypherBinaryOperator.Equal,
             Function("size", matchingIndexes),
@@ -347,10 +355,15 @@ internal sealed class AgeLabelPatternPass : ICypherPass
             new UnaryExpression(CypherUnaryOperator.Not, usesComplexStorageLabel));
     }
 
-    private static BinaryExpression StorageRelationshipPredicate(
+    private static BinaryExpression? StorageRelationshipPredicate(
         CypherExpression relationship,
         bool isComplexProperty)
     {
+        if (isComplexProperty)
+        {
+            return null;
+        }
+
         var hasExpectedMarker = new BinaryExpression(
             CypherBinaryOperator.Equal,
             new FunctionCall(
@@ -361,11 +374,7 @@ internal sealed class AgeLabelPatternPass : ICypherPass
                         ComplexPropertyStorage.RelationshipMarkerProperty),
                     new Literal(false),
                 ]),
-            new Literal(isComplexProperty));
-        if (isComplexProperty)
-        {
-            return hasExpectedMarker;
-        }
+            new Literal(false));
 
         var avoidsReservedStorageType = new BinaryExpression(
             CypherBinaryOperator.NotEqual,
@@ -377,11 +386,16 @@ internal sealed class AgeLabelPatternPass : ICypherPass
             avoidsReservedStorageType);
     }
 
-    private static CypherExpression ConjoinRelationshipPredicates(
+    private static CypherExpression? ConjoinRelationshipPredicates(
         CypherExpression? logicalType,
-        CypherExpression userRelationship) => logicalType is null
-            ? userRelationship
-            : new BinaryExpression(CypherBinaryOperator.And, logicalType, userRelationship);
+        CypherExpression? storage) => (logicalType, storage) switch
+        {
+            (null, null) => null,
+            ({ } logical, null) => logical,
+            (null, { } storagePredicate) => storagePredicate,
+            ({ } logical, { } storagePredicate) =>
+                new BinaryExpression(CypherBinaryOperator.And, logical, storagePredicate),
+        };
 
     private static CypherExpression Conjoin(List<CypherExpression> predicates) =>
         predicates.Count == 1 ? predicates[0] : new ConjunctionExpression(predicates);
