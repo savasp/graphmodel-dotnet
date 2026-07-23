@@ -93,7 +93,10 @@ public sealed class ComplianceInventoryTests
     // +1 for #520: native byte-array scalar create/read/update behavior across providers.
     // +8 for #525: composed predicate, collection-membership, expression-method, projection,
     // ordering/paging, duplicate/aggregate, terminal, and deterministic-rejection contracts.
-    private const int ExpectedTotalTestMethods = 496;
+    // +5 for #481/#498: one shared duplicate ordinary-Id creation contract plus four final
+    // provider-boundary certifications for the identity-free public shape, ordinary Id/Direction
+    // domain data, external native rows, and read-only no-provision behavior.
+    private const int ExpectedTotalTestMethods = 501;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

@@ -63,6 +63,29 @@ public sealed class InMemoryHarness : IGraphProviderTestHarness
         return ValueTask.FromResult(store.Graph);
     }
 
+    public async ValueTask SeedExternalGraphAsync(
+        IGraph graph,
+        string marker,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        ArgumentException.ThrowIfNullOrWhiteSpace(marker);
+        await graph.CreateAsync(
+            new ContractExternalNode { Marker = marker, Role = "source" },
+            new ContractExternalRelationship { Marker = marker },
+            new ContractExternalNode { Marker = marker, Role = "target" },
+            cancellationToken: cancellationToken);
+    }
+
+    public ValueTask<IReadOnlyCollection<string>> GetStoreArtifactsAsync(
+        IGraph graph,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<IReadOnlyCollection<string>>([]);
+    }
+
     public ValueTask<int> CountNodesByPropertyAsync(
         IGraph graph,
         string label,

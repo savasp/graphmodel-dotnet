@@ -21,6 +21,10 @@ public sealed class ComplianceGuardTests
 {
     private static readonly MethodInfo TheoryMethod = typeof(IQueryTests)
         .GetMethod(nameof(IQueryTests.CanQueryWithTakeEdgeCases))!;
+    private static readonly MethodInfo OverriddenMethod = typeof(IErrorHandlingTests)
+        .GetMethod(nameof(IErrorHandlingTests.CreateDuplicateNode_SameOrdinaryId_CreatesDistinctNodes))!;
+    private static readonly MethodInfo CapabilityGatedMethod = typeof(IFullTextSearchTests)
+        .GetMethod(nameof(IFullTextSearchTests.CanSearchNodesWithFullTextSearch))!;
 
     [Fact]
     public async Task DisposeAsyncCore_NotStrict_ZeroExecuted_DoesNotThrow()
@@ -128,6 +132,60 @@ public sealed class ComplianceGuardTests
     }
 
     [Fact]
+    public async Task DisposeAsyncCore_Strict_ProviderOverrideOfDefaultTest_ThrowsActionableVariantError()
+    {
+        ComplianceGuard.ResetForTesting();
+        ComplianceGuard.RecordBinding(OverriddenMethod, typeof(OppositeBehaviorBinding));
+        foreach (var method in ComplianceInventory.ExpectedTestMethods(CapabilitySet.All))
+        {
+            ComplianceGuard.RecordExecution(method, CapabilitySet.All);
+        }
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ComplianceGuard.DisposeAsyncCore(strict: true).AsTask());
+
+        Assert.Contains("provider binding override(s)", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(ComplianceInventory.MethodIdentity(OverriddenMethod), exception.Message, StringComparison.Ordinal);
+        Assert.Contains(typeof(OppositeBehaviorBinding).FullName!, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("explicitly named, capability/expectation-gated method", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DisposeAsyncCore_Strict_ProviderOverrideHiddenByCapabilitySkip_Throws()
+    {
+        ComplianceGuard.ResetForTesting();
+        var declared = CapabilitySet.All.Except(GraphCapability.FullTextSearch);
+        ComplianceGuard.RecordBinding(CapabilityGatedMethod, typeof(OppositeFullTextBehaviorBinding));
+        foreach (var method in ComplianceInventory.ExpectedTestMethods(declared))
+        {
+            ComplianceGuard.RecordExecution(method, declared);
+        }
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ComplianceGuard.DisposeAsyncCore(strict: true).AsTask());
+
+        Assert.Contains("provider binding override(s)", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(ComplianceInventory.MethodIdentity(CapabilityGatedMethod), exception.Message, StringComparison.Ordinal);
+        Assert.Contains(typeof(OppositeFullTextBehaviorBinding).FullName!, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DisposeAsyncCore_Strict_InheritedDefaultTestBody_IsNotReportedAsOverride()
+    {
+        ComplianceGuard.ResetForTesting();
+        ComplianceGuard.RecordBinding(OverriddenMethod, typeof(InheritedBehaviorBinding));
+        foreach (var method in ComplianceInventory.ExpectedTestMethods(CapabilitySet.All))
+        {
+            ComplianceGuard.RecordExecution(method, CapabilitySet.All);
+        }
+
+        var exception = await Record.ExceptionAsync(
+            () => ComplianceGuard.DisposeAsyncCore(strict: true).AsTask());
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void RecordExecution_ConcurrentDuplicateRows_RemainsThreadSafe()
     {
         ComplianceGuard.ResetForTesting();
@@ -163,5 +221,32 @@ public sealed class ComplianceGuardTests
             () => ComplianceGuard.DisposeAsyncCore(strict: true).AsTask());
 
         Assert.Null(exception);
+    }
+
+    private sealed class OppositeBehaviorBinding : IErrorHandlingTests
+    {
+        public IGraphProviderTestHarness Harness => throw new NotSupportedException();
+
+        public IGraph Graph => throw new NotSupportedException();
+
+        Task IErrorHandlingTests.CreateDuplicateNode_SameOrdinaryId_CreatesDistinctNodes() =>
+            Task.CompletedTask;
+    }
+
+    private sealed class OppositeFullTextBehaviorBinding : IFullTextSearchTests
+    {
+        public IGraphProviderTestHarness Harness => throw new NotSupportedException();
+
+        public IGraph Graph => throw new NotSupportedException();
+
+        Task IFullTextSearchTests.CanSearchNodesWithFullTextSearch() =>
+            Task.CompletedTask;
+    }
+
+    private sealed class InheritedBehaviorBinding : IErrorHandlingTests
+    {
+        public IGraphProviderTestHarness Harness => throw new NotSupportedException();
+
+        public IGraph Graph => throw new NotSupportedException();
     }
 }

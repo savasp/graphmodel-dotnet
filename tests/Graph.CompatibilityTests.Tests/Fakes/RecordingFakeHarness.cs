@@ -34,6 +34,15 @@ internal sealed class RecordingFakeHarness : IGraphProviderTestHarness
         return ValueTask.FromResult<IGraph>(new FakeGraph(() => Events.Add("store-dispose")));
     }
 
+    public ValueTask SeedExternalGraphAsync(
+        IGraph graph,
+        string marker,
+        CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+    public ValueTask<IReadOnlyCollection<string>> GetStoreArtifactsAsync(
+        IGraph graph,
+        CancellationToken cancellationToken) => ValueTask.FromResult<IReadOnlyCollection<string>>([]);
+
     public ValueTask<int> CountNodesByPropertyAsync(
         IGraph graph,
         string label,

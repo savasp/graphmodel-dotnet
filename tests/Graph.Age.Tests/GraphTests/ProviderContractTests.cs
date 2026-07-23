@@ -5,4 +5,6 @@ namespace Cvoya.Graph.Age.Tests.GraphTests;
 
 using Cvoya.Graph.CompatibilityTests;
 
-public class TransactionTests(AgeHarness harness) : AgeTest(harness), ITransactionTests;
+public sealed class ProviderContractTests(AgeHarness harness) :
+    AgeTest(harness, StoreIsolation.FreshStore),
+    IProviderContractTests;

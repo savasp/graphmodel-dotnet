@@ -28,6 +28,11 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
     public ValueTask DisposeAsync() => /* release it */;
     public ValueTask<IGraph> GetGraphAsync(StoreIsolation isolation, CancellationToken ct) =>
         /* return an IGraph over an empty store */;
+    public ValueTask SeedExternalGraphAsync(IGraph graph, string marker, CancellationToken ct) =>
+        /* seed ContractExternalNode/Relationship through the provider-native API */;
+    public ValueTask<IReadOnlyCollection<string>> GetStoreArtifactsAsync(
+        IGraph graph, CancellationToken ct) =>
+        /* stable backend label/table/index/constraint/function inventory */;
     public ValueTask<int> CountNodesByPropertyAsync(
         IGraph graph, string label, string propertyName, IReadOnlyCollection<string> values,
         CancellationToken ct) =>
@@ -43,6 +48,7 @@ public abstract class MyProviderTest(MyProviderHarness harness)
 // 3. Bind each suite interface - one line per interface.
 public class BasicTests(MyProviderHarness h) : MyProviderTest(h), IBasicTests;
 public class QueryTests(MyProviderHarness h) : MyProviderTest(h), IQueryTests;
+public class ProviderContractTests(MyProviderHarness h) : MyProviderTest(h), IProviderContractTests;
 // ... and so on for the rest of the I*Tests interfaces.
 ```
 
@@ -56,7 +62,7 @@ skeleton.
 - **Harness SPI** - `IGraphProviderTestHarness`, `StoreIsolation`, `GraphProviderUnavailableException`
 - **`CompatibilityTest`** - the shared base class that runs the capability-skip/acquire/dispose choreography once; infrastructure failures always fail
 - **`RequiresCapabilityAttribute`** - marks tests/interfaces that need an optional `GraphCapability`
-- **`ComplianceGuard`** / **`ComplianceInventory`** - the method-identity guard (`GRAPHMODEL_COMPLIANCE_STRICT=1`) that requires every capability-eligible contract method and lists any missing bindings; repeated theory rows do not increase coverage
+- **`ComplianceGuard`** / **`ComplianceInventory`** - the method-identity guard (`GRAPHMODEL_COMPLIANCE_STRICT=1`) that requires every capability-eligible contract method, rejects provider replacements of packaged default test bodies, and lists any missing bindings; repeated theory rows do not increase coverage
 - The `I*Tests` interfaces themselves - the actual contract, as default-implemented xUnit test methods
 
 ## 🔧 Capabilities
