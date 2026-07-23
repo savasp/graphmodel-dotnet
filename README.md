@@ -291,6 +291,13 @@ dotnet msbuild eng/PackageValidation.proj -target:Validate
 See [CONTRIBUTING.md](CONTRIBUTING.md), [tests/README.md](tests/README.md), and the
 [build-system guide](docs/graph-model-developers.md) for the lane and service details.
 
+## Contributors
+
+CVOYA Graph thanks [Paul Jeschke (`@paule96`)](https://github.com/paule96) for contributing the
+original PostgreSQL + Apache AGE provider in
+[pull request #66](https://github.com/cvoya-com/graph/pull/66). His work helped shape the
+provider-neutral architecture and the AGE provider included today.
+
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
