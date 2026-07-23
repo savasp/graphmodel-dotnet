@@ -254,7 +254,7 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
     public async Task UpdateCleanup_RemovesOnlyComplexValue_DomainRelationshipAndNodeSurvive()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var (owner, domainNode, domainRelationship) = await SeedCollisionAsync(
+        var (owner, domainNode, _) = await SeedCollisionAsync(
             complexCity: "Complex Seattle",
             domainCity: "Domain Portland",
             cancellationToken);

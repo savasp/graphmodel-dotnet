@@ -25,6 +25,7 @@ internal static class DocumentationSnippets
             .Where(person => person.Department == "Engineering")
             .ToListAsync();
         // snippet-end: query
+        Console.WriteLine($"Found {engineers.Count} engineer(s).");
     }
 
     private static async Task UpdateAndDeleteAsync(IGraph graph, Person alice)
