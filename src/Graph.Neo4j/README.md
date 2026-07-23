@@ -14,7 +14,9 @@
 dotnet add package Cvoya.Graph.Neo4j
 ```
 
+<!-- checked-snippet: examples/Playground/Documentation/UsingDirectives.cs#neo4j-usings; examples/Playground/DocumentationSnippets.cs#neo4j-quick-start -->
 ```csharp
+using Cvoya.Graph;
 using Cvoya.Graph.Neo4j;
 
 // Configure connection

@@ -18,7 +18,9 @@ sets the required `ag_catalog` search path on every pooled connection.
 
 ## Connect
 
+<!-- checked-snippet: examples/Playground/Documentation/UsingDirectives.cs#age-usings; examples/Playground/DocumentationSnippets.cs#age-quick-start -->
 ```csharp
+using Cvoya.Graph;
 using Cvoya.Graph.Age;
 
 await using var store = new AgeGraphStore(

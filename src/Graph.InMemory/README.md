@@ -14,7 +14,9 @@ An in-process, in-memory provider for the CVOYA graph abstraction. It exists for
 
 ## Usage
 
+<!-- checked-snippet: examples/Playground/Documentation/UsingDirectives.cs#in-memory-usings; examples/Playground/DocumentationSnippets.cs#in-memory-quick-start -->
 ```csharp
+using Cvoya.Graph;
 using Cvoya.Graph.InMemory;
 
 await using var store = new InMemoryGraphStore();

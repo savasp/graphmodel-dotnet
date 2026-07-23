@@ -74,9 +74,11 @@ Voyage uses.
      is stored anywhere, long-lived or otherwise.
    - Creates a fixed-name `cvoya-graph-source.zip` archive from the tagged
      commit and attaches it to the GitHub Release alongside the NuGet packages.
-   - Creates a CVOYA-branded GitHub Release for the tag, prepending the product,
-     publisher, download, and package-ID migration information to GitHub's
-     auto-generated notes.
+   - Creates a CVOYA-branded GitHub Release for the tag. When
+     `developer/release-notes/<TAG>.md` exists, that reviewed version-specific
+     introduction is prepended to GitHub's auto-generated notes; otherwise the
+     workflow uses the generic product, publisher, download, and package-ID
+     migration introduction.
    - Builds the complete documentation site from that same tagged commit, records
      the release tag, tag-derived version, and commit in `/release.json`, and
      deploys the resulting immutable artifact only after package publication and
@@ -214,8 +216,9 @@ push.
   `--no-build` reuses earlier output. The release workflow deliberately builds
   once and then packs with `--no-build`, while the package verifier checks the
   DLL metadata so stale or mismatched output cannot publish.
-- **No `CHANGELOG.md`.** A short CVOYA-branded release introduction is
-  prepended to GitHub's auto-generated notes (derived from merged PR titles
-  since the previous tag).
+- **No `CHANGELOG.md`.** A reviewed version-specific introduction under
+  `developer/release-notes/` is used when present, with a short CVOYA-branded
+  fallback for other tags. The introduction is prepended to GitHub's
+  auto-generated notes (derived from merged PR titles since the previous tag).
 - **No NuGet API key anywhere**, cleartext or secret-stored — Trusted
   Publishing is the only supported publish mechanism.

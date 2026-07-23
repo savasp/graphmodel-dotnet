@@ -606,7 +606,14 @@ jobs:
             echo "Release $GITHUB_REF_NAME already exists; re-uploading assets."
             gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
           else
-            args=(release create "$GITHUB_REF_NAME" "${files[@]}" --title "CVOYA Graph $GITHUB_REF_NAME" --generate-notes --notes "$RELEASE_INTRO")
+            release_intro="$RELEASE_INTRO"
+            release_notes_file="developer/release-notes/${GITHUB_REF_NAME}.md"
+            if [[ -f "$release_notes_file" ]]; then
+              echo "Using version-specific release notes from $release_notes_file."
+              release_intro="$(<"$release_notes_file")"
+            fi
+
+            args=(release create "$GITHUB_REF_NAME" "${files[@]}" --title "CVOYA Graph $GITHUB_REF_NAME" --generate-notes --notes "$release_intro")
             if [[ "$IS_PRERELEASE" == "true" ]]; then
               args+=(--prerelease)
             fi

@@ -172,6 +172,24 @@ It removes only `artifacts/package-validation/`; user sources and caches are unt
 
 ## 📚 Documentation Build Scripts
 
+### `validate-documentation.sh` (Bash)
+
+Runs deterministic source validation before the site generators:
+
+- validates repository-local Markdown files and heading anchors without crawling external sites;
+- proves the validator rejects broken-link and stale-snippet fixtures with file/line diagnostics;
+- checks every `<!-- checked-snippet: examples/...#region -->` fence against its named compiled
+  source region; and
+- discovers and builds every project under `examples/`.
+
+Important quick-start, provider, CRUD, and query snippets use checked regions. Edit the example
+source first, then copy the marked region into the adjacent Markdown fence; CI reports the first
+line that differs.
+
+```bash
+./scripts/validate-documentation.sh Debug
+```
+
 ### `build-docs.sh` (Bash)
 
 A Bash script for building XML documentation from all source projects.

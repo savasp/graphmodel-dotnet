@@ -7,6 +7,7 @@ Neo4j provider.
 
 Query roots are synchronous. Async terminals execute them:
 
+<!-- checked-snippet: examples/Example2.LINQAndTraversal/DocumentationSnippets.cs#query-roots -->
 ```csharp
 var newYorkers = await graph.Nodes<Person>()
     .Where(person => person.City == "New York")
@@ -22,6 +23,7 @@ var ageRange = await graph.Nodes<Person>()
 
 `Traverse` returns reached nodes. Its optional depth argument controls the number of hops:
 
+<!-- checked-snippet: examples/Example2.LINQAndTraversal/DocumentationSnippets.cs#traversal -->
 ```csharp
 var directConnections = await graph.Nodes<Person>()
     .Where(person => person.Name == "Alice")
@@ -36,6 +38,7 @@ var twoHopConnections = await graph.Nodes<Person>()
 
 Use path segments when relationship data, endpoints, or physical edge orientation matters:
 
+<!-- checked-snippet: examples/Example2.LINQAndTraversal/DocumentationSnippets.cs#path-segments -->
 ```csharp
 var connections = await graph.Nodes<Person>()
     .Where(person => person.Name == "Alice")
