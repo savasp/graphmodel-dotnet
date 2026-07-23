@@ -6,7 +6,7 @@ namespace Cvoya.Graph.CompatibilityTests.SampleHarness;
 using Cvoya.Graph.CompatibilityTests;
 
 /// <summary>
-/// Doc-shaped skeleton showing what a provider implements to certify against the GraphModel
+/// Doc-shaped skeleton showing what a provider implements to certify against CVOYA Graph
 /// compatibility suite. This harness has no real backing store - <see cref="GetGraphAsync"/>
 /// always throws <see cref="GraphProviderUnavailableException"/> - so binding classes here compile
 /// against the suite but every test they inherit skips or fails when actually run. See

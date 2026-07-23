@@ -1,173 +1,159 @@
 ---
 ---
 
-# Transaction Management
+# Transaction management
 
-Graph Model provides comprehensive transaction support with full async/await patterns to ensure ACID properties and data consistency in your graph operations.
+`IGraphTransaction` groups queries and writes against one provider-owned transaction. It supports
+explicit commit, explicit rollback, cancellation, and async disposal.
 
-## Key Features
-
-- **Full ACID compliance** - Atomicity, Consistency, Isolation, and Durability
-- **Async/await support** - Modern asynchronous transaction patterns
-- **Automatic resource management** - Implements `IAsyncDisposable` and `IDisposable`
-- **Exception safety** - Automatic rollback on errors
-- **Flexible scope** - All operations support optional transaction parameters
-
-## Basic Transaction Usage
-
-### Simple Transaction Pattern
+## Basic pattern
 
 ```csharp
-await using var transaction = await graph.GetTransactionAsync();
+await using var transaction = await graph.GetTransactionAsync(cancellationToken);
 try
 {
-    // Perform your operations within the transaction
-    await graph.CreateNodeAsync(person, transaction: transaction);
-    await graph.CreateNodeAsync(company, transaction: transaction);
+    await graph.CreateNodeAsync(
+        new Account
+        {
+            AccountNumber = "ACC-001",
+            Owner = "Alice",
+            Balance = 1_000m,
+        },
+        transaction,
+        cancellationToken);
 
-    var worksAt = new WorksIn(person.Id, company.Id);
-    await graph.CreateRelationshipAsync(worksAt, transaction: transaction);
-
-    // Explicitly commit if all operations succeed
     await transaction.CommitAsync();
 }
-catch (Exception ex)
+catch
 {
-    // Automatic rollback on any error
     await transaction.RollbackAsync();
     throw;
 }
 ```
 
-### Automatic Disposal Pattern
+Disposal cleans up an uncommitted transaction, but explicit rollback in an error path makes the
+intent and any rollback failure visible.
 
-Transactions implement `IAsyncDisposable`, providing automatic rollback if not explicitly committed:
+## Transaction-bound queries
+
+Pass the transaction when creating every query root that must participate:
 
 ```csharp
-await using (var transaction = await graph.GetTransactionAsync())
-{
-    await graph.CreateNodeAsync(node, transaction: transaction);
-    var existingPerson = await graph.GetNodeAsync<Person>(id, transaction: transaction);
-    await graph.UpdateNodeAsync(existingPerson, transaction: transaction);
+await using var transaction = await graph.GetTransactionAsync(cancellationToken);
 
-    if (!string.IsNullOrEmpty(existingPerson.Email))
+var alice = graph.Nodes<Account>(transaction)
+    .Where(account => account.AccountNumber == "ACC-001");
+var bob = graph.Nodes<Account>(transaction)
+    .Where(account => account.AccountNumber == "ACC-002");
+
+var aliceBalance = await alice
+    .Select(account => account.Balance)
+    .SingleAsync(cancellationToken);
+var bobBalance = await bob
+    .Select(account => account.Balance)
+    .SingleAsync(cancellationToken);
+
+await alice.UpdateAsync(
+    setters => setters.SetProperty(
+        account => account.Balance,
+        aliceBalance - 100m),
+    cancellationToken);
+await bob.UpdateAsync(
+    setters => setters.SetProperty(
+        account => account.Balance,
+        bobBalance + 100m),
+    cancellationToken);
+
+await transaction.CommitAsync();
+```
+
+A query created without `graph.Nodes<T>(transaction)` owns a separate execution transaction. It
+does not silently join another open transaction.
+
+## Relationship creation
+
+Selected endpoints and relationship creation share the active transaction when both selections
+come from transaction-bound roots:
+
+```csharp
+var source = graph.Nodes<Account>(transaction)
+    .Where(account => account.AccountNumber == "ACC-001");
+var target = graph.Nodes<Account>(transaction)
+    .Where(account => account.AccountNumber == "ACC-002");
+
+await graph.CreateRelationshipAsync(
+    source,
+    new Transfer
     {
-        await transaction.CommitAsync();
-    }
-    // If not committed, transaction automatically rolls back on disposal
-}
+        Amount = 100m,
+        Timestamp = DateTime.UtcNow,
+    },
+    target,
+    cancellationToken: cancellationToken);
 ```
 
-## Transaction Scope
+Each selection must resolve to exactly one node inside the transaction. The provider freezes the
+selections before creating the edge, so no detached endpoint ID is required.
 
-All graph operations support an optional transaction parameter:
-
-### Node Operations
+All-new subgraphs accept the transaction directly:
 
 ```csharp
-await using var transaction = await graph.GetTransactionAsync();
-
-// Create
-var newPerson = new Person { FirstName = "Alice" };
-await graph.CreateNodeAsync(newPerson, transaction: transaction);
-
-// Read
-var existingPerson = await graph.GetNodeAsync<Person>(id, transaction: transaction);
-
-// Update
-existingPerson.LastName = "Smith";
-await graph.UpdateNodeAsync(existingPerson, transaction: transaction);
-
-// Delete
-await graph.DeleteNodeAsync(id, transaction: transaction);
+await graph.CreateAsync(
+    new Account { AccountNumber = "ACC-003", Owner = "Charlie" },
+    new Transfer { Amount = 0m, Timestamp = DateTime.UtcNow },
+    new Account { AccountNumber = "ACC-004", Owner = "Dana" },
+    transaction: transaction,
+    cancellationToken: cancellationToken);
 ```
 
-### Relationship Operations
+The endpoint nodes, relationship, and owned complex-property subtrees are one atomic operation.
+
+## Set-based updates and deletes
+
+Mutation queryables carry their transaction from the root:
 
 ```csharp
-await using var transaction = await graph.GetTransactionAsync();
+var inactive = graph.Nodes<Account>(transaction)
+    .Where(account => account.ClosedAt != null);
 
-// Create
-await graph.CreateRelationshipAsync(relationship, transaction: transaction);
+await inactive.UpdateAsync(
+    setters => setters.SetProperty(account => account.Balance, 0m),
+    cancellationToken);
 
-// Read
-var rel = await graph.GetRelationshipAsync<Knows>(id, transaction: transaction);
-
-// Update
-await graph.UpdateRelationshipAsync(relationship, transaction: transaction);
-
-// Delete
-await graph.DeleteRelationshipAsync(id, transaction: transaction);
+await inactive.DeleteAsync(
+    cascadeDelete: true,
+    cancellationToken);
 ```
 
-### Query Operations
+The provider freezes and de-duplicates the target set before mutation. Key, unique, and required
+constraints are checked in the write transaction. Complex-property replacement and cleanup are
+part of the same atomic update.
+
+Relationship selections support `UpdateAsync` and their own `DeleteAsync(cancellationToken)`
+overload.
+
+## Rollback example
 
 ```csharp
-await using var transaction = await graph.GetTransactionAsync();
-
-// Queries also support transactions
-var results = await graph.Nodes<Person>(transaction: transaction)
-    .Where(p => p.Department == "Engineering")
-    .ToListAsync();
-
-var relationships = await graph.Relationships<Knows>(transaction: transaction)
-    .Where(k => k.Since > DateTime.UtcNow.AddDays(-7))
-    .ToListAsync();
-```
-
-## Transaction Isolation
-
-Transactions provide isolation from other concurrent operations:
-
-```csharp
-// Transaction 1
-await using var tx1 = await graph.GetTransactionAsync();
-var alice = new Person { FirstName = "Alice" };
-await graph.CreateNodeAsync(alice, transaction: tx1);
-
-// Transaction 2 (concurrent)
-await using var tx2 = await graph.GetTransactionAsync();
-// This won't see Alice until tx1 commits
-var count = await graph.Nodes<Person>(transaction: tx2).CountAsync();
-
-await tx1.CommitAsync();
-// Now tx2 can see Alice
-```
-
-## Complex Transaction Scenarios
-
-### Conditional Logic
-
-```csharp
-await using var transaction = await graph.GetTransactionAsync();
+await using var transaction = await graph.GetTransactionAsync(cancellationToken);
 try
 {
-    var person = await graph.GetNodeAsync<Person>(personId, transaction: transaction);
+    var selected = graph.Nodes<Account>(transaction)
+        .Where(account => account.AccountNumber == "ACC-001");
+    var account = await selected.SingleAsync(cancellationToken);
 
-    if (person.Status == "Active")
+    if (account.Balance < withdrawal)
     {
-        // Update the person
-        person.LastActive = DateTime.UtcNow;
-        await graph.UpdateNodeAsync(person, transaction: transaction);
-
-        // Create an activity log
-        var activity = new Activity
-        {
-            PersonId = person.Id,
-            Timestamp = DateTime.UtcNow
-        };
-        await graph.CreateNodeAsync(activity, transaction: transaction);
-
-        // Create relationship
-        var performed = new Performed(person.Id, activity.Id);
-        await graph.CreateRelationshipAsync(performed, transaction: transaction);
-
-        await transaction.CommitAsync();
+        throw new InvalidOperationException("Insufficient funds.");
     }
-    else
-    {
-        // Don't commit - let it rollback
-    }
+
+    await selected.UpdateAsync(
+        setters => setters.SetProperty(
+            item => item.Balance,
+            account.Balance - withdrawal),
+        cancellationToken);
+
+    await transaction.CommitAsync();
 }
 catch
 {
@@ -176,257 +162,36 @@ catch
 }
 ```
 
-### Bulk Operations
+After rollback, later queries created outside the transaction see none of its writes.
 
-```csharp
-await using var transaction = await graph.GetTransactionAsync();
-try
-{
-    // Import a batch of data
-    foreach (var personData in importData)
-    {
-        var person = new Person
-        {
-            FirstName = personData.FirstName,
-            LastName = personData.LastName,
-            Email = personData.Email
-        };
+## Ownership and invalid combinations
 
-        await graph.CreateNodeAsync(person, transaction: transaction);
+- A transaction belongs to the graph/provider store that created it. Passing it to another store
+  fails.
+- Endpoint selections used by one relationship command must come from the same graph/provider and,
+  when transaction-bound, the same transaction.
+- Committing or rolling back twice fails.
+- Nested transactions are not part of the public API. No in-tree provider declares
+  `GraphCapability.NestedTransactions`.
+- Provider stores own drivers, pools, and backing resources. Dispose the store separately;
+  `IGraph` itself does not own them.
 
-        // Create relationships if needed
-        if (personData.ManagerEmail != null)
-        {
-            var manager = await graph.Nodes<Person>(transaction: transaction)
-                .FirstOrDefaultAsync(p => p.Email == personData.ManagerEmail);
+## Keep transactions short
 
-            if (manager != null)
-            {
-                var reportsTo = new ReportsTo(person.Id, manager.Id);
-                await graph.CreateRelationshipAsync(reportsTo, transaction: transaction);
-            }
-        }
-    }
+Open the transaction after slow external work has completed, select only the rows required, and
+commit promptly. Avoid network calls, user interaction, and long CPU work while holding database
+resources.
 
-    await transaction.CommitAsync();
-}
-catch (Exception ex)
-{
-    await transaction.RollbackAsync();
-    throw new ImportException("Failed to import data", ex);
-}
-```
+For independent operations, let each graph call own its transaction. Use an explicit transaction
+only when the operations require one atomic boundary or one consistent transactional view.
 
-### Validation and Rollback
+## Provider notes
 
-```csharp
-await using var transaction = await graph.GetTransactionAsync();
-try
-{
-    // Create entities
-    await graph.CreateNodeAsync(department, transaction: transaction);
-    await graph.CreateNodeAsync(employee, transaction: transaction);
+- Neo4j uses a driver transaction.
+- AGE holds a dedicated PostgreSQL connection/transaction and isolates caller-owned
+  multi-statement command work behind savepoints where required.
+- In-memory buffers writes and commits them atomically under its single-writer lock; it is a test
+  double, not a throughput model.
 
-    // Validate business rules
-    var employeeCount = await graph.Nodes<Employee>(transaction: transaction)
-        .CountAsync(e => e.DepartmentId == department.Id);
-
-    if (employeeCount > department.MaxEmployees)
-    {
-        // Explicitly rollback due to business rule violation
-        await transaction.RollbackAsync();
-        throw new BusinessRuleException("Department employee limit exceeded");
-    }
-
-    // Create the relationship
-    var worksIn = new WorksIn(employee.Id, department.Id);
-    await graph.CreateRelationshipAsync(worksIn, transaction: transaction);
-
-    await transaction.CommitAsync();
-}
-catch
-{
-    // Ensure rollback even if already rolled back
-    try { await transaction.RollbackAsync(); } catch { }
-    throw;
-}
-```
-
-## Error Handling
-
-### GraphException
-
-Thrown when there are transaction-specific errors:
-
-```csharp
-try
-{
-    await using var transaction = await graph.GetTransactionAsync();
-    // ... operations ...
-    await transaction.CommitAsync();
-}
-catch (GraphException ex)
-{
-    // Handle transaction-specific errors
-    logger.LogError(ex, "Transaction failed");
-}
-```
-
-### Nested Transaction Attempts
-
-Graph Model doesn't support nested transactions. Attempting to start a transaction within another will throw an exception:
-
-```csharp
-await using var transaction1 = await graph.GetTransactionAsync();
-
-// This will NOT create a nested transaction
-await using var transaction2 = await graph.GetTransactionAsync();
-```
-
-### Transactions Belong to the Graph That Created Them
-
-A transaction is owned by the graph it came from, and passing it to a different graph throws a
-`GraphException` — even when both graphs use the same provider and point at the same database:
-
-```csharp
-await using var storeA = new Neo4jGraphStore(uri, user, password, "shared-db");
-await using var storeB = new Neo4jGraphStore(uri, user, password, "shared-db");
-
-await using var transaction = await storeA.Graph.GetTransactionAsync();
-
-// Throws: the transaction belongs to storeA's graph, not storeB's.
-await storeB.Graph.CreateNodeAsync(person, transaction);
-```
-
-Ownership is decided by graph identity, not by connection settings, so two stores configured
-identically still do not share transactions. The rejection happens before any work is attempted:
-neither store is modified, and the transaction stays active and usable with the graph that created
-it. Applications holding several graph instances — one per tenant, per database, or per test —
-therefore get an error at the call site instead of silently reading or writing the wrong store.
-
-## Best Practices
-
-### 1. Keep Transactions Short
-
-```csharp
-// Good: Short transaction
-await using var tx = await graph.GetTransactionAsync();
-await graph.CreateNodeAsync(node, transaction: tx);
-await graph.CreateRelationshipAsync(rel, transaction: tx);
-await tx.CommitAsync();
-
-// Avoid: Long-running transactions
-await using var longRunningTx = await graph.GetTransactionAsync();
-var data = await FetchDataFromExternalService(); // Don't do this in transaction
-await graph.CreateNodeAsync(data, transaction: longRunningTx);
-await longRunningTx.CommitAsync();
-```
-
-### 2. Use Try-Finally for Critical Cleanup
-
-```csharp
-await using var transaction = await graph.GetTransactionAsync();
-try
-{
-    // Acquire resources
-    var lockHandle = await AcquireLock(restartNodeId);
-    try
-    {
-        // Perform operations
-        await graph.UpdateNodeAsync(node, transaction: transaction);
-        await transaction.CommitAsync();
-    }
-    finally
-    {
-        // Always release resources
-        await ReleaseLock(lockHandle);
-    }
-}
-catch
-{
-    await transaction.RollbackAsync();
-    throw;
-}
-```
-
-### 3. Consider Read Consistency
-
-When reading data that will be modified, use the same transaction:
-
-```csharp
-await using var transaction = await graph.GetTransactionAsync();
-
-// Read with the transaction to ensure consistency
-var person = await graph.GetNodeAsync<Person>(id, transaction: transaction);
-var currentFriends = await graph.Relationships<Knows>(transaction: transaction)
-    .CountAsync(k => k.StartNodeId == person.Id);
-
-if (currentFriends < 100)
-{
-    // Safe to add friend - count is consistent with our transaction
-    await graph.CreateRelationshipAsync(newFriendship, transaction: transaction);
-    await transaction.CommitAsync();
-}
-```
-
-### 4. Handle Partial Failures
-
-```csharp
-var results = new List<ImportResult>();
-
-foreach (var batch in dataBatches)
-{
-    await using var transaction = await graph.GetTransactionAsync();
-    try
-    {
-        foreach (var item in batch)
-        {
-            var person = new Person
-            {
-                FirstName = item.FirstName,
-                LastName = item.LastName,
-                Email = item.Email
-            };
-
-            await graph.CreateNodeAsync(person, transaction: transaction);
-        }
-        await transaction.CommitAsync();
-        results.Add(new ImportResult { Batch = batch, Success = true });
-    }
-    catch (Exception ex)
-    {
-        await transaction.RollbackAsync();
-        results.Add(new ImportResult
-        {
-            Batch = batch,
-            Success = false,
-            Error = ex.Message
-        });
-        // Continue with next batch
-    }
-}
-```
-
-## Performance Considerations
-
-1. **Transaction Overhead**: Each transaction has overhead. Batch related operations together.
-2. **Lock Duration**: Long transactions can cause lock contention. Keep them short.
-3. **Read Operations**: If only reading, consider whether you need a transaction.
-4. **Deadlock Prevention**: Access resources in a consistent order across transactions.
-
-## Transaction-Free Operations
-
-For read-only operations or when atomicity isn't required, you can omit the transaction:
-
-```csharp
-// Simple reads don't require transactions
-var person = await graph.GetNodeAsync<Person>(id);
-var friends = await graph.Nodes<Person>()
-    .Where(p => p.Department == "Sales")
-    .ToListAsync();
-
-// Single operations have implicit transactions
-await graph.CreateNodeAsync(person); // Atomic by itself
-```
-
-Choose explicit transactions when you need to ensure multiple operations succeed or fail together.
+Transaction acquisition and graph/query operations accept cancellation tokens. The transaction's
+`CommitAsync()` and `RollbackAsync()` methods have no token parameter.

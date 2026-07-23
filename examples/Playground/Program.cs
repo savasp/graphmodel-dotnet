@@ -7,7 +7,7 @@ using Neo4j.Driver;
 
 // Playground to explore ideas and the interface
 
-const string databaseName = "GraphModelPlayground";
+const string databaseName = "CvoyaGraphPlayground";
 
 
 // ==== SETUP a new database ====

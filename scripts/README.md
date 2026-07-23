@@ -74,7 +74,7 @@ dotnet pack src/Graph/Graph.csproj --configuration Release
 ./scripts/run-tests.sh --fast --coverage
 
 # Start both provider services and run all tests
-./scripts/run-tests.sh --neo4j --age --seq
+./scripts/run-tests.sh --lane all --neo4j --age
 
 # Run performance tests
 ./scripts/run-tests.sh --fast --performance
@@ -148,7 +148,12 @@ dotnet msbuild eng/PackageValidation.proj -target:PrepareLocalFeed
 dotnet msbuild eng/PackageValidation.proj -target:Clean
 ```
 
-It uses `eng/package-validation.NuGet.config`, maps `Cvoya.*` exclusively to the generated feed, verifies the exact nine-package inventory and all packaged assembly version metadata with `scripts/verify-package-set.sh`, and isolates packages, HTTP cache, scratch, and plugin cache under `artifacts/package-validation/`. It never registers a user-level source or clears global NuGet state.
+It uses `eng/package-validation.NuGet.config`, maps `Cvoya.*` exclusively to the generated feed,
+and isolates packages, HTTP cache, scratch, and plugin cache under
+`artifacts/package-validation/`. `scripts/verify-package-set.sh` derives the expected inventory
+from every packable project under `src/`, rejects missing or unexpected packages, and verifies all
+packaged assembly version metadata. The workflow never registers a user-level source or clears
+global NuGet state.
 
 The inventory check requires `bash` and `jq`; path handling in the MSBuild orchestrator is OS-native on Windows, Linux, and macOS.
 
@@ -346,7 +351,7 @@ Neo4j, AGE, or full lane. Benchmark projects remain separate.
 ./scripts/run-tests.sh --fast                             # All service-free/in-memory tests
 ./scripts/run-tests.sh --lane neo4j --neo4j              # Start Neo4j and run its lane
 ./scripts/run-tests.sh --lane age --age                   # Start AGE and run its lane
-./scripts/run-tests.sh --neo4j --age                      # Start both services and run all tests
+./scripts/run-tests.sh --lane all --neo4j --age           # Start both services and run all tests
 ./scripts/run-tests.sh --fast --coverage                  # Fast lane with coverage
 ./scripts/run-tests.sh --lane all --no-build --coverage --report-trx --results-directory TestResults --keep-going
 ```

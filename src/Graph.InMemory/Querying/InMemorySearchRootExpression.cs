@@ -9,9 +9,9 @@ using Cvoya.Graph.Querying;
 /// <summary>
 /// The root expression behind <see cref="IGraph.Search"/>-style entry points. The shared query
 /// model builder recognizes it through <see cref="IGraphSearchRootExpression"/> and produces a
-/// <c>SearchRoot</c>; execution then fails with a clear <see cref="GraphException"/> because the
-/// in-memory provider does not declare the <see cref="GraphCapability.FullTextSearch"/>
-/// capability. Building the queryable itself performs no work, matching the public contract.
+/// <c>SearchRoot</c>; the in-memory executor evaluates it with an index-free scan and the shared
+/// provider-neutral, case-insensitive whole-token matcher. Building the queryable itself performs
+/// no work, matching the public contract.
 /// </summary>
 internal sealed class InMemorySearchRootExpression(
     string searchQuery,

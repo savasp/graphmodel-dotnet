@@ -9,8 +9,10 @@ using Xunit.v3;
 /// <summary>
 /// The base class every compatibility test interface binding derives from (via a provider's own
 /// intermediate base class, e.g. <c>Neo4jTest</c>). Runs the per-test choreography every provider
-/// needs exactly once: skip on a missing declared capability, acquire the store, record the
-/// running method identity for <see cref="ComplianceGuard"/>, then dispose the store.
+/// needs exactly once: skip on a missing declared capability, acquire a graph from the harness,
+/// record the running method identity for <see cref="ComplianceGuard"/>, then conditionally
+/// dispose the returned graph if it is disposable. The harness owns and disposes provider stores,
+/// pools, containers, and other backing resources.
 /// </summary>
 /// <param name="harness">The provider's test harness.</param>
 /// <param name="isolation">The store isolation this test requires. Defaults to
@@ -35,8 +37,9 @@ public abstract class CompatibilityTest(
 
     /// <summary>
     /// Records the provider binding, skips the test if it requires a
-    /// <see cref="GraphCapability"/> the harness does not declare, then acquires the store and
-    /// records the execution with <see cref="ComplianceGuard"/>.
+    /// <see cref="GraphCapability"/> the harness does not declare, then acquires the graph and
+    /// records the execution with <see cref="ComplianceGuard"/>. Infrastructure failures,
+    /// including <see cref="GraphProviderUnavailableException"/>, are not converted to skips.
     /// </summary>
     public virtual async ValueTask InitializeAsync()
     {
@@ -56,8 +59,8 @@ public abstract class CompatibilityTest(
     }
 
     /// <summary>
-    /// Disposes the acquired store, if it implements <see cref="IAsyncDisposable"/> or
-    /// <see cref="IDisposable"/>.
+    /// Conditionally disposes the acquired graph if it implements <see cref="IAsyncDisposable"/>
+    /// or <see cref="IDisposable"/>. Provider backing resources remain owned by the harness.
     /// </summary>
     public virtual async ValueTask DisposeAsync()
     {

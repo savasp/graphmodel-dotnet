@@ -8,7 +8,8 @@ namespace Cvoya.Graph;
 /// This serves as a foundation for creating domain-specific relationship entities.
 /// </summary>
 /// <remarks>
-/// Use this class as a base class for domain relationship models.
+/// Use this class as a base class for domain relationship models. It supplies the mapped type
+/// only; endpoints, physical direction, and provider identity are not relationship properties.
 /// </remarks>
 public abstract record Relationship : IRelationship
 {

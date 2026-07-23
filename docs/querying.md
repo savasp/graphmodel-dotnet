@@ -3,7 +3,8 @@
 
 # Enhanced Querying with LINQ
 
-Graph Model provides powerful querying capabilities through enhanced LINQ support via `IGraphQueryable<T>`. This extends standard LINQ with graph-specific operations for traversal, performance optimization, and advanced query patterns.
+CVOYA Graph provides LINQ support through `IGraphQueryable<T>`, including graph traversal,
+provider-translated projections, set operations, and async terminals.
 
 ## Basic Queries
 
@@ -76,7 +77,7 @@ var rangedConnections = await graph.Nodes<Person>()
 // Project only the fields you need
 var optimizedQuery = await graph.Nodes<Person>()
     .Where(p => p.Age > 30)
-    .Select(p => new { p.Id, p.FirstName, p.LastName })
+    .Select(p => new { p.Email, p.FirstName, p.LastName })
     .ToListAsync();
 
 // Page large result sets
@@ -105,7 +106,10 @@ await transaction.CommitAsync();
 
 ## Working with "complex" types
 
-The Graph Model supports "complex" properties. These are user-defined property types that are not supported scalar values. Unsupported framework scalars such as `IntPtr` and `UIntPtr` are rejected rather than treated as complex properties. Neo4j doesn't natively support complex properties on graph nodes. The Graph Model requires implementing providers to support them. Consider this example:
+CVOYA Graph supports complex properties: user-defined value types that are not supported scalar
+values. Unsupported framework scalars such as `IntPtr` and `UIntPtr` are rejected rather than
+treated as complex properties. Providers persist complex properties as owned graph structure.
+Consider this example:
 
 ```csharp
 public record Address
@@ -230,7 +234,7 @@ node type for later filters, ordering, and projections. Providers that do not de
 `GraphCapability.RelationshipPredicates` reject either operator during translation. Apply
 `WhereHasRelationship` before `Select`, `Skip`, or `Take`; the shared validator rejects the reverse
 order rather than moving the existence test across that boundary. Neo4j and the in-memory provider
-implement this capability; AGE declines it.
+implement this capability; AGE implements it through provider-local structured lowering.
 
 ### Shortest paths
 
@@ -240,7 +244,7 @@ canonical two-type-argument traversal surface and return `IGraphPath`:
 
 ```csharp
 var routes = await graph.Nodes<Person>()
-    .Where(person => person.Id == aliceId)
+    .Where(person => person.Email == aliceEmail)
     .AllShortestPaths<Knows, Person>(
         endpoint => endpoint.Active,
         GraphTraversalDirection.Both)
@@ -266,8 +270,8 @@ var assignments = await graph.Nodes<Person>()
     .OptionalTraverse<WorksAt, Company>()
     .Select(result => new
     {
-        PersonId = result.Source.Id,
-        CompanyId = result.Target == null ? null : result.Target.Id,
+        PersonEmail = result.Source.Email,
+        CompanyName = result.Target == null ? null : result.Target.Name,
     })
     .Take(100)
     .ToListAsync();
@@ -289,11 +293,11 @@ The graph-typed overloads keep the result as `IGraphQueryable<T>` and support bo
 compatible scalar projections:
 
 ```csharp
-var activeIds = graph.Nodes<Person>().Where(person => person.Active).Select(person => person.Id);
-var invitedIds = graph.Nodes<Person>().Where(person => person.Invited).Select(person => person.Id);
+var activeEmails = graph.Nodes<Person>().Where(person => person.Active).Select(person => person.Email);
+var invitedEmails = graph.Nodes<Person>().Where(person => person.Invited).Select(person => person.Email);
 
-var uniqueIds = await activeIds.Union(invitedIds).ToListAsync();
-var auditIds = await activeIds.Concat(invitedIds).ToListAsync();
+var uniqueEmails = await activeEmails.Union(invitedEmails).ToListAsync();
+var auditEmails = await activeEmails.Concat(invitedEmails).ToListAsync();
 ```
 
 `Union` removes duplicate projected rows. `Concat` is bag-preserving and lowers to `UNION ALL`, so
@@ -570,7 +574,7 @@ var firstSmith = await graph.Nodes<Person>()
 
 // Get exactly one matching (throws if zero or multiple)
 var specificPerson = await graph.Nodes<Person>()
-    .SingleAsync(p => p.Id == "unique-id");
+    .SingleAsync(p => p.Email == "alice@example.com");
 
 // Get last matching
 var youngestPerson = await graph.Nodes<Person>()
@@ -653,20 +657,19 @@ var recentConnections = await graph.Relationships<Knows>()
     .Where(k => k.Since > DateTime.UtcNow.AddDays(-30))
     .ToListAsync();
 
-// Relationships from specific node
-var aliceKnows = await graph.Relationships<Knows>()
-    .Where(k => k.StartNodeId == aliceId)
-    .ToListAsync();
-
-// Search either endpoint
-var connectedToAlice = await graph.Relationships<Knows>()
-    .Where(k => k.StartNodeId == aliceId || k.EndNodeId == aliceId)
+// Relationships connected to a specific node: endpoints live on path segments, not relationships.
+var aliceKnows = await graph.Nodes<Person>()
+    .Where(person => person.Email == aliceEmail)
+    .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Both)
+    .Select(segment => segment.Relationship)
     .ToListAsync();
 ```
 
 ## Full-Text Search
 
-Graph Model provides comprehensive full-text search capabilities through both direct search methods and LINQ integration.
+CVOYA Graph exposes full-text search through both direct roots and LINQ integration. Every provider
+that declares `GraphCapability.FullTextSearch` meets the shared whole-token contract, while its
+indexing and ranking strategy remains provider-specific.
 
 ### Direct Search Methods
 
@@ -698,7 +701,7 @@ var results = await graph.Nodes<Person>()
 
 // Search in path segments traversal
 var memories = await graph.Nodes<User>()
-    .Where(u => u.Id == "...")
+    .Where(u => u.Username == "alice")
     .PathSegments<User, UserMemory, Memory>()
     .Select(p => p.EndNode)
     .Search("vacation memories")
@@ -769,7 +772,8 @@ var prefixSearch = await graph.Nodes<Person>()
 - **Exact-token matching**: Terms match whole words, not substrings — searching "vaca" does not match "vacation"
 - **Multi-word AND**: A multi-term query such as `Search("machine learning")` matches an entity only when **all** terms match, in any order and at any distance (not just when any one term matches)
 - **Property Control**: Use `[Property(IncludeInFullTextSearch = false)]` to exclude properties from search; only the entity's own string properties are searched (complex-property value nodes are not)
-- **Automatic Indexing**: Full-text indexes are created and managed automatically
+- **Provider-specific execution**: Neo4j uses provider-owned full-text indexes; AGE uses
+  PostgreSQL text search over native AGE rows; in-memory uses an index-free matcher
 - **LINQ Integration**: Seamlessly integrate search into existing LINQ query chains
 - **Traversal source**: Typed node search results can directly feed node traversal operators
 - **Unordered results**: Search result order is unspecified; add an explicit `OrderBy` when order matters
@@ -779,33 +783,24 @@ var prefixSearch = await graph.Nodes<Person>()
 For complex scenarios, you can execute multiple queries and join in memory:
 
 ```csharp
-// Get all data
-var people = await graph.Nodes<Person>().ToListAsync();
-var knows = await graph.Relationships<Knows>().ToListAsync();
-
-// Join to find connections
-var connections = from person in people
-                  join k in knows on person.Id equals k.StartNodeId
-                  join friend in people on k.EndNodeId equals friend.Id
-                  select new
-                  {
-                      Person = person.FirstName,
-                      Friend = friend.FirstName,
-                      Since = k.Since
-                  };
-
-// Group to find popular people
-var popular = knows
-    .GroupBy(k => k.EndNodeId)
-    .Select(g => new
+// Path segments keep endpoints, the relationship, and orientation together.
+var connections = await graph.Nodes<Person>()
+    .PathSegments<Person, Knows, Person>()
+    .Select(segment => new
     {
-        PersonId = g.Key,
-        IncomingConnections = g.Count()
+        Person = segment.StartNode.FirstName,
+        Friend = segment.EndNode.FirstName,
+        segment.Relationship.Since,
+        segment.Direction,
     })
-    .Join(people, g => g.PersonId, p => p.Id, (g, p) => new
+    .ToListAsync();
+
+var popular = connections
+    .GroupBy(connection => connection.Friend)
+    .Select(group => new
     {
-        p.FirstName,
-        g.IncomingConnections
+        Person = group.Key,
+        IncomingConnections = group.Count(),
     })
     .OrderByDescending(x => x.IncomingConnections)
     .ToList();

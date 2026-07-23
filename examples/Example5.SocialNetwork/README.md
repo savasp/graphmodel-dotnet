@@ -1,104 +1,46 @@
-# Example 5: Social Network
+# Example 5: Social network
 
-This example demonstrates a complete social network implementation using the CVOYA graph library, showcasing real-world relationship patterns and graph analytics.
+This .NET 10 example builds a social graph with users, posts, comments, follows, likes, and
+authorship relationships. It demonstrates path-based analytics, feed generation, and friend
+recommendations without relying on public provider identity.
 
-## What You'll Learn
-
-- Building a social network graph structure
-- Managing complex relationships (follows, likes, comments)
-- Social network analytics and metrics  
-- Feed generation based on social graph
-- Friend recommendation using graph patterns
-
-## Features Demonstrated
-
-### 1. User Management
+Endpoint queries use ordinary domain properties such as `Username` and `Content`:
 
 ```csharp
-[Node(Label = "User")]
-public record User : Node
-{
-    public string Username { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
-    public DateTime JoinedDate { get; set; }
-    public string? Bio { get; set; } = string.Empty;
-}
+IGraphQueryable<User> UserSelection(string username) =>
+    graph.Nodes<User>().Where(user => user.Username == username);
+
+await graph.CreateRelationshipAsync(
+    UserSelection("alice_wonder"),
+    new Follows { Since = DateTime.UtcNow.AddYears(-1) },
+    UserSelection("bob_builder"));
 ```
 
-### 2. Content Creation
-
-Posts with tags, timestamps, and author relationships:
+Path segments expose the selected users, relationship value, and edge orientation:
 
 ```csharp
-[Node(Label = "Post")]
-public record Post : Node
-{
-    public DateTime PostedAt { get; set; }
-    public string Content { get; set; } = string.Empty;
-    public List<string> Tags { get; set; } = new();
-}
-```
-
-### 3. Social Interactions
-
-Multiple relationship types for different interactions:
-
-- **FOLLOWS**: User following relationships with timestamps
-- **POSTED**: User to post authorship
-- **LIKES**: User likes on posts with timestamps  
-- **COMMENTED_ON**: Comments on posts
-- **WROTE**: User authorship of comments
-
-### 4. Analytics Queries
-
-Current implementation demonstrates:
-
-- Follower count analysis
-- Post popularity metrics  
-- Mutual connection discovery
-- Engagement tracking
-
-### 5. Feed Generation
-
-Personalized feed based on who the user follows:
-
-```csharp
-// Get posts from people Alice follows
-var aliceFollowing = await (await graph.NodesAsync<User>())
-    .Where(u => u.Username == "alice_wonder")
+var aliceFollowing = await graph.Nodes<User>()
+    .Where(user => user.Username == "alice_wonder")
     .PathSegments<User, Follows, User>()
     .ToListAsync();
 
-var feedPosts = await (await graph.NodesAsync<User>())
-    .Where(u => followedUserIds.Contains(u.Id))
+var followedUsernames = aliceFollowing
+    .Select(segment => segment.EndNode.Username)
+    .ToHashSet();
+
+var feedPosts = await graph.Nodes<User>()
+    .Where(user => followedUsernames.Contains(user.Username))
     .PathSegments<User, Posted, Post>()
     .ToListAsync();
 ```
 
-### 6. Friend Recommendations
+`User`, `Post`, and each relationship type are valid keyless entities. Applications can add
+explicit `[Property(IsKey = true)]` members when they want provider-enforced domain uniqueness.
 
-Suggest new connections based on:
+## Run
 
-- Friends of friends patterns
-- Mutual connection count
-- Graph traversal algorithms
-
-## Social Network Patterns
-
-The example demonstrates common social network patterns:
-
-- Query-time traversal in either direction for mutual-following patterns
-- Content engagement tracking
-- Social graph traversal and analytics
-- Basic recommendation algorithms
-
-## Running the Example
-
-**Note: This example requires .NET 10.0 which is not yet released.**
+Start Neo4j at `bolt://localhost:7687` with username `neo4j` and password `password`, then run:
 
 ```bash
-cd examples/Example5.SocialNetwork
-dotnet run
+dotnet run --project examples/Example5.SocialNetwork
 ```
-
-Make sure Neo4j is running and accessible at `bolt://localhost:7687` with username `neo4j` and password `password`.

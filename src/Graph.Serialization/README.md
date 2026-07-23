@@ -6,13 +6,20 @@
 [![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Serialization.svg)](https://www.nuget.org/packages/Cvoya.Graph.Serialization/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-**Object serialization framework** for CVOYA graph - provides efficient serialization and deserialization of complex objects to graph database storage formats.
+**Provider-neutral serialization and materialization** for CVOYA Graph.
 
 The package also owns provider-neutral result materialization. Providers adapt driver records into immutable `GraphRecord`/`GraphValue` instances and pass them to `GraphResultMaterializer`; complex-property reassembly, polymorphic type resolution, scalar conversion, and path stitching stay shared.
 
-## 🚀 Quick Start
+## Provider contract
 
-In the future, this package will be used to support the serialization/deserialization needs of Graph Model provider implementers. It uses an intermediate representation for in-memory object graphs.
+The package describes mapped entities without inventing a public identity contract. Domain keys are
+optional schema metadata, and provider-native node and relationship identity remains private to the
+adapter. Nullable scalar and collection properties preserve `null` independently from empty
+collections throughout serialization and materialization.
+
+Provider authors normally consume this package together with `Cvoya.Graph` and, for Cypher
+providers, `Cvoya.Graph.Cypher`. Application authors typically receive it transitively from a
+database provider.
 
 ## 📚 Documentation
 

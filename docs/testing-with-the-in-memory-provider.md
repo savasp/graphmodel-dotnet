@@ -32,7 +32,10 @@ var alice = new Person { Name = "Alice" };
 var bob = new Person { Name = "Bob" };
 await graph.CreateNodeAsync(alice);
 await graph.CreateNodeAsync(bob);
-await graph.CreateRelationshipAsync(new Knows(alice.Id, bob.Id));
+await graph.CreateRelationshipAsync(
+    graph.Nodes<Person>().Where(person => person.Name == "Alice"),
+    new Knows(),
+    graph.Nodes<Person>().Where(person => person.Name == "Bob"));
 
 var friends = await graph.Nodes<Person>()
     .Where(p => p.Name == "Alice")
@@ -66,7 +69,7 @@ creating a new store.
 ## What behaves exactly like a real provider
 
 - **CRUD contracts**: `EntityNotFoundException` for missing entities, `GraphException` for
-  constraint violations (duplicate ids, missing relationship endpoints, unique/key property
+  constraint violations (duplicate domain keys, missing relationship endpoints, unique/key property
   constraints), `ArgumentException` for invalid input.
 - **Reference isolation**: entities round-trip through the serialization layer on every write
   and read. Mutating an object you hold never changes what is stored; two reads return two

@@ -1,72 +1,55 @@
-# Example 2: LINQ and Traversal
+# Example 2: LINQ and traversal
 
-This example demonstrates LINQ querying capabilities and graph traversal with depth control using the CVOYA graph library.
+This example demonstrates typed filtering, ordering, traversal, and path-segment queries with the
+Neo4j provider.
 
-## What You'll Learn
+## Query roots and terminals
 
-- Using LINQ to query graph data
-- Controlling traversal depth when loading relationships
-- Working with navigation properties
-- Complex queries involving multiple levels of relationships
-- Finding patterns in graph data
-
-## Key Concepts Demonstrated
-
-### 1. LINQ Queries
+Query roots are synchronous. Async terminals execute them:
 
 ```csharp
-// Filter by property
-var results = await (await graph.NodesAsync<Person>())
-    .Where(p => p.City == "New York")
-    .OrderBy(p => p.Name)
+var newYorkers = await graph.Nodes<Person>()
+    .Where(person => person.City == "New York")
+    .OrderBy(person => person.Name)
     .ToListAsync();
 
-// Range queries
-var ageRange = await (await graph.NodesAsync<Person>())
-    .Where(p => p.Age >= 28 && p.Age <= 32)
+var ageRange = await graph.Nodes<Person>()
+    .Where(person => person.Age >= 28 && person.Age <= 32)
     .ToListAsync();
 ```
 
-### 2. Traversal Depth Control
+## Traversal
+
+`Traverse` returns reached nodes. Its optional depth argument controls the number of hops:
 
 ```csharp
-// Immediate relationships
-var directConnections = await (await graph.NodesAsync<Person>())
-    .Where(p => p.Name == "Alice")
-    .Traverse<Knows, Person>(1)
+var directConnections = await graph.Nodes<Person>()
+    .Where(person => person.Name == "Alice")
+    .Traverse<Knows, Person>()
     .ToListAsync();
 
-// Up to two hops
-var extendedConnections = await (await graph.NodesAsync<Person>())
-    .Where(p => p.Name == "Alice")
-    .Traverse<Knows, Person>(1, 2)
+var twoHopConnections = await graph.Nodes<Person>()
+    .Where(person => person.Name == "Alice")
+    .Traverse<Knows, Person>(2)
     .ToListAsync();
 ```
 
-### 3. Navigation Properties
+Use path segments when relationship data, endpoints, or physical edge orientation matters:
 
 ```csharp
-var pathSegments = await (await graph.NodesAsync<Person>())
-    .Where(p => p.Name == "Alice")
+var connections = await graph.Nodes<Person>()
+    .Where(person => person.Name == "Alice")
     .PathSegments<Person, Knows, Person>()
     .ToListAsync();
 ```
 
-### 4. Complex Relationship Queries
+Each segment exposes `StartNode`, `Relationship`, `EndNode`, and `Direction`. The relationship
+object itself has no endpoint or direction fields.
 
-```csharp
-// Find people who know someone in a specific city
-var results = await (await graph.NodesAsync<Person>())
-    .Traverse<Knows, Person>(1)
-    .Where(p => p.City == "San Francisco")
-    .ToListAsync();
-```
+## Run
 
-## Running the Example
+Start Neo4j at `bolt://localhost:7687` with username `neo4j` and password `password`, then run:
 
 ```bash
-cd examples/Example2.LINQAndTraversal
-dotnet run
+dotnet run --project examples/Example2.LINQAndTraversal
 ```
-
-Make sure Neo4j is running and accessible at `neo4j://localhost:7687`.

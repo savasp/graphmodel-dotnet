@@ -219,7 +219,7 @@ try
     Console.WriteLine("• Reading data with LINQ queries");
     Console.WriteLine("• Updating existing nodes and relationships");
     Console.WriteLine("• Deleting nodes");
-    Console.WriteLine("• Using C# 13 record types with the GraphModel");
+    Console.WriteLine("• Using C# 14 record types with CVOYA Graph");
 }
 catch (Exception ex)
 {

@@ -9,13 +9,15 @@ Provider projects under `tests/` bind the suite to the in-memory, Neo4j, and Apa
 The repository runner discovers test projects, excludes benchmarks, and verifies that every selected project reports a nonzero test count:
 
 ```bash
-./scripts/run-tests.sh --fast
-./scripts/run-tests.sh --lane neo4j
-./scripts/run-tests.sh --lane age
-./scripts/run-tests.sh --lane all
+./scripts/run-tests.sh --configuration Debug --lane fast
+./scripts/run-tests.sh --configuration Debug --lane neo4j
+./scripts/run-tests.sh --configuration Debug --lane age
+./scripts/run-tests.sh --configuration Debug --lane all
 ```
 
-The provider lanes require the corresponding service configuration described below. Agent-run snapshot tests should add `--disable-diff-engine`.
+The fast lane includes the in-memory provider binding, including its index-free full-text contract
+tests. Provider lanes require the corresponding service configuration described below and should
+run serially. Agent-run snapshot tests should add `--disable-diff-engine`.
 
 ## Running Neo4j Tests
 

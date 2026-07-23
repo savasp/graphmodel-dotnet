@@ -1,21 +1,11 @@
-# Example 4: Advanced Scenarios
+# Example 4: Advanced scenarios
 
-This example demonstrates advanced features of the CVOYA graph library including polymorphic node types, multiple relationship types, and complex graph operations.
+This example uses .NET 10 and C# 14 to demonstrate polymorphic node types, multiple relationship
+types, grouped queries, traversal, and conditional set-based updates.
 
-## What You'll Learn
-
-- Working with polymorphic node types (inheritance) 
-- Managing multiple relationship types between nodes
-- Basic queries across type hierarchies
-- Simple graph traversal patterns
-- Conditional updates based on node properties
-
-## Key Concepts Demonstrated
-
-### 1. Polymorphic Node Types
+## Polymorphic model
 
 ```csharp
-// Base type
 [Node(Label = "Content")]
 public record Content : Node
 {
@@ -24,7 +14,6 @@ public record Content : Node
     public string Author { get; set; } = string.Empty;
 }
 
-// Derived types
 [Node(Label = "Article")]
 public record Article : Content
 {
@@ -32,72 +21,39 @@ public record Article : Content
     public int WordCount { get; set; }
 }
 
-[Node(Label = "Video")]
-public record Video : Content
-{
-    public int Duration { get; set; }
-    public int Views { get; set; }
-}
-```
-
-### 2. Multiple Relationship Types
-
-Different relationships can exist between different node types:
-
-```csharp
-[Relationship(Label = "CONTAINS")]
-public record Contains(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
-
-[Relationship(Label = "REFERENCES")]
-public record References(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
-{
-    public string Context { get; set; } = string.Empty;
-}
-
 [Relationship(Label = "TAGGED_WITH")]
-public record TaggedWith(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+public record TaggedWith : Relationship
 {
     public string TagName { get; set; } = string.Empty;
 }
 ```
 
-### 3. Type-Safe Queries Across Hierarchies
+Relationships carry domain properties only; creation receives endpoint selections separately:
 
 ```csharp
-// Query base type - gets all content types
-var allContent = await (await graph.NodesAsync<Content>()).ToListAsync();
-
-// Query specific type with filtering
-var articles = await (await graph.NodesAsync<Article>())
-    .Where(a => a.WordCount > 1000)
-    .ToListAsync();
+await graph.CreateRelationshipAsync(
+    graph.Nodes<Article>().Where(article => article.Url == aiArticle.Url),
+    new TaggedWith { TagName = "AI" },
+    graph.Nodes<Tag>().Where(tag => tag.Name == aiTag.Name));
 ```
 
-### 4. Path Traversal
+The example queries polymorphic content and path segments, then updates matching videos:
 
 ```csharp
-// Find content with their tags
-var taggedContent = await (await graph.NodesAsync<Content>())
+var taggedContent = await graph.Nodes<Content>()
     .PathSegments<Content, TaggedWith, Tag>()
     .ToListAsync();
+
+await graph.Nodes<Video>()
+    .Where(video => video.Views > 10_000)
+    .UpdateAsync(setters => setters
+        .SetProperty(video => video.Views, video => video.Views + 100));
 ```
 
-## Content Management Example
+## Run
 
-The example simulates a content management system with:
-
-- Blogs containing articles
-- Articles referencing videos  
-- Content tagged with categories
-- View tracking and popularity metrics
-
-## Running the Example
-
-**Note: This example requires .NET 10.0 which is not yet released.**
+Start Neo4j at `bolt://localhost:7687` with username `neo4j` and password `password`, then run:
 
 ```bash
-cd examples/Example4.AdvancedScenarios
-dotnet run
+dotnet run --project examples/Example4.AdvancedScenarios
 ```
-
-Make sure Neo4j is running and accessible at `bolt://localhost:7687` with username `neo4j` and password `password`.

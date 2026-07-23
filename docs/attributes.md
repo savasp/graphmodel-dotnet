@@ -15,7 +15,7 @@
 > dotnet add package Cvoya.Graph.Analyzers
 > ```
 
-Graph Model uses attributes to provide declarative configuration for how your domain classes map to graph elements. This approach offers clean, type-safe configuration with support for indexing, custom labeling, and property control.
+CVOYA Graph uses attributes to provide declarative configuration for how your domain classes map to graph elements. This approach offers clean, type-safe configuration with support for indexing, custom labeling, and property control.
 
 ## Node Configuration
 
@@ -94,7 +94,7 @@ explicit `IsKey = true` declaration participates in the domain key.
 [Node("Person")]
 public record Person : Node
 {
-    // Keyless: neither Name nor the transitional inherited Id property is a domain key.
+    // Keyless: Name is ordinary data and no domain key is declared.
     public string Name { get; init; } = string.Empty;
 }
 
@@ -152,7 +152,7 @@ Supported property types:
 - Relationship collections may contain only simple element types; complex values and collections of
   complex values are supported on nodes only.
 - Spatial types (with provider support): `Cvoya.Graph.Point`
-- "Complex" (as defined by the Graph Model): a user-defined `class` or `struct` composed of supported
+- "Complex" (as defined by CVOYA Graph): a user-defined `class` or `struct` composed of supported
   properties. A `struct` is valid only as a nested complex value; graph entities themselves
   (`INode`/`IRelationship`) must be reference types (CG014).
 
@@ -191,7 +191,7 @@ their stored relationship type:
 
 ```csharp
 [Relationship("KNOWS")]
-public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+public record Knows : Relationship
 {
     [Property(Label = "since_date", IsIndexed = true)]
     public DateTime Since { get; set; }
@@ -200,33 +200,40 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 
 ### Relationship Direction Options
 
-`RelationshipDirection` controls storage direction relative to a relationship object's
-`StartNodeId`/`EndNodeId` tuple. It does not make a stored edge bidirectional:
+Relationships do not own endpoints or direction. `RelationshipDirection` is command intent passed
+to relationship creation, relative to the source/target arguments:
 
 ```csharp
 public enum RelationshipDirection
 {
-    Outgoing, // Stored as StartNodeId -> EndNodeId (default)
-    Incoming  // Stored as EndNodeId -> StartNodeId
+    Outgoing, // Stored source -> target (default)
+    Incoming  // Stored target -> source
 }
 ```
 
 ### Direction Examples
 
 ```csharp
-// Default storage direction: follower -> followed
 [Relationship("FOLLOWS")]
-public record Follows(string StartNodeId, string EndNodeId)
-    : Relationship(StartNodeId, EndNodeId);
+public record Follows : Relationship;
 
-// Reversed storage direction relative to the logical tuple
-[Relationship("REPORTS_TO")]
-public record ReportsTo(string StartNodeId, string EndNodeId)
-    : Relationship(StartNodeId, EndNodeId, RelationshipDirection.Incoming);
+var follower = graph.Nodes<Person>().Where(person => person.Email == followerEmail);
+var followed = graph.Nodes<Person>().Where(person => person.Email == followedEmail);
+
+// Default physical orientation: follower -> followed.
+await graph.CreateRelationshipAsync(follower, new Follows(), followed);
+
+// Reverse the physical orientation without adding state to Follows.
+await graph.CreateRelationshipAsync(
+    follower,
+    new Follows(),
+    followed,
+    RelationshipDirection.Incoming);
 ```
 
 Use `GraphTraversalDirection.Both` on traversal queries when you want to traverse matching stored
-edges in either physical direction.
+edges in either physical direction. Inspect `IGraphPathSegment.Direction` when a query result must
+report physical orientation relative to its returned start/end nodes.
 
 ## ComplexPropertyAttribute
 
@@ -248,7 +255,8 @@ mapping only; the CLR property name and serialized value-node label are unchange
 
 ### Base Classes
 
-The Graph Model requires provider implementors to support, if possible, the materialization of object instances to the type that was used during serialization. Consider the following type hierarchy:
+CVOYA Graph requires provider implementors to support, if possible, materializing object instances
+as the type used during serialization. Consider the following type hierarchy:
 
 ```csharp
 [Node("Asset")]
@@ -293,7 +301,7 @@ The underlying provider serializes the instance of the actual instance, which in
 When materializing a stored node, the provider resolves the .NET type in this order:
 
 1. **Stored metadata (exact).** Each entity is persisted with its concrete .NET type name. If that type is loadable in the reading process and is assignable to the requested type, it is used directly — an exact round-trip.
-2. **Label (portable).** If the metadata type is not loadable (a different application, or the type was renamed or moved) or is not assignable to the requested type, the node's **label** is used to find a compatible local type. Because a label maps to exactly one type per process, this is deterministic. The requested type scopes the search, so you materialize the node as the type you asked for (`GetNodeAsync<T>` / `Nodes<T>()`), provided its properties are compatible.
+2. **Label (portable).** If the metadata type is not loadable (a different application, or the type was renamed or moved) or is not assignable to the requested type, the node's **label** is used to find a compatible local type. Because a label maps to exactly one type per process, this is deterministic. The requested type scopes the search, so `Nodes<T>()` materializes the node as a compatible local type.
 3. **Fallback.** Otherwise the requested type itself is used. For untyped reads, `DynamicNode` always succeeds, exposing the raw labels and properties.
 
 This is why the explicit label is a durable contract: the metadata pointer is a fast path that is allowed to miss, and the label recovers the type across processes and across refactors.

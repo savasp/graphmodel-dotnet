@@ -14,7 +14,7 @@ This example demonstrates the comprehensive full text search capabilities of the
 
 ## Key Features Demonstrated
 
-### 1. Universal Search
+### 1. All-entity search
 
 ```csharp
 // Search across all entities (nodes and relationships)
@@ -59,7 +59,7 @@ public record Author : Node
 
 - **Case Insensitive**: Search terms work regardless of case
 - **Multi-word Terms**: Support for phrases like "golden ticket"
-- **Automatic Indexing**: Full text indexes are created and managed automatically
+- **Neo4j Indexing**: The Neo4j provider creates and manages its owned full-text indexes
 - **Cross-Entity Search**: Find content across different node and relationship types
 
 ## Domain Model
@@ -118,8 +118,8 @@ The example will:
 
 ## Key Technical Concepts
 
-### Automatic Index Management
-The CVOYA graph library automatically creates and manages full text indexes for:
+### Neo4j index management
+The Neo4j provider automatically creates and manages its owned full-text indexes for:
 - All string properties on nodes and relationships
 - Proper handling of property inclusion/exclusion settings
 - Dynamic index updates when new entity types are discovered
@@ -135,3 +135,7 @@ The CVOYA graph library automatically creates and manages full text indexes for:
 - Non-string properties (numbers, dates, etc.) are automatically excluded
 
 This example provides a foundation for implementing powerful search functionality in graph-based applications.
+
+Full-text implementation is provider-specific. The in-memory provider executes the same contract
+with an index-free, case-insensitive whole-token matcher. Apache AGE searches native graph storage
+without creating managed indexes.

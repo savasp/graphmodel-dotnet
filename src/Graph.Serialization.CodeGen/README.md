@@ -8,7 +8,8 @@
 
 ## Quick starting guide
 
-This package is used to automatically generate code for domain-specific types that adhere to the Graph Model.
+This package generates serializers for CVOYA Graph domain types. It supports keyed and keyless
+entities, nullable scalar and collection properties, and reachable complex-property types.
 
 ## Notes
 

@@ -1,528 +1,246 @@
 ---
 ---
 
-# Best Practices
+# Best practices
 
-> **Note:** To use Graph Model, install the Neo4j provider package:
+## Model the domain, not provider identity
 
-> ```bash
-> dotnet add package Cvoya.Graph.Neo4j
-> ```
-
-> The analyzers package is optional but recommended for extra compile-time validation:
-
-> ```bash
-> dotnet add package Cvoya.Graph.Analyzers
-> ```
-
-This guide covers best practices for using Graph Model effectively in your applications.
-
-## Model Design
-
-### 1. Use Base Classes for Node and Relationship Implementation
-
-**Do**: Inherit from `Node` or `Relationship` base classes
+Inherit from `Node` and `Relationship`, then declare only domain data:
 
 ```csharp
-// Good: Using base class
-[Node("Person")]
+[Node(Label = "Person")]
 public record Person : Node
 {
-    public string Name { get; set; } = string.Empty;
-    public int Age { get; set; }
-}
-
-// Good: Using Relationship base class
-[Relationship("KNOWS")]
-public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
-{
-    public DateTime Since { get; set; }
-}
-```
-
-**Don't**: Implement `INode` or `IRelationship` directly
-
-```csharp
-// Avoid: Implementing interface directly (triggers CG011 warning)
-public record Person : INode
-{
-    // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-    public IReadOnlyList<string> Labels { get; } = new List<string> { "Person" }; // Don't manage these manually!
-    public string Name { get; set; } = string.Empty;
-}
-```
-
-**Why?** The base classes provide:
-
-- Automatic ID generation
-- Runtime metadata properties (`Labels`, `Type`) managed by the graph provider
-- Correct initialization patterns
-- Protection against manual metadata manipulation
-
-The `Labels` property on `INode` and `Type` property on `IRelationship` are **runtime metadata** populated by the graph provider during serialization/deserialization. They enable polymorphic queries and filtering but should never be set manually.
-
-```csharp
-// Querying with runtime metadata
-var memorySegments = await graph.Nodes<User>()
-    .Where(u => u.Id == userId)
-    .PathSegments<User, UserMemory, Memory>()
-    .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == relationshipType) // Using runtime Type property
-    .ToListAsync();
-```
-
-### 2. Choose the Right Granularity
-
-**Do**: Model entities at the right level of detail
-
-```csharp
-// Good: Separate entities for different concerns
-[Node("Person")]
-public record Person : Node
-{
+    public string Email { get; init; } = string.Empty;
     public string Name { get; set; } = string.Empty;
 }
 
-[Node("Address")]
-public record Address : Node
+[Relationship(Label = "KNOWS")]
+public record Knows : Relationship
 {
-    public string Street { get; set; } = string.Empty;
-    public string City { get; set; } = string.Empty;
-}
-
-[Relationship("LIVES_AT")]
-public record LivesAt(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
-{
-    public DateTime Since { get; set; }
+    public DateTime Since { get; init; }
 }
 ```
 
-**Don't**: Embed complex objects as properties
+Do not add endpoint IDs, physical element IDs, or relationship direction merely to make
+persistence work. Providers keep physical identity private, relationship commands receive endpoint
+intent separately, and path segments report orientation.
+
+A property named `Id` or `Direction` is fine when it belongs to the domain. Its name does not
+create library behavior.
+
+## Use keys only when the domain has one
+
+Keyless models are valid. When stable lookup uniqueness exists, declare it explicitly:
 
 ```csharp
-// Avoid: Complex nested properties
-public record Person : Node
+public record Account : Node
 {
-    public Address HomeAddress { get; set; } // This won't work well
+    [Property(IsKey = true)]
+    public string Tenant { get; init; } = string.Empty;
+
+    [Property(IsKey = true)]
+    public string AccountNumber { get; init; } = string.Empty;
+
+    public decimal Balance { get; set; }
 }
 ```
 
-### 3. Use Meaningful Relationship Types
+All key members form one composite tuple. Do not use a generated GUID as a universal key merely
+because an older version required one. Keys are domain constraints, not provider identity or
+implicit update targets.
 
-**Do**: Use descriptive, domain-specific relationship names
+Use `IsUnique` for a property that must be independently unique. Key/unique declarations cannot be
+collections, complex values, nullable members, or ignored properties.
+
+## Select endpoints precisely
+
+Use predicates that express a unique domain selection and let the exact-one command guard catch
+ambiguity:
 
 ```csharp
-[Relationship("REPORTS_TO")]
-public record ReportsTo(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+var source = graph.Nodes<Person>()
+    .Where(person => person.Email == "alice@example.com");
+var target = graph.Nodes<Person>()
+    .Where(person => person.Email == "bob@example.com");
 
-[Relationship("PURCHASED")]
-public record Purchased(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+await graph.CreateRelationshipAsync(
+    source,
+    new Knows { Since = DateTime.UtcNow },
+    target);
+```
+
+Do not materialize both entities merely to connect them, and do not retain provider element IDs.
+For new endpoints, prefer the all-new/hybrid create overloads so node and relationship creation is
+atomic.
+
+## Mutate sets, not detached objects
+
+Keep filtering in the provider and update the selected set:
+
+```csharp
+var affected = await graph.Nodes<Account>()
+    .Where(account => account.Tenant == tenant &&
+                      account.AccountNumber == accountNumber)
+    .UpdateAsync(setters => setters
+        .SetProperty(account => account.Balance, account => account.Balance + deposit));
+```
+
+`UpdateAsync` freezes and de-duplicates the target set inside the write transaction. Typed setters
+support captured constants and expressions over the current entity. Use the same surface for
+scalar, constrained, collection, and complex-property replacement.
+
+For deletes, decide explicitly whether user-defined relationships may be cascaded:
+
+```csharp
+await graph.Nodes<Person>()
+    .Where(person => person.Email == expiredEmail)
+    .DeleteAsync(cascadeDelete: true);
+```
+
+## Treat complex properties as owned structure
+
+Complex values are decomposed into owned graph nodes/relationships. Prefer small value objects with
+clear ownership and bounded depth:
+
+```csharp
+public record Address
 {
-    public DateTime PurchaseDate { get; set; }
-    public decimal Amount { get; set; }
+    public string City { get; init; } = string.Empty;
+}
+
+public record Customer : Node
+{
+    public Address? Home { get; set; }
+    public List<Address?> PreviousHomes { get; set; } = [];
 }
 ```
 
-**Don't**: Use generic relationship names
+Replacement creates the new owned subtree and removes stale owned state atomically. Do not share
+one complex object instance as if it were a separately addressable graph entity; model shared
+objects as normal nodes and explicit relationships.
+
+Nullable simple and complex collection elements preserve exact positions and order. Use nullable
+element annotations only when null is valid; a null targeting a non-nullable element fails instead
+of being silently dropped.
+
+## Filter and project early
+
+Apply predicates before traversal, ordering, and paging, then project only needed values:
 
 ```csharp
-// Avoid: Too generic
-[Relationship("RELATED_TO")]
-public record RelatedTo(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
-```
-
-### 4. Model Time Appropriately
-
-**Do**: Add temporal properties to relationships when needed
-
-```csharp
-[Relationship("WORKED_AT")]
-public record WorkedAt(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
-{
-    public DateTime StartDate { get; set; }
-    public DateTime? EndDate { get; set; }
-    public string Position { get; set; } = string.Empty;
-
-    public bool IsCurrent => EndDate == null;
-}
-```
-
-## Query Patterns
-
-### 1. Use Projections to Reduce Data Transfer
-
-**Do**: Project only the data you need
-
-```csharp
-// Good: Only fetch required fields
-var names = await graph.Nodes<Person>()
-    .Where(p => p.Department == "Sales")
-    .Select(p => new { p.FirstName, p.LastName })
+var page = await graph.Nodes<Person>()
+    .Where(person => person.Active)
+    .OrderBy(person => person.Name)
+    .Select(person => new { person.Email, person.Name })
+    .Skip(100)
+    .Take(50)
     .ToListAsync();
 ```
 
-**Don't**: Fetch entire entities when you only need a few properties
+Order by scalar domain properties for portable queries. Whole-entity ordering is an optional
+capability: Neo4j supports it; AGE and in-memory do not.
+
+## Bound traversal
+
+Choose the narrowest traversal result:
+
+- `Traverse` for target nodes;
+- `PathSegments` for one-hop endpoints, relationship, and orientation;
+- `TraversePaths` for full multi-hop paths;
+- `ShortestPath`/`AllShortestPaths` only when the provider declares the capability.
 
 ```csharp
-// Avoid: Fetching entire entities
-var people = await graph.Nodes<Person>()
-    .Where(p => p.Department == "Sales")
-    .ToListAsync();
-var names = people.Select(p => p.FirstName); // Inefficient
-```
-
-### 2. Filter Early and Specifically
-
-**Do**: Apply filters as early as possible in the query
-
-```csharp
-// Good: Filter at the database level
-var results = await graph.Nodes<Order>()
-    .Where(o => o.Status == "Pending" && o.Amount > 1000)
-    .Take(10)
-    .ToListAsync();
-```
-
-**Don't**: Filter in memory after fetching data
-
-```csharp
-// Avoid: Filtering in memory
-var allOrders = await graph.Nodes<Order>().ToListAsync();
-var results = allOrders
-    .Where(o => o.Status == "Pending" && o.Amount > 1000)
-    .Take(10);
-```
-
-### 3. Control Traversal Depth
-
-**Do**: Explicitly set traversal depth based on your needs
-
-```csharp
-// Good: Traverse only what you need
-var peopleWithFriends = await graph.Nodes<Person>()
-    .Where(p => p.City == "Seattle")
-    .Traverse<Knows, Person>(1)
+var recent = await graph.Nodes<Person>()
+    .Where(person => person.Email == "alice@example.com")
+    .Traverse<Knows, Person>(options => options
+        .Depth(1, 3)
+        .Direction(GraphTraversalDirection.Both)
+        .WhereRelationship<Knows>(
+            relationship => relationship.Since >= cutoff))
     .ToListAsync();
 ```
 
-**Don't**: Load deep graphs when not needed
+Every depth is at least one. Deep, bidirectional, variable-length traversal can expand rapidly;
+bound it and filter the source first.
+
+When physical orientation matters, use `IGraphPathSegment.Direction`. Do not infer direction from
+relationship properties or the order in which a relationship object was created.
+
+## Use the correct async terminal
+
+- Use `SingleAsync` only when the query contract requires exactly one row.
+- Use `SingleOrDefaultAsync` for zero-or-one.
+- Use `FirstAsync` only after deterministic ordering when "first" is meaningful.
+- Add `OrderBy` before `Skip`, `Take`, `First*`, or `Last*` when reproducibility matters.
+- Pass cancellation tokens through terminals and graph operations.
+- Use `await foreach` for incremental processing when a provider supports streaming.
+
+Do not await query roots such as `graph.Nodes<T>()`; building a query performs no I/O.
+
+## Keep transaction ownership clear
+
+Create every transaction-bound query root with the same transaction:
 
 ```csharp
-// Avoid: Traversing too broadly
-var everyone = await graph.Nodes<Person>()
-    .Traverse<Knows, Person>(1, 10)
-    .ToListAsync(); // May be huge!
-```
-
-## Transaction Management
-
-### 1. Keep Transactions Short
-
-**Do**: Minimize transaction scope
-
-```csharp
-// Good: Focused transaction
-public async Task TransferEmployee(string employeeId, string newDeptId)
-{
-    await using var tx = await graph.GetTransactionAsync();
-
-    var employee = await graph.GetNodeAsync<Employee>(employeeId, transaction: tx);
-    var newDept = await graph.GetNodeAsync<Department>(newDeptId, transaction: tx);
-
-    // Update the relationship
-    await graph.DeleteRelationshipAsync(employee.CurrentDeptRelationshipId, transaction: tx);
-    var newRel = new WorksIn(employee.Id, newDept.Id);
-    await graph.CreateRelationshipAsync(newRel, transaction: tx);
-
-    await tx.CommitAsync();
-}
-```
-
-**Don't**: Include unrelated operations in transactions
-
-```csharp
-// Avoid: Long-running transaction
-await using var tx = await graph.GetTransactionAsync();
-var data = await FetchFromExternalApi(); // Don't do this in a transaction!
-await ProcessData(data);
-await graph.CreateNodeAsync(person, transaction: tx);
-await tx.CommitAsync();
-```
-
-### 2. Handle Failures Gracefully
-
-**Do**: Implement proper error handling
-
-```csharp
-public async Task<bool> SafeCreatePerson(Person person)
-{
-    try
-    {
-        await using var tx = await graph.GetTransactionAsync();
-
-        // Check for duplicates
-        var existing = await graph.Nodes<Person>(transaction: tx)
-            .FirstOrDefaultAsync(p => p.Email == person.Email);
-
-        if (existing != null)
-        {
-            return false; // Already exists
-        }
-
-        await graph.CreateNodeAsync(person, transaction: tx);
-        await tx.CommitAsync();
-        return true;
-    }
-    catch (GraphException ex)
-    {
-        logger.LogError(ex, "Failed to create person");
-        throw;
-    }
-}
-```
-
-## Performance Optimization
-
-### 1. Batch Operations
-
-**Do**: Group related operations
-
-```csharp
-// Good: Batch create
-public async Task ImportPeople(List<PersonData> peopleData)
-{
-    const int batchSize = 100;
-
-    for (int i = 0; i < peopleData.Count; i += batchSize)
-    {
-        var batch = peopleData.Skip(i).Take(batchSize);
-
-        await using var tx = await graph.GetTransactionAsync();
-        foreach (var data in batch)
-        {
-            var person = new Person { /* map from data */ };
-            await graph.CreateNodeAsync(person, transaction: tx);
-        }
-        await tx.CommitAsync();
-    }
-}
-```
-
-### 2. Optimize Relationship Queries
-
-**Do**: Query relationships efficiently
-
-```csharp
-// Good: Direct relationship query
-var knows = await graph.Relationships<Knows>()
-    .Where(k => k.StartNodeId == personId || k.EndNodeId == personId)
-    .ToListAsync();
-```
-
-**Don't**: Load all nodes to find relationships
-
-```csharp
-// Avoid: Inefficient relationship discovery
-var allPeople = await graph.Nodes<Person>()
-    .ToListAsync();
-var allRelationships = await graph.Relationships<Knows>()
-    .ToListAsync();
-var personRelationships = allRelationships
-    .Where(k => k.StartNodeId == personId || k.EndNodeId == personId)
-    .ToList();
-```
-
-## Error Handling
-
-### 1. Distinguish Error Types
-
-```csharp
+await using var transaction = await graph.GetTransactionAsync(cancellationToken);
 try
 {
-    await graph.CreateNodeAsync(node);
+    var selected = graph.Nodes<Account>(transaction)
+        .Where(account => account.AccountNumber == accountNumber);
+
+    await selected.UpdateAsync(
+        setters => setters.SetProperty(account => account.Balance, newBalance),
+        cancellationToken);
+
+    await transaction.CommitAsync();
 }
-catch (GraphException ex)
+catch
 {
-    // Handle general graph errors
-    logger.LogError("Graph operation failed: {Message}", ex.Message);
-}
-catch (Exception ex)
-{
-    // Handle unexpected errors
-    logger.LogError(ex, "Unexpected error");
+    await transaction.RollbackAsync();
     throw;
 }
 ```
 
-### 2. Implement Retry Logic
+Transactions belong to the graph/store that created them. Keep them short and avoid external I/O
+while they are open. Dispose the provider store to release drivers/pools; `IGraph` does not own
+those resources.
 
-```csharp
-public async Task<T> ExecuteWithRetry<T>(
-    Func<Task<T>> operation,
-    int maxRetries = 3)
-{
-    for (int i = 0; i < maxRetries; i++)
-    {
-        try
-        {
-            return await operation();
-        }
-        catch (GraphException) when (i < maxRetries - 1)
-        {
-            // Retry on transaction conflicts
-            await Task.Delay(TimeSpan.FromMilliseconds(100 * (i + 1)));
-        }
-    }
-    throw new Exception("Operation failed after retries");
-}
-```
+## Understand full-text portability
 
-## Testing
+All declaring providers implement case-insensitive whole-token matching with multi-term AND
+semantics. Do not rely on ranking, stemming, phrase adjacency, prefix, wildcard, or result order
+unless the selected provider documents it.
 
-### 1. Use Interfaces for Testability
+Add explicit ordering when order matters. Use `[Property(IncludeInFullTextSearch = false)]` for
+sensitive or irrelevant strings. Full-text execution differs:
 
-```csharp
-public class PersonService
-{
-    private readonly IGraph graph;
+- Neo4j uses provider-owned managed indexes.
+- AGE uses PostgreSQL text search over native AGE rows without managed search artifacts.
+- In-memory scans searchable strings and is suitable for tests, not performance validation.
 
-    public PersonService(IGraph graph)
-    {
-        this.graph = graph;
-    }
+## Keep native interoperability one-way
 
-    public async Task<Person> GetPersonWithFriends(string id)
-    {
-        return await graph.GetNodeAsync<Person>(id);
-    }
-}
+Typed and dynamic queries can read compatible external Neo4j/AGE rows that use mapped native
+labels/types and properties. Read-only operations do not provision storage artifacts.
 
-// In tests, pass your IGraph test double to the service constructor.
-```
+Do not expose provider physical identities or private collection companions in application
+contracts. They are not portable and may change without changing the public behavior.
 
-### 2. Test Transactions
+## Test at the right level
 
-```csharp
-[Fact]
-public async Task Transaction_RollsBackOnError()
-{
-    await using var tx = await graph.GetTransactionAsync();
+- Use `Cvoya.Graph.InMemory` for fast business-logic tests.
+- Run the fast repository lane for provider-neutral changes.
+- Run Neo4j and AGE lanes serially when provider behavior changes.
+- Provider authors bind `Cvoya.Graph.CompatibilityTests` and declare only capabilities they
+  actually satisfy.
 
-    var person = new Person { FirstName = "Test" };
-    await graph.CreateNodeAsync(person, transaction: tx);
+The in-memory full-text suite runs; it does not skip. Infrastructure unavailability in a provider
+TCK run always fails. `GRAPHMODEL_COMPLIANCE_STRICT=1` enforces the method-execution floor rather
+than changing test-result semantics.
 
-    // Don't commit - simulate error
-    await tx.RollbackAsync();
+## Treat pre-v1 storage as a separate data model
 
-    // Verify person wasn't created
-    var exists = await graph.Nodes<Person>()
-        .AnyAsync(p => p.FirstName == "Test");
-    Assert.False(exists);
-}
-```
-
-## Security Considerations
-
-### 1. Validate Input
-
-```csharp
-public async Task<Person> CreatePerson(PersonInput input)
-{
-    // Validate input
-    if (string.IsNullOrWhiteSpace(input.Email))
-        throw new ArgumentException("Email is required");
-
-    if (!IsValidEmail(input.Email))
-        throw new ArgumentException("Invalid email format");
-
-    // Sanitize data
-    var person = new Person
-    {
-        FirstName = input.FirstName.Trim(),
-        LastName = input.LastName.Trim(),
-        Email = input.Email.ToLowerInvariant().Trim()
-    };
-
-    await graph.CreateNodeAsync(person);
-    return person;
-}
-```
-
-### 2. Implement Access Control
-
-```csharp
-public async Task<IEnumerable<Document>> GetUserDocuments(string userId)
-{
-    // Only return documents the user has access to
-    return await graph.Nodes<Document>()
-        .Where(d => d.OwnerId == userId || d.IsPublic)
-        .ToListAsync();
-}
-```
-
-## Monitoring and Maintenance
-
-### 1. Log Important Operations
-
-```csharp
-public async Task<Person> CreatePersonWithLogging(Person person)
-{
-    using (logger.BeginScope(new { PersonEmail = person.Email }))
-    {
-        logger.LogInformation("Creating person");
-
-        var stopwatch = Stopwatch.StartNew();
-        await graph.CreateNodeAsync(person);
-
-        logger.LogInformation("Person created in {ElapsedMs}ms",
-            stopwatch.ElapsedMilliseconds);
-
-        return person;
-    }
-}
-```
-
-### 2. Monitor Query Performance
-
-```csharp
-public async Task<List<T>> ExecuteQueryWithMetrics<T>(
-    IQueryable<T> query,
-    string queryName)
-{
-    using (var activity = Activity.StartActivity(queryName))
-    {
-        var stopwatch = Stopwatch.StartNew();
-        var results = await query.ToListAsync();
-
-        activity?.SetTag("query.duration", stopwatch.ElapsedMilliseconds);
-        activity?.SetTag("query.count", results.Count);
-
-        if (stopwatch.ElapsedMilliseconds > 1000)
-        {
-            logger.LogWarning("Slow query {QueryName} took {Duration}ms",
-                queryName, stopwatch.ElapsedMilliseconds);
-        }
-
-        return results;
-    }
-}
-```
-
-### 3. Regular Maintenance
-
-- Review and optimize slow queries
-- Update indexes based on query patterns
-- Clean up orphaned relationships
-- Archive old data when appropriate
-
-## Summary
-
-Following these best practices will help you build robust, performant, and maintainable applications with Graph Model. Remember to:
-
-- Design your model thoughtfully
-- Write efficient queries
-- Use transactions appropriately
-- Handle errors gracefully
-- Test thoroughly
-- Monitor performance
-- Keep security in mind
+Do not open an alpha-era database and assume v1 will migrate it. There is no compatibility reader,
+dual write, or automatic backfill. Back up, recreate/reimport into a clean native model, and
+validate the result. See [the migration guide](migration-0.x.md).

@@ -1,215 +1,192 @@
-# Contributing to CVOYA graph
+# Contributing to CVOYA Graph
 
-Thank you for your interest in contributing to CVOYA graph! This document provides guidelines for contributing to this project.
+Thank you for contributing. CVOYA Graph targets .NET 10 and C# 14 and accepts changes through pull
+requests.
 
-## 🚀 Getting Started
+## Prerequisites
 
-### Prerequisites
-
-- .NET 10.0 SDK or later
-- Docker or Podman (for running Neo4j tests)
+- .NET 10 SDK
 - Git
+- Podman or Docker for Neo4j/Apache AGE provider tests
+- Bash and `jq` for package validation
 
-For AI coding agents and automation, see [AGENTS.md](AGENTS.md) at the repo root for project context, build, and test commands.
+AI coding agents should start with [AGENTS.md](AGENTS.md), the canonical repository instructions.
 
-### Development Setup
+## Set up
 
-1. **Clone the repository**
-
-   ```bash
-   git clone https://github.com/cvoya-com/graph.git
-   cd graph
-   ```
-
-2. **Restore dependencies**
-
-   ```bash
-   dotnet restore
-   ```
-
-3. **Build the solution**
-
-   ```bash
-   dotnet build
-   ```
-
-4. **Run tests**
-
-   ```bash
-   # Fast provider-free tests
-   dotnet test tests/Cvoya.Graph.Analyzers.Tests --configuration Debug
-
-   # Full suite; Neo4j integration tests need a running Neo4j instance.
-   dotnet test --configuration Debug
-   ```
-
-## 🐛 Reporting Issues
-
-When reporting issues, please include:
-
-- **Description**: Clear description of the problem
-- **Reproduction Steps**: Minimal code to reproduce the issue
-- **Expected Behavior**: What you expected to happen
-- **Actual Behavior**: What actually happened
-- **Environment**: .NET version, OS, Neo4j version (if applicable)
-- **Code Sample**: Minimal working example demonstrating the issue
-
-## 🔧 Development Guidelines
-
-### Code Style
-
-- Follow standard C# coding conventions
-- Use meaningful variable and method names
-- Add XML documentation for public APIs
-- Keep methods focused and single-purpose
-
-### Testing
-
-- Write unit tests for new functionality
-- Ensure all tests pass before submitting PR
-- Add integration tests for provider-specific features
-- Maintain or improve code coverage
-
-### Documentation
-
-- Update relevant README files
-- Add code examples for new features
-- Update API documentation
-- Include migration notes for breaking changes
-- Provider authors should also read [Provider Implementers Guide](docs/provider-implementers-guide.md) before adding or changing provider behavior.
-
-## 📝 Pull Request Process
-
-1. **Fork and Branch**
-
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Make Changes**
-
-   - Follow coding guidelines
-   - Add tests for new functionality
-   - Update documentation
-
-3. **Test Thoroughly**
-
-   Test with a local Neo4j instance (for example Neo4j Desktop):
-
-   ```bash
-   dotnet test
-   ```
-
-   Start a local Neo4j before running the full integration suite:
-
-   ```bash
-   ./scripts/containers/start-neo4j.sh
-   dotnet test --configuration Debug
-   ```
-
-4. **Commit with Clear Messages**
-
-   ```bash
-   git commit -m "feat: add graph traversal depth limiting"
-   ```
-
-5. **Push and Create PR**
-   - Push to your fork
-   - Create pull request with clear description
-   - Reference related issues
-
-### Commit Message Format
-
-We follow conventional commits:
-
-- `feat:` New features
-- `fix:` Bug fixes
-- `docs:` Documentation changes
-- `refactor:` Code refactoring
-- `test:` Test additions/changes
-- `chore:` Build/tooling changes
-
-## 🏗️ Project Structure
-
-```text
-src/
-├── Graph/                 # Core abstractions
-├── Cvoya.Graph.Neo4j/          # Neo4j provider
-├── Cvoya.Graph.Serialization/  # Object serialization
-├── Cvoya.Graph.Analyzers/      # Roslyn analyzers
-└── Cvoya.Graph.CompatibilityTests/  # Provider contract suite (TCK)
-
-tests/
-├── Cvoya.Graph.Neo4j.Tests/               # Integration tests (the contract suite bound to Neo4j)
-└── Cvoya.Graph.CompatibilityTests.Tests/  # Meta-tests for the TCK itself
-
-examples/                       # Usage examples
-docs/                          # Documentation
+```bash
+git clone https://github.com/cvoya-com/graph.git
+cd graph
+dotnet restore
+dotnet build --configuration Debug
 ```
 
-## 🎯 Areas for Contribution
+Use a focused branch and conventional commit messages such as `feat:`, `fix:`, `test:`, `docs:`,
+`refactor:`, or `chore:`.
 
-### High Priority
+## Test lanes
 
-- Performance optimizations
-- Additional graph database providers
-- Enhanced LINQ query capabilities
-- Improved error handling and diagnostics
+Use the discovering repository runner. It builds once, finds test projects under `tests/`, excludes
+benchmarks, and rejects any selected project that reports zero tests.
 
-### Medium Priority
+```bash
+# Service-free projects and the in-memory provider contract suite
+./scripts/run-tests.sh --configuration Debug --lane fast
 
-- Additional examples and tutorials
-- Schema migration tools
-- Query optimization hints
-- Bulk operations support
+# Provider lanes; start the repository service container
+./scripts/run-tests.sh --configuration Debug --lane neo4j --neo4j
+./scripts/run-tests.sh --configuration Debug --lane age --age
 
-### Documentation
+# Complete suite with both services
+./scripts/run-tests.sh --configuration Debug --lane all --neo4j --age
+```
 
-- API reference improvements
-- More usage examples
-- Performance tuning guides
-- Migration documentation
+Run Neo4j and AGE lanes serially. Their suites create, mutate, and clean provider state and are not
+documented as safe for concurrent runs.
 
-## 🔍 Code Review Guidelines
+Snapshot tests use Verify.Xunit. Agent-run commands should add `--disable-diff-engine` so a mismatch
+stays in terminal output rather than opening a GUI diff tool.
 
-All submissions require review. We look for:
+During iteration, select the narrowest project/filter:
 
-- **Correctness**: Code works as intended
-- **Performance**: No unnecessary performance degradation
-- **Maintainability**: Code is readable and well-structured
-- **Testing**: Adequate test coverage
-- **Documentation**: Public APIs are documented
+```bash
+./scripts/run-tests.sh \
+  --configuration Debug \
+  --lane fast \
+  --project Graph.Core.Tests \
+  --filter '/*/*/SchemaRegistry*'
+```
 
-## 📊 Performance Considerations
+Use `--no-build` only when a compatible build already exists.
 
-- Profile performance-critical changes
-- Avoid allocations in hot paths
-- Consider async/await best practices
-- Test with realistic data volumes
+### Provider prerequisites
 
-## 🛡️ Security
+Neo4j defaults to `bolt://localhost:7687` with `neo4j/password`. Override with `NEO4J_URI`,
+`NEO4J_USER`, `NEO4J_PASSWORD`, and `NEO4J_DATABASE`. Start the repository container directly with:
 
-- Report security vulnerabilities privately
-- Follow secure coding practices
-- Validate user inputs appropriately
-- Be mindful of injection attacks in query building
+```bash
+./scripts/containers/start-neo4j.sh
+```
 
-## 📄 License
+The script prefers Podman and falls back to Docker. Set `CONTAINER_RUNTIME=podman` or
+`CONTAINER_RUNTIME=docker` to force one.
 
-By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+AGE uses `AGE_CONNECTION_STRING`; the default repository container listens on port 5455:
 
-## 🤝 Community
+```bash
+./scripts/containers/start-age.sh
+export AGE_CONNECTION_STRING='Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres'
+```
 
-- Be respectful and inclusive
-- Help others learn and grow
-- Share knowledge and experiences
-- Provide constructive feedback
+Setting `CI=true` locally does not start either service.
 
-## ❓ Questions?
+### What the projects cover
 
-- Check existing issues and documentation
-- Ask in discussions or create an issue
-- Be specific about your use case
-- Provide context and examples
+| Project | Role | Service |
+| --- | --- | --- |
+| `src/Graph.CompatibilityTests` | Packable provider TCK interfaces/harness; not a standalone runnable certification | None |
+| `tests/Graph.InMemory.Tests` | TCK bound to the in-memory provider plus provider tests; full-text runs against its index-free matcher | None |
+| `tests/Graph.Neo4j.Tests` | TCK bound to Neo4j plus provider integration tests | Neo4j |
+| `tests/Graph.Age.Tests` | TCK bound to Apache AGE plus provider integration tests | AGE |
+| `tests/Graph.CompatibilityTests.Tests` | TCK lifecycle, capability-skip, and compliance-guard meta-tests | None |
+| `tests/Graph.Core.Tests` | Provider-neutral model, query shape, and serialization integration | None |
+| `tests/Graph.Cypher.Tests` | Shared typed Cypher AST/planning/rendering | None |
+| `tests/Graph.Neo4j.Translation.Tests` | Neo4j translation without database execution | None |
+| `tests/Graph.QuerySurface.CompilationTests` | Compile-time query-surface contracts | None |
+| `tests/Graph.Serialization.CodeGen.Tests` | Incremental serializer generator | None |
+| `tests/Graph.Analyzers.Tests` | Roslyn analyzer diagnostics | None |
+| `tests/Graph.Performance.Tests` | Benchmarks; outside normal gates | Provider-specific benchmark setup |
 
-Thank you for contributing to CVOYA graph! 🎉
+Provider-agnostic behavior belongs in the TCK so every provider binding inherits it. Running
+`src/Graph.CompatibilityTests` alone proves nothing; see the
+[provider implementers guide](docs/provider-implementers-guide.md#certifying-a-provider).
+
+## Project layout
+
+```text
+src/Graph/                       Core model, query, transaction, and mutation contracts
+src/Graph.Neo4j/                 Neo4j provider
+src/Graph.Age/                   PostgreSQL + Apache AGE provider
+src/Graph.InMemory/              In-memory reference provider
+src/Graph.Cypher/                Shared typed Cypher model/planner/renderer
+src/Graph.Serialization/         Runtime serialization and result materialization
+src/Graph.Serialization.CodeGen/ Incremental serializer generator
+src/Graph.Analyzers/             Consumer-model analyzers
+src/Graph.CompatibilityTests/    Packable provider TCK
+tests/                           Test bindings, provider tests, and library tests
+examples/                        Compiling usage examples
+docs/                            Conceptual, provider, build, and release documentation
+scripts/                         Test, container, benchmark, release, and validation helpers
+```
+
+## Code changes
+
+- Match surrounding C# style and do not reformat unrelated code.
+- Put one public type in each source file.
+- Add XML documentation to public APIs.
+- Add the repository Apache 2.0 header to new source files.
+- Public async APIs use an `Async` suffix and accept a `CancellationToken`.
+- Add provider-neutral contract behavior to the TCK; add provider-specific tests to the provider
+  test project.
+- When adding/moving/removing a project or changing validation control-plane files, keep solution,
+  runner, release, and CI inventories/scopes complete in the same PR.
+- Do not add public provider identity, universal root metadata, or undocumented storage
+  companions. V1 entities are identity-free and provider physical identity is private.
+
+## Documentation changes
+
+Update conceptual docs, package READMEs, XML comments, and compiling examples with behavior changes.
+Code snippets must match the final public API. The v1 migration boundary is explicit: alpha-era
+data must be recreated/reimported; do not present ad-hoc SQL/Cypher as supported migration tooling.
+
+Build the documentation output:
+
+```bash
+./scripts/build-docs.sh Debug
+```
+
+Docs-only changes may skip the test lane when they do not touch source/XML or examples. Changes to
+source XML or compiling examples should build the affected project/examples.
+
+## Package changes
+
+Package validation derives the expected inventory from packable projects under `src/`, verifies
+missing/unexpected packages and assembly version metadata, then builds with package references:
+
+```bash
+dotnet msbuild eng/PackageValidation.proj -target:Validate
+```
+
+Run this gate when public API, assembly output, package contents/references, or release metadata
+changes. It is not a substitute for focused tests.
+
+## Pull requests
+
+Before opening a PR:
+
+1. Keep the diff focused on the declared issue.
+2. Run targeted checks while iterating.
+3. Review the final diff for unrelated changes.
+4. Run the complete relevant test lane once on the stable final patch.
+5. Update docs and examples for behavior/API changes.
+6. Reference issues with a closing keyword for each issue (`Closes #1, closes #2`).
+
+The installed pre-push hook enforces the repository Release build/format gate. Do not duplicate
+that gate manually; run the relevant test lane described above.
+
+## Reporting bugs
+
+Include:
+
+- expected and actual behavior;
+- minimal reproduction;
+- .NET, OS, and provider/database versions;
+- relevant model and query snippets; and
+- full exception/inner-exception details with secrets removed.
+
+Report security vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## License and conduct
+
+Contributions are licensed under the Apache License 2.0. Follow the
+[Code of Conduct](CODE_OF_CONDUCT.md).

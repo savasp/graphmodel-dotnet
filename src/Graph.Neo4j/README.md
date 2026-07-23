@@ -18,11 +18,12 @@ dotnet add package Cvoya.Graph.Neo4j
 using Cvoya.Graph.Neo4j;
 
 // Configure connection
-var store = new Neo4jGraphStore("neo4j+s://your-server:7687", "neo4j", "your-password");
+await using var store =
+    new Neo4jGraphStore("neo4j+s://your-server:7687", "neo4j", "your-password");
 var graph = store.Graph;
 
 // Use CVOYA graph APIs
-var users = await (await graph.NodesAsync<User>())
+var users = await graph.Nodes<User>()
     .Where(u => u.IsActive)
     .OrderBy(u => u.CreatedDate)
     .ToListAsync();
@@ -36,6 +37,13 @@ var users = await (await graph.NodesAsync<User>())
 - **Transaction support** - Full ACID transactions with Neo4j
 - **Index management** - Automatic index creation from entity attributes
 - **Complex type handling** - Serialization of complex properties and collections
+
+Neo4j owns physical node and relationship identity. CVOYA Graph does not expose it through
+`IEntity`; use optional `[Property(IsKey = true)]` domain keys or ordinary domain predicates when
+an operation needs to select an entity. Keyless entities remain valid.
+
+Ordinary read-only query execution does not initialize schema or create indexes. Write paths
+initialize the schema artifacts required by the registered model.
 
 ## 🏗️ Architecture
 
