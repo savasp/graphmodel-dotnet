@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/Graph.Age/Graph.Age.csproj" />
+    <ProjectReference Include="../../src/Graph.InMemory/Graph.InMemory.csproj" />
     <ProjectReference Include="../../src/Graph.Neo4j/Graph.Neo4j.csproj" />
   </ItemGroup>
 

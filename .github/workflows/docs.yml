@@ -8,17 +8,30 @@ on:
       - 'AGENTS.md'
       - 'CLAUDE.md'
       - 'CODE_OF_CONDUCT.md'
+      - 'CONTRIBUTING.md'
       - 'Directory.Packages.props'
       - 'Gemfile'
       - 'Gemfile.lock'
       - 'README.md'
+      - 'SECURITY.md'
+      - 'assets/**'
+      - 'developer/**/*.md'
+      - 'eng/docs/**'
+      - 'examples/**'
       - 'global.json'
       - 'index.md'
       - 'src/**'
       - 'docs/**'
       - 'scripts/build-docs.*'
+      - 'scripts/README.md'
+      - 'scripts/validate-documentation.*'
+      - 'tests/**/*.md'
       - '.config/dotnet-tools.json'
+      - '.github/*.md'
+      - '.github/**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
       - '.github/workflows/docs.yml'
+      - '.github/workflows/release.yml'
   pull_request:
     branches: [ "main" ]
     paths:
@@ -26,17 +39,30 @@ on:
       - 'AGENTS.md'
       - 'CLAUDE.md'
       - 'CODE_OF_CONDUCT.md'
+      - 'CONTRIBUTING.md'
       - 'Directory.Packages.props'
       - 'Gemfile'
       - 'Gemfile.lock'
       - 'README.md'
+      - 'SECURITY.md'
+      - 'assets/**'
+      - 'developer/**/*.md'
+      - 'eng/docs/**'
+      - 'examples/**'
       - 'global.json'
       - 'index.md'
       - 'src/**'
       - 'docs/**'
       - 'scripts/build-docs.*'
+      - 'scripts/README.md'
+      - 'scripts/validate-documentation.*'
+      - 'tests/**/*.md'
       - '.config/dotnet-tools.json'
+      - '.github/*.md'
+      - '.github/**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
       - '.github/workflows/docs.yml'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -75,7 +101,7 @@ jobs:
   validate-documentation:
     name: 🔍 Build and Validate Documentation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     outputs:
       pages_artifact_name: ${{ steps.artifact-name.outputs.name }}
 
@@ -136,6 +162,9 @@ jobs:
       with:
         ruby-version: '3.2'
         bundler-cache: true
+
+    - name: ✅ Validate Documentation Sources and Examples
+      run: ./scripts/validate-documentation.sh Debug
 
     - name: Prepare Documentation Build
       id: build-config

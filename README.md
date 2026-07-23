@@ -43,6 +43,7 @@ certification. The repository includes Neo4j, PostgreSQL + Apache AGE, and in-me
 - Queries use `IGraphQueryable<T>` and async terminals. Updates and deletes operate over a frozen,
   distinct query selection.
 
+<!-- checked-snippet: examples/Playground/Documentation/Person.cs#graph-using; examples/Playground/Documentation/Person.cs#root-model-person; examples/Playground/Documentation/Address.cs#root-model-address; examples/Playground/Documentation/AuditEntry.cs#root-model-audit-entry; examples/Playground/Documentation/Knows.cs#root-model-knows -->
 ```csharp
 using Cvoya.Graph;
 
@@ -109,6 +110,7 @@ dotnet add package Cvoya.Graph.Analyzers
 
 ## Quick start
 
+<!-- checked-snippet: examples/Playground/Documentation/UsingDirectives.cs#neo4j-usings; examples/Playground/DocumentationSnippets.cs#root-quick-start -->
 ```csharp
 using Cvoya.Graph;
 using Cvoya.Graph.Neo4j;
@@ -167,6 +169,7 @@ foreach (var segment in connections)
 
 The API supports every selected/new endpoint combination:
 
+<!-- checked-snippet: examples/Playground/DocumentationSnippets.cs#relationship-creation -->
 ```csharp
 var alice = graph.Nodes<Person>()
     .Where(person => person.Email == "alice@example.com");
@@ -204,12 +207,13 @@ guessing an endpoint.
 
 ### Set-based mutation
 
+<!-- checked-snippet: examples/Playground/DocumentationSnippets.cs#set-based-mutation -->
 ```csharp
 var adults = graph.Nodes<Person>().Where(person => person.Age >= 18);
 
 var updated = await adults.UpdateAsync(setters => setters
     .SetProperty(person => person.Name, person => person.Name)
-    .SetProperty(person => person.PreviousAddresses, []));
+    .SetProperty(person => person.PreviousAddresses, new List<Address?>()));
 
 var deleted = await graph.Nodes<Person>()
     .Where(person => person.Email.EndsWith("@expired.example"))

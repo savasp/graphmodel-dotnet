@@ -5,6 +5,7 @@ using Cvoya.Graph;
 
 // ==== DOMAIN MODEL ====
 
+// snippet-start: person
 [Node(Label = "Person")]
 public record Person : Node
 {
@@ -13,6 +14,7 @@ public record Person : Node
     public int Age { get; set; }
     public string? Department { get; set; }
 }
+// snippet-end: person
 
 [Node(Label = "Company")]
 public record Company : Node
@@ -22,6 +24,7 @@ public record Company : Node
     public DateTime Founded { get; set; }
 }
 
+// snippet-start: works-for
 [Relationship(Label = "WORKS_FOR")]
 public record WorksFor : Relationship
 {
@@ -29,3 +32,4 @@ public record WorksFor : Relationship
     public DateTime StartDate { get; set; }
     public decimal Salary { get; set; }
 }
+// snippet-end: works-for

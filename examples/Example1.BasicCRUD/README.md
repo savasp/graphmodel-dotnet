@@ -5,12 +5,13 @@ provider.
 
 ## Domain model
 
+<!-- checked-snippet: examples/Example1.BasicCRUD/DomainModel.cs#person; examples/Example1.BasicCRUD/DomainModel.cs#works-for -->
 ```csharp
 [Node(Label = "Person")]
 public record Person : Node
 {
-    public string Email { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
     public int Age { get; set; }
     public string? Department { get; set; }
 }
@@ -19,12 +20,14 @@ public record Person : Node
 public record WorksFor : Relationship
 {
     public string Position { get; set; } = string.Empty;
+    public DateTime StartDate { get; set; }
     public decimal Salary { get; set; }
 }
 ```
 
 Relationships do not store endpoint IDs. The creation command receives two query selections:
 
+<!-- checked-snippet: examples/Example1.BasicCRUD/DocumentationSnippets.cs#create-relationship -->
 ```csharp
 await graph.CreateRelationshipAsync(
     graph.Nodes<Person>().Where(person => person.Email == alice.Email),
@@ -34,6 +37,7 @@ await graph.CreateRelationshipAsync(
 
 Queries begin synchronously and perform I/O at an async terminal:
 
+<!-- checked-snippet: examples/Example1.BasicCRUD/DocumentationSnippets.cs#query -->
 ```csharp
 var engineers = await graph.Nodes<Person>()
     .Where(person => person.Department == "Engineering")
@@ -42,6 +46,7 @@ var engineers = await graph.Nodes<Person>()
 
 Updates and deletes operate on the selected set:
 
+<!-- checked-snippet: examples/Example1.BasicCRUD/DocumentationSnippets.cs#update-and-delete -->
 ```csharp
 await graph.Nodes<Person>()
     .Where(person => person.Email == alice.Email)
