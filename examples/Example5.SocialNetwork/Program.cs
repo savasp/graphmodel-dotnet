@@ -107,7 +107,7 @@ try
 
     var post1 = new Post
     {
-        Content = "Just deployed a new feature using GraphModel! The LINQ support is amazing 🚀",
+        Content = "Just deployed a new feature using CVOYA Graph! The LINQ support is amazing 🚀",
         PostedAt = DateTime.UtcNow.AddHours(-24),
         Tags = ["programming", "graphdb", "dotnet"]
     };

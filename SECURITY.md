@@ -80,7 +80,7 @@ var insecureStore = new Neo4jGraphStore("neo4j://your-server:7687",
 
 ```csharp
 // ✅ Good - parameterized queries
-var users = await (await graph.NodesAsync<User>())
+var users = await graph.Nodes<User>()
     .Where(u => u.Email == email)  // Automatically parameterized
     .ToListAsync();
 

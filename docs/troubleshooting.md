@@ -20,12 +20,8 @@ Neo4jException: Could not perform discovery for server neo4j://localhost:7687
 1. **Check Neo4j is running**
 
    ```bash
-   # For Neo4j Desktop - ensure database is started
-   # For Docker:
-   docker ps | grep neo4j
-
-   # Start Neo4j with Docker if not running:
-   docker run --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:latest
+   # From a repository checkout; prefers Podman and falls back to Docker.
+   ./scripts/containers/start-neo4j.sh
    ```
 
 2. **Verify connection string format**
@@ -44,9 +40,8 @@ Neo4jException: Could not perform discovery for server neo4j://localhost:7687
 3. **Check credentials**
 
    ```csharp
-   // Default Neo4j credentials are neo4j/neo4j
-   // You must change the password on first login
-   var store = new Neo4jGraphStore("neo4j://localhost:7687", "neo4j", "your-new-password");
+   // Repository container defaults are neo4j/password.
+   var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password");
    var graph = store.Graph;
    ```
 
@@ -137,24 +132,21 @@ InvalidCastException: Unable to cast object of type 'System.String' to type 'Sys
 1. **Check property types match database**
 
    ```csharp
-   // If database has string IDs but your model expects int:
-   public class User : INode
+   // If the database has a string property but your model expects an int:
+   [Node(Label = "User")]
+   public record User : Node
    {
-       // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
-       public string Id { get; init; } = Guid.NewGuid().ToString();  // Use string if Neo4j stores as string
-       public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
-       // Not: public int Id { get; set; }
+       public string ExternalId { get; init; } = string.Empty;
+       // Not: public int ExternalId { get; set; }
    }
    ```
 
 2. **Use nullable types for optional properties**
 
    ```csharp
-   public class User : INode
+   [Node(Label = "User")]
+   public record User : Node
    {
-       // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
-       public string Id { get; init; } = Guid.NewGuid().ToString();
-       public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
        public int? Age { get; set; }           // Nullable if not always present
        public DateTime? CreatedDate { get; set; }  // Nullable for optional dates
    }
@@ -286,7 +278,7 @@ TransientException: Deadlock detected
    do
    {
        batch = await graph.Nodes<User>()
-           .OrderBy(u => u.Id)
+           .OrderBy(u => u.Email)
            .Skip(page * pageSize)
            .Take(pageSize)
            .ToListAsync();

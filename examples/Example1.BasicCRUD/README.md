@@ -1,86 +1,63 @@
-# Example 1: Basic CRUD Operations
+# Example 1: Basic CRUD operations
 
-This example demonstrates the fundamental Create, Read, Update, Delete (CRUD) operations using the CVOYA graph library with Neo4j.
+This example demonstrates create, query, set-based update, and delete operations with the Neo4j
+provider.
 
-## What You'll Learn
-
-- How to define domain models using `Node` and `Relationship` records
-- Creating nodes and relationships in the graph
-- Querying data using LINQ-to-Cypher
-- Updating existing graph data
-- Deleting nodes and relationships
-- Using C# 13 record types with CVOYA graph
-
-## Domain Model
-
-The example uses a simple organizational structure:
-
-- **Person**: Represents employees with properties like Name, Email, Age, and Department
-- **Company**: Represents companies with Name, Industry, and Founded date
-- **WorksFor**: Relationship connecting Person to Company with Position, StartDate, and Salary
-
-## Key Concepts Demonstrated
-
-### 1. Node and Relationship Attributes
+## Domain model
 
 ```csharp
-[Node("Person")]
-public record Person : Node { ... }
+[Node(Label = "Person")]
+public record Person : Node
+{
+    public string Email { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int Age { get; set; }
+    public string? Department { get; set; }
+}
 
-[Relationship("WORKS_FOR")]
-public record WorksFor : Relationship<Person, Company> { ... }
+[Relationship(Label = "WORKS_FOR")]
+public record WorksFor : Relationship
+{
+    public string Position { get; set; } = string.Empty;
+    public decimal Salary { get; set; }
+}
 ```
 
-### 2. Creating Graph Data
+Relationships do not store endpoint IDs. The creation command receives two query selections:
 
 ```csharp
-await graph.CreateAsync(person);
-await graph.CreateAsync(relationship);
+await graph.CreateRelationshipAsync(
+    graph.Nodes<Person>().Where(person => person.Email == alice.Email),
+    new WorksFor { Position = "Senior Developer", Salary = 95_000m },
+    graph.Nodes<Company>().Where(company => company.Name == techCorp.Name));
 ```
 
-### 3. LINQ Querying
+Queries begin synchronously and perform I/O at an async terminal:
 
 ```csharp
-var people = await graph.NodesAsync<Person>()
-    .Where(p => p.Department == "Engineering")
+var engineers = await graph.Nodes<Person>()
+    .Where(person => person.Department == "Engineering")
     .ToListAsync();
 ```
 
-### 4. Updating Data
+Updates and deletes operate on the selected set:
 
 ```csharp
-var updatedPerson = person with { Age = 31 };
-await graph.UpdateAsync(updatedPerson);
+await graph.Nodes<Person>()
+    .Where(person => person.Email == alice.Email)
+    .UpdateAsync(setters => setters
+        .SetProperty(person => person.Age, 31)
+        .SetProperty(person => person.Department, "Engineering"));
+
+await graph.Nodes<Person>()
+    .Where(person => person.Email == "temporary@example.com")
+    .DeleteAsync();
 ```
 
-### 5. Deleting Data
+## Run
 
-```csharp
-await graph.DeleteAsync(person);
-```
-
-## Prerequisites
-
-- Neo4j instance running on `localhost:7687`
-- Username: `neo4j`
-- Password: `password`
-
-## Running the Example
+Start Neo4j at `bolt://localhost:7687` with username `neo4j` and password `password`, then run:
 
 ```bash
-cd examples/Example1.BasicCRUD
-dotnet run
+dotnet run --project examples/Example1.BasicCRUD
 ```
-
-## Expected Output
-
-The example will:
-
-1. Create company and employee nodes
-2. Create work relationships
-3. Query and display the data
-4. Update some properties
-5. Demonstrate deletion
-6. Show verification of all operations
-
-This example provides a foundation for understanding how to work with graph data using the CVOYA graph library.

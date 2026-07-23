@@ -24,7 +24,20 @@ The provider store owns database connectivity and releases provider resources. `
 
 ## Entities And Schema
 
-Domain node types satisfy `INode`; relationship types satisfy `IRelationship`. Application models should normally inherit from the base `Node` and `Relationship` records, because direct interface implementation triggers analyzer warning CG011 unless the model needs full control. The base records generate opaque string IDs with `Guid.NewGuid().ToString("N")`. Providers must treat IDs as caller-visible opaque strings, not database-native IDs.
+Domain node types satisfy `INode`; relationship types satisfy `IRelationship`. `IEntity` is an
+identity-free marker. Application models should normally inherit from the base `Node` and
+`Relationship` records, because direct interface implementation triggers analyzer warning CG011
+unless the model needs full control. The base records implement only provider-populated runtime
+metadata (`INode.Labels` and `IRelationship.Type`); they do not add identity, endpoints, or
+direction. A caller property named `Id` or `Direction` is ordinary mapped data unless explicitly
+configured otherwise.
+
+Domain keys are optional schema metadata. Every `[Property(IsKey = true)]` member on an entity type
+forms one key tuple, ordered by mapped property name. Key components must be non-null,
+graph-storable scalars; they imply required/indexed semantics but are not immutable, implicit
+mutation targets, relationship endpoints, or provider-native element identity. Keyless models are
+valid. Providers enforce key uniqueness while keeping the physical identity used to correlate a
+particular stored node or edge private.
 
 Labels and relationship types come from attributes first:
 
@@ -82,9 +95,19 @@ Not every marker family is fully dispatched by Neo4j today. A new provider shoul
 
 Cross-provider compatibility depends on matching these conventions exactly.
 
-### IDs
+### Physical identity
 
-Store the public `IEntity.Id` as a normal graph property named `Id`. Do not expose database-native IDs as CVOYA graph IDs. Relationship `StartNodeId` and `EndNodeId` refer to CVOYA graph node IDs.
+Provider-native node and relationship identity is private plumbing. It may be used inside one
+query or write transaction to de-duplicate selected rows, correlate command results, or connect
+endpoints, but it is neither portable nor part of `IEntity`. Do not materialize it into typed or
+dynamic property bags, infer an `Id` convention, or make users persist endpoint identifiers.
+
+Relationships own only their mapped properties and runtime `Type`. The graph command API receives
+endpoint intent separately: selected endpoints are frozen as exactly-one node selections, new
+endpoints are serialized as new nodes, and providers connect the resulting native identities in
+the same transaction. `IGraphPathSegment.Direction` reports the physical stored orientation
+relative to the segment's `StartNode` and `EndNode`; no direction or endpoint data is written back
+onto the relationship object.
 
 ### Labels And Types
 
@@ -163,9 +186,10 @@ value nodes. This representation is the current write contract; providers are no
 previously deployed storage that predates it.
 
 Every occurrence is a separate value node, even when two owners reference the same in-memory object.
-Nodes and relationships need stable CVOYA graph IDs and remain visible to ordinary graph queries.
-Providers may add an internal relationship marker for cascade cleanup, but must not infer
-complex-property edges from a reserved relationship-name prefix.
+Providers assign any physical correlation identity privately; it is never a public CVOYA Graph
+property or convention. Value nodes and their property-named relationships remain visible to
+ordinary graph queries. Providers may add an internal relationship marker for cascade cleanup, but
+must not infer complex-property edges from a reserved relationship-name prefix.
 
 When **dynamic** entities are materialized, a complex-property value is reconstructed into the property bag using one canonical shape, shared by dynamic nodes and dynamic relationships so the same stored value round-trips identically regardless of owner: a single complex value becomes a `Dictionary<string, object?>` keyed by the stored (physical) property labels, and a complex-property collection becomes a `List<Dictionary<string, object?>?>`. A simple collection nested inside such a dictionary follows the canonical `List<T>` rule above, and a nested complex value recurses into a further dictionary, so the whole subtree survives the round trip. A dynamic entity has no CLR type to materialize into, so the value is never rehydrated as a typed instance. Providers that decompose complex values into storage nodes must remove those nodes' synthetic `Id` and `Labels` members when rebuilding the dictionary; only caller-supplied value members belong in the materialized shape.
 
@@ -194,7 +218,11 @@ identity is an explicit delete-and-recreate operation, never an implicit update.
 
 ## Behavioral Contracts
 
-Mutations must validate entity constraints before writing: non-null entities, non-empty IDs, relationship endpoints, required properties, no reference cycles, and bounded complex-property depth. Cycle detection is implemented by `GraphDataModel.HasReferenceCycle` / `EnsureNoReferenceCycle`; depth validation uses `EnsureComplexPropertyDepth`.
+Mutations must validate entity constraints before writing: non-null entities, optional key and
+unique constraints, required properties, exact-one endpoint selections in the same graph/transaction
+scope, no reference cycles, and bounded complex-property depth. Cycle detection is implemented by
+`GraphDataModel.HasReferenceCycle` / `EnsureNoReferenceCycle`; depth validation uses
+`EnsureComplexPropertyDepth`.
 
 Queries must stay provider-side for supported LINQ operators. Unsupported operators should fail with a clear `GraphException`. Avoid silent client-side evaluation unless the operator explicitly materializes results.
 
@@ -206,11 +234,18 @@ Transaction behavior:
 
 Full-text search is part of `IGraph`: `Search`, `SearchNodes`, `SearchRelationships`, and typed overloads — thin synchronous conveniences over the `.Search()` LINQ operator (building a queryable performs no I/O). Providers should respect `[Property(IncludeInFullTextSearch = false)]`, support dynamic entities, and initialize required full-text indexes. A typed node search is also a valid source for `Traverse`, `PathSegments`, and `TraversePaths`; providers must preserve the searched node scope through every subsequent traversal step and LINQ operator. Mixed node-and-relationship search remains non-traversable because it has no single typed node scope.
 
-Exception behavior follows the public API contract: provider/backend failures are wrapped in `GraphException`, missing entities from get/update/delete operations throw `EntityNotFoundException` (derived from `GraphException`), and invalid caller input preserves argument exceptions where the public API already does so.
+Exception behavior follows the public API contract: provider/backend failures are wrapped in
+`GraphException`; endpoint selections that return zero or multiple rows fail; set mutations return
+the distinct affected-entity count; and invalid caller input preserves argument exceptions where
+the public API already does so.
 
 ## Contract-Test Reuse
 
-The provider contract suite is the `Cvoya.Graph.CompatibilityTests` package (`src/Cvoya.Graph.CompatibilityTests`) - see [Certifying a provider](#certifying-a-provider) below for the full workflow. It mostly defines test interfaces with default xUnit test methods; running the package alone proves little because providers must bind those interfaces in a provider-specific test project.
+The provider contract suite is the `Cvoya.Graph.CompatibilityTests` package
+(`src/Graph.CompatibilityTests`) - see
+[Certifying a provider](#certifying-a-provider) below for the full workflow. It mostly defines test
+interfaces with default xUnit test methods; running the package alone proves little because
+providers must bind those interfaces in a provider-specific test project.
 
 The in-memory provider is the worked harness example:
 
@@ -245,7 +280,7 @@ A minimal Cypher provider supplies three provider-specific pieces: an `ICypherDi
 
 Implement `ICypherDialect` from `Cvoya.Graph.Cypher`. The interface owns every syntax choice that can vary by backend:
 
-- parameter references and property/ID access;
+- parameter references, mapped property access, and provider-private element-identity access;
 - identifier escaping, node-label lists, relationship-type lists, and depth ranges;
 - provider-neutral function names such as `temporal.datetime` and `string.join`;
 - label predicates and the complex-property relationship marker;
@@ -318,14 +353,24 @@ CypherRenderResult rendered = new CypherRenderer(dialect).Render(statement);
 The executor sends `CypherRenderResult.Text` and parameters to the backend and adapts every returned row into `GraphRecord`. Build values only through the validated `GraphValue` factories:
 
 - `Scalar` for provider-neutral CLR scalars (`long`, `decimal`, `DateOnly`, `DateTimeOffset`, `Point`, and so on);
-- `Node` with an opaque provider element ID, adapter-populated labels, and recursively adapted properties;
-- `Relationship` with opaque element/end-point IDs, type, and properties;
+- `Node` with a wire-local opaque provider element ID, adapter-populated labels, and recursively
+  adapted properties;
+- `Relationship` with wire-local opaque provider element/end-point IDs, type, and properties;
 - `Path` for an alternating node/relationship sequence;
 - `List` and `Map` for recursive collection/projection values.
 
-Factories defensively copy collections and reject invalid path shapes or null entries (represent null as `GraphValue.Scalar(null)`). Adapters must not leak driver types. Preserve integer versus floating-point values and decimal precision; stringify neither IDs nor numerics merely to simplify conversion. For AGE, reconstruct inheritance labels from its stored `inheritance_labels` representation before calling `GraphValue.Node`.
+Factories defensively copy collections and reject invalid path shapes or null entries (represent
+null as `GraphValue.Scalar(null)`). Adapters must not leak driver types. Wire-local IDs exist only
+to correlate returned values and paths; never materialize them into domain properties. Preserve
+integer versus floating-point values and decimal precision; stringify neither wire IDs nor numerics
+merely to simplify conversion. For AGE, reconstruct inheritance labels from its stored
+`inheritance_labels` representation before calling `GraphValue.Node`.
 
-Pass buffered records to `GraphResultMaterializer.MaterializeAsync<T>` or individual records to `MaterializeRecordAsync<T>`. The shared materializer owns complex-property subtree assembly, label/`__metadata__` polymorphism, relationship endpoint reconstruction, scalar conversion, projections, and path stitching. An adapter translates values only; it must not choose CLR domain types or rebuild owned-property graphs.
+Pass buffered records to `GraphResultMaterializer.MaterializeAsync<T>` or individual records to
+`MaterializeRecordAsync<T>`. The shared materializer owns complex-property subtree assembly,
+label/`__metadata__` polymorphism, scalar conversion, projections, and path stitching. Path
+segments receive endpoints and orientation; relationship domain objects do not. An adapter
+translates values only; it must not choose CLR domain types or rebuild owned-property graphs.
 
 ### Provider-facing shared types
 
@@ -350,8 +395,8 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
 {
     public string ProviderName => "MyCompany.CVOYA graph.MyProvider";
 
-    // Declare only what your backing store actually supports. Unlisted capabilities' tests skip,
-    // never fail - see GraphCapability in src/Graph for the full member list.
+    // Declare only what your backing store actually supports. A test gated by an unlisted
+    // capability skips; infrastructure failures and all ungated failures still fail.
     public CapabilitySet Capabilities => CapabilitySet.Of(
         GraphCapability.Transactions,
         GraphCapability.ComplexPropertyCascade);
@@ -369,8 +414,8 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
         // dispose the earlier one. Cross-store transaction-ownership tests hold two live stores at
         // once and assert on store identity, so the second store MAY share the first one's
         // database; doing so is the stronger test and costs no extra infrastructure.
-        // Throw GraphProviderUnavailableException if infrastructure (e.g. Docker) can't start -
-        // it renders as a skip locally, and a failure under GRAPHMODEL_COMPLIANCE_STRICT=1.
+        // Throw GraphProviderUnavailableException if infrastructure cannot start or be reached.
+        // It always fails the test; strict mode does not change that result.
     }
 
     public ValueTask SeedExternalGraphAsync(IGraph graph, string marker, CancellationToken ct)
@@ -416,7 +461,7 @@ public abstract class MyProviderTest(MyProviderHarness harness)
 
 ### 3. Bind the `I*Tests` interfaces
 
-One line per suite interface (see `src/Cvoya.Graph.CompatibilityTests/I*.cs` for the full set):
+One line per suite interface (see `src/Graph.CompatibilityTests/I*.cs` for the full set):
 
 ```csharp
 public class BasicTests(MyProviderHarness h) : MyProviderTest(h), IBasicTests;
@@ -431,13 +476,17 @@ public class ProviderContractTests(MyProviderHarness h) : MyProviderTest(h, Stor
 [assembly: AssemblyFixture(typeof(Cvoya.Graph.CompatibilityTests.ComplianceGuard))]
 ```
 
-The guard is unarmed by default (a local run with no reachable backing store stays a plain skip). Set `GRAPHMODEL_COMPLIANCE_STRICT=1` to arm it - CI compliance lanes should always run this way:
+The guard is unarmed by default. Set `GRAPHMODEL_COMPLIANCE_STRICT=1` to enforce the complete
+capability-eligible execution floor; CI compliance lanes should always run this way:
 
 ```bash
 GRAPHMODEL_COMPLIANCE_STRICT=1 dotnet test <your-test-project> --report-trx
 ```
 
-Under strict mode, the guard also promotes `GraphProviderUnavailableException` (unavailable infrastructure) from a skip to a hard failure, so a compliance lane can never "pass" simply because its backing store never came up.
+`GraphProviderUnavailableException` always fails, in local and strict runs alike.
+`CompatibilityTest` does not catch or translate it. Strict mode changes only the execution-floor
+guard: it ensures every capability-eligible packaged TCK method was bound and executed, so a
+mis-wired provider project cannot pass with incomplete coverage.
 
 The guard records the declaring interface plus full method signature after each successful store
 acquisition, then compares those identities with the exact capability-eligible inventory. Multiple
@@ -452,7 +501,11 @@ applicable capability/expectation instead.
 ### 5. Read the results
 
 - **Capability skips** carry a fixed, parseable reason: `Capability '<Name>' not declared by provider '<ProviderName>' (Cvoya.Graph.CompatibilityTests <version>)`. Any other skip or a nonzero failure count needs investigation.
-- **The compliance report**: fill in `COMPLIANCE.md` (template in `src/Cvoya.Graph.CompatibilityTests/COMPLIANCE.md`) from your TRX results - N passed cases / M skipped-by-declared-capability / 0 failed. Report `ComplianceInventory.MinimumExecuted(yourDeclaredCapabilities)` separately as the required method-identity inventory; theory rows can make N larger than that method count.
+- **The compliance report**: fill in `COMPLIANCE.md` (template in
+  `src/Graph.CompatibilityTests/COMPLIANCE.md`) from your TRX results - N passed cases / M
+  skipped-by-declared-capability / 0 failed. Report
+  `ComplianceInventory.MinimumExecuted(yourDeclaredCapabilities)` separately as the required
+  method-identity inventory; theory rows can make N larger than that method count.
 - **"Compatible"** means: 0 failed, every skip is a declared-capability skip, and the strict guard confirms that every capability-eligible method identity executed.
 
 See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Graph.InMemory.Tests` for the full in-tree worked implementation.

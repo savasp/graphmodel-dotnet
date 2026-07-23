@@ -4,7 +4,8 @@
 namespace Cvoya.Graph.Serialization;
 
 /// <summary>
-/// Represents a serialized Graph Model entity: <see cref="INode"/> or <see cref="IRelationship"/>.
+/// Represents a serialized CVOYA Graph entity: <see cref="INode"/> or
+/// <see cref="IRelationship"/>.
 /// </summary>
 /// <param name="ActualType">The actual type of the entity. This might be different from what the schema
 /// expects. If it is different, then it has to be a derived type.</param>

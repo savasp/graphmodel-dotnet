@@ -6,9 +6,9 @@
 - **Status:** Accepted (decided by @savasp on #199, 2026-07-09)
 - **Date:** 2026-07-09
 - **Related:** #84, #85, #199, ADR-0001
-- **Related code:** src/Cvoya.Graph.Neo4j/Entities/ComplexPropertyManager.cs,
-  src/Cvoya.Graph.Neo4j/Querying/, src/Cvoya.Graph.Serialization/,
-  src/Cvoya.Graph.Serialization.CodeGen/
+- **Related code:** src/Graph.Neo4j/Entities/ComplexPropertyManager.cs,
+  src/Graph.Neo4j/Querying/, src/Graph.Serialization/,
+  src/Graph.Serialization.CodeGen/
 
 ## Context
 
@@ -44,9 +44,9 @@ value, C explicit modeling, D first-class structural mapping); this ADR records 
   attribute to avoid collisions with user-defined domain relationships (replacing the collision-avoidance
   role of the `__PROPERTY__` prefix).
 - **Identity:** **per-instance value nodes** — each in-memory instance becomes its own node; two owners
-  referencing the same in-memory instance produce two nodes (preserves value-object semantics). Shared /
-  deduped identity (e.g. via an attribute or a `NodeWithIdentity`-style opt-in) is **deferred to a
-  follow-up issue**.
+  referencing the same in-memory instance produce two nodes (preserves value-object semantics).
+  Applications that need shared identity model the value as an explicit domain node and relationship,
+  optionally with `[Property(IsKey = true)]`; there is no public provider-identity base type.
 - **Round-trip (read-shape driven):** if the target class **declares** the property, the infrastructure
   **auto-loads it recursively** (transparent round-trip preserved), bounded by an explicit **depth/cycle
   guard** (the current `GraphDataModel.DefaultDepthAllowed = 5` + cycle detection become enforced rather
@@ -78,10 +78,10 @@ value, C explicit modeling, D first-class structural mapping); this ADR records 
   switch.
 - **Serialization CodeGen:** complex-property POCOs are generated as node types with relationship mappings
   rather than nested `EntityInfo`; the generator's reachability closure still applies.
-- **Migration:** breaking storage change. Existing `__PROPERTY__` data requires migration, or a clean
-  rebuild — acceptable pre-1.0 per ADR-0001. `docs/provider-implementers-guide.md`'s normative
-  `__PROPERTY__` contract is replaced; `docs/migration-0.x.md` and the value-object docs are updated.
-- **Follow-up filed if/when D is implemented:** shared/deduped node identity for value objects.
+- **Stored-data transition:** breaking storage change. The library does not provide an in-place
+  migration from `__PROPERTY__` storage. Recreate the graph and reimport through the v1 model, or
+  own and validate a provider-specific transformation. `docs/provider-implementers-guide.md`'s
+  former `__PROPERTY__` contract is replaced; `docs/migration-0.x.md` documents the boundary.
 
 ## Alternatives considered
 

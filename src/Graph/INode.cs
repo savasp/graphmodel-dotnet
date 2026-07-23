@@ -12,6 +12,7 @@ namespace Cvoya.Graph;
 /// <remarks>
 /// Implement this interface on classes that represent domain entities in your graph model.
 /// Typically used with the <see cref="NodeAttribute"/> to define node metadata.
+/// Provider-native identity is private and is not part of this interface.
 /// </remarks>
 public interface INode : IEntity
 {

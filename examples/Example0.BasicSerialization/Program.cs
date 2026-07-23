@@ -6,8 +6,8 @@ using Cvoya.Graph.Neo4j;
 using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
 
-// Example 1: Basic CRUD Operations
-// Demonstrates fundamental create, read, update, delete operations with nodes and relationships
+// Example 0: Basic Serialization
+// Demonstrates scalar, nullable, collection, complex-property, and dynamic entity serialization.
 
 Console.WriteLine("=== Example 0: Basic Serialization ===\n");
 
@@ -257,7 +257,7 @@ try
     Console.WriteLine("\n=== Example 0 Complete ===");
     Console.WriteLine("This example demonstrated:");
     Console.WriteLine("• Creating nodes with complex properties");
-    Console.WriteLine("• Using C# 13 record types with the GraphModel");
+    Console.WriteLine("• Using C# 14 record types with CVOYA Graph");
 }
 catch (Exception ex)
 {

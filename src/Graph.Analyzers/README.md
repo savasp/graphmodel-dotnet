@@ -24,8 +24,6 @@ public class User : INode
     // ❌ CG001: Missing parameterless constructor
     public User(string name) { Name = name; }
 
-    public string Id { get; set; }
-
     // ❌ CG002: Property must have public getter and setter
     [Property]
     public string Name { get; private set; }

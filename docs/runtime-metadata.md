@@ -1,326 +1,168 @@
 ---
 ---
 
-# Runtime Metadata Properties
+# Runtime metadata
 
-This document explains the runtime metadata properties added to `INode` and `IRelationship` interfaces and how they enable more flexible querying while maintaining type safety.
+CVOYA Graph exposes only the provider-populated metadata needed to describe a materialized graph
+element:
 
-## Overview
+- `INode.Labels` contains the node's stored labels.
+- `IRelationship.Type` contains the relationship's stored type.
 
-The Graph Model library now includes runtime metadata properties on the core interfaces:
+`IEntity` is identity-free. There is no public provider element ID, graph reference, relationship
+endpoint ID, or relationship-owned direction.
 
-- **`INode.Labels`**: Provides access to the node's labels as stored in the database
-- **`IRelationship.Type`**: Provides access to the relationship's type as stored in the database
-
-These properties enable polymorphic queries and filtering at runtime while complementing the compile-time type system.
-
-## The INode.Labels Property
-
-### Interface Definition
+## Node labels
 
 ```csharp
 public interface INode : IEntity
 {
-    /// <summary>
-    /// Gets the labels for this node as they are stored in the graph database.
-    /// This is a runtime property that reflects the actual labels assigned to the node.
-    /// </summary>
-    /// <remarks>
-    /// This property is automatically populated by the graph provider when the node is
-    /// retrieved from or saved to the database. The labels are derived from the NodeAttribute
-    /// on the implementing type, or the type name if no attribute is present.
-    ///
-    /// This property enables polymorphic queries and filtering by label at runtime,
-    /// complementing the compile-time type system.
-    ///
-    /// Do not set this property manually - it is managed by the graph provider.
-    /// </remarks>
     IReadOnlyList<string> Labels { get; }
 }
 ```
 
-### Key Points
-
-1. **Read-Only**: The property only has a getter; it cannot be set manually
-2. **Provider-Managed**: The graph provider populates this property during serialization/deserialization
-3. **Derived from Attributes**: Labels come from `NodeAttribute` or the type name if no attribute is present
-4. **Enables Runtime Queries**: Allows filtering by label without knowing the compile-time type
-
-### Example Usage
+Typed nodes normally have one mapped primary label derived from `[Node]` or the CLR type name.
+Dynamic nodes can expose multiple native labels. Providers populate `Labels` during create/read:
 
 ```csharp
-// Query nodes and filter by runtime labels
-var adminUsers = await graph.Nodes<User>()
-    .Where(u => u.Labels.Contains("Admin"))
+var imported = await graph.DynamicNodes()
+    .OfLabel("Imported")
     .ToListAsync();
 
-// Filter in path traversal
-var memorySegments = await graph.Nodes<User>()
-    .Where(u => u.Id == userId)
-    .PathSegments<User, IRelationship, INode>()
-    .Where(ps => ps.EndNode.Labels.Contains("Memory"))
-    .ToListAsync();
+foreach (var node in imported)
+{
+    Console.WriteLine(string.Join(", ", node.Labels));
+}
 ```
 
-## The IRelationship.Type Property
+Use `OfLabel`/`OfLabels` when label filtering must run in the provider. Reading `Labels` from a
+materialized value is useful for inspection and client-side logic.
 
-### Interface Definition
+## Relationship type
 
 ```csharp
 public interface IRelationship : IEntity
 {
-    /// <summary>
-    /// Gets the type of this relationship as it is stored in the graph database.
-    /// This is a runtime property that reflects the actual relationship type.
-    /// </summary>
-    /// <remarks>
-    /// This property is automatically populated by the graph provider when the relationship is
-    /// retrieved from or saved to the database. The type is derived from the RelationshipAttribute
-    /// on the implementing type, or the type name if no attribute is present.
-    ///
-    /// This property enables polymorphic queries and filtering by type at runtime,
-    /// complementing the compile-time type system.
-    ///
-    /// Do not set this property manually - it is managed by the graph provider.
-    /// </remarks>
     string Type { get; }
-
-    // ... other properties ...
 }
 ```
 
-### Key Points
-
-1. **Read-Only**: The property only has a getter; it cannot be set manually
-2. **Provider-Managed**: The graph provider populates this property during serialization/deserialization
-3. **Derived from Attributes**: Type comes from `RelationshipAttribute` or the type name if no attribute is present
-4. **Enables Runtime Queries**: Allows filtering by type without knowing the compile-time type
-
-### Example Usage
+The type is derived from `[Relationship]` or the CLR type name for typed relationships and comes
+directly from native storage for dynamic relationships:
 
 ```csharp
-// Filter relationships by type in path traversal
-var memoryRelationships = await graph.Nodes<User>()
-    .Where(u => u.Id == userId)
-    .PathSegments<User, UserMemory, Memory>()
-    .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == "REMEMBERS")
+var relationships = await graph.Relationships<IRelationship>()
     .ToListAsync();
 
-// Filter polymorphic relationships
-var adminRelationships = await graph.Relationships<IRelationship>()
-    .Where(r => r.Type.StartsWith("ADMIN_"))
-    .ToListAsync();
+foreach (var relationship in relationships)
+{
+    Console.WriteLine(relationship.Type);
+}
 ```
 
-## Using the Node and Relationship Base Classes
+`Type` describes the relationship. It does not identify its endpoints.
 
-### Why Use Base Classes?
+## Base records
 
-The `Node` and `Relationship` base classes provide:
-
-1. **Automatic ID Generation**: No need to manually create GUIDs
-2. **Runtime Metadata Management**: The `Labels` and `Type` properties are automatically initialized
-3. **Correct Initialization**: Base classes ensure proper initialization patterns
-4. **Analyzer Support**: The CG011 analyzer warns when interfaces are implemented directly
-
-### The Node Base Class
+Application types should normally inherit `Node` or `Relationship`. The base records implement
+runtime metadata and nothing more:
 
 ```csharp
-/// <summary>
-/// Base class for graph nodes that provides a default implementation of the INode interface.
-/// </summary>
 public abstract record Node : INode
 {
-    /// <summary>
-    /// Gets or sets the unique identifier of this node.
-    /// Automatically initialized with a new GUID string when a node is created.
-    /// </summary>
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
-    /// <summary>
-    /// Gets the labels for this node as they are stored in the graph database.
-    /// </summary>
-    public virtual IReadOnlyList<string> Labels { get; set; } = Array.Empty<string>();
+    public virtual IReadOnlyList<string> Labels { get; set; } = [];
 }
-```
 
-#### Example
-
-```csharp
-[Node("Person")]
-public record Person : Node  // Inherit from Node
+public abstract record Relationship : IRelationship
 {
-    public string Name { get; set; } = string.Empty;
-    public int Age { get; set; }
-}
-```
-
-### The Relationship Base Class
-
-```csharp
-/// <summary>
-/// Base class for graph relationships that provides a default implementation of the IRelationship interface.
-/// </summary>
-public abstract record Relationship(
-    string StartNodeId,
-    string EndNodeId,
-    RelationshipDirection Direction = RelationshipDirection.Outgoing) : IRelationship
-{
-    /// <inheritdoc/>
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
-    /// <summary>
-    /// Gets the type of this relationship as it is stored in the graph database.
-    /// </summary>
     public virtual string Type { get; set; } = string.Empty;
 }
 ```
 
-#### Example
-
 ```csharp
-[Relationship("KNOWS")]
-public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
-{
-    public DateTime Since { get; set; }
-}
-```
-
-## Analyzer Rule: CG011
-
-The `CG011` analyzer rule warns when types directly implement `INode` or `IRelationship` without inheriting from the base classes:
-
-### Rule Details
-
-- **ID**: CG011
-- **Category**: Graph
-- **Severity**: Warning
-- **Message**: "Type '{TypeName}' should inherit from '{BaseClass}' instead of implementing '{Interface}' directly. The base class provides default implementations for runtime metadata properties"
-
-### Why This Rule Exists
-
-1. **Prevents Manual Metadata Management**: Users shouldn't manually populate `Labels` or `Type`
-2. **Ensures Consistency**: All nodes and relationships follow the same pattern
-3. **Simplifies Code**: No need to write boilerplate for ID generation and metadata
-4. **Future-Proof**: Base classes can evolve to provide additional functionality
-
-### Example
-
-```csharp
-// ❌ Triggers CG011 warning
-public record Person : INode
-{
-    // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-    public IReadOnlyList<string> Labels { get; } = new List<string>(); // Don't do this!
-    public string Name { get; set; } = string.Empty;
-}
-```
-
-```csharp
-// ✅ Recommended approach
-[Node("Person")]
+[Node(Label = "Person")]
 public record Person : Node
 {
-    public string Name { get; set; } = string.Empty;
+    public string Email { get; init; } = string.Empty;
+}
+
+[Relationship(Label = "KNOWS")]
+public record Knows : Relationship
+{
+    public DateTime Since { get; init; }
 }
 ```
 
-## Implementation Details
+The optional analyzer reports CG011 when a model implements `INode` or `IRelationship` directly.
+Direct implementation remains possible when an application deliberately wants to implement the
+metadata members itself.
 
-### Serialization
+## Ordinary `Id` and `Direction` properties
 
-During serialization (when saving to the database):
-
-1. The code generator examines the entity type
-2. It looks for `NodeAttribute` or `RelationshipAttribute` to determine labels/type
-3. It reads the entity's `Labels` or `Type` property if already populated
-4. It creates an `EntityInfo` with the appropriate metadata
-5. The provider uses this information to create the database entity
-
-### Deserialization
-
-During deserialization (when loading from the database):
-
-1. The provider reads the node labels or relationship type from the database
-2. It creates an `EntityInfo` with this metadata
-3. The code generator populates the entity's `Labels` or `Type` property
-4. The entity is returned with runtime metadata correctly set
-
-### Code Generator Updates
-
-The serialization code generator (`Serialization.cs`) was updated to:
-
-1. For nodes: Populate `EntityInfo.ActualLabels` from `entity.Labels`
-2. For relationships: Populate `EntityInfo.Label` from `entity.Type`
-3. Handle cases where labels/type are not yet populated (fallback to attributes)
-
-### Shared Result Materializer
-
-The provider-neutral `GraphResultProcessor`:
-
-1. Adds `Labels` as a `SimpleCollection` property when creating `EntityInfo` from nodes
-2. Adds `Type` as a `SimpleValue` property when creating `EntityInfo` from relationships
-3. Ensures these properties are populated during deserialization from any provider's `GraphValue` adapter
-
-## Migration Guide
-
-If you have existing code that directly implements `INode` or `IRelationship`:
-
-### Before
+Names do not create conventions:
 
 ```csharp
-public class Person : INode
+public record ExternalDocument : Node
 {
-    // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-    public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
-    public string Name { get; set; } = string.Empty;
+    public string Id { get; init; } = string.Empty;
 }
 
-public class Knows : IRelationship
+public record RouteInstruction : Relationship
 {
-    // CG011 warns on direct IRelationship implementations; inherit from Relationship unless you need full control.
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-    public string Type { get; } = "KNOWS";
-    public string StartNodeId { get; init; } = string.Empty;
-    public string EndNodeId { get; init; } = string.Empty;
-    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-    public DateTime Since { get; set; }
+    public string Direction { get; init; } = string.Empty;
 }
 ```
 
-### After
+Both properties are ordinary mapped values. Add `[Property(IsKey = true)]` to `Id` only when it is
+a domain key. A `Direction` property never controls physical relationship orientation.
+
+Provider-native identities such as Neo4j element IDs and AGE graphids stay inside provider
+transactions. They may correlate query rows or writes but are not materialized as user data.
+
+## Endpoint and orientation metadata
+
+Endpoints and physical orientation belong to a path segment:
 
 ```csharp
-[Node("Person")]
-public record Person : Node
-{
-    public string Name { get; set; } = string.Empty;
-}
+var segments = await graph.Nodes<Person>()
+    .Where(person => person.Email == "alice@example.com")
+    .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Both)
+    .ToListAsync();
 
-[Relationship("KNOWS")]
-public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+foreach (var segment in segments)
 {
-    public DateTime Since { get; set; }
+    Person start = segment.StartNode;
+    Person end = segment.EndNode;
+    Knows relationship = segment.Relationship;
+    RelationshipDirection physicalOrientation = segment.Direction;
 }
 ```
 
-## Best Practices
+`Outgoing` means the stored edge runs from the segment's `StartNode` to its `EndNode`; `Incoming`
+means the physical edge runs the other way. A self-loop is reported as `Outgoing`. Reversing a
+query traversal can therefore change the segment-relative direction without changing the
+relationship object or stored edge.
 
-1. **Always use base classes**: Inherit from `Node` or `Relationship` instead of implementing interfaces directly
-2. **Never set Labels or Type manually**: These are managed by the graph provider
-3. **Use for queries, not mutations**: Read these properties for filtering, don't try to change them
-4. **Install analyzers**: The `Cvoya.Graph.Analyzers` package helps catch incorrect usage
-5. **Use records**: C# records work well with the base classes for concise syntax
+## Typed and dynamic materialization
 
-## Summary
+Providers adapt native driver values into the shared `GraphValue` wire model. The provider-neutral
+materializer then:
 
-The runtime metadata properties (`Labels` and `Type`) provide a bridge between the compile-time type system and runtime graph queries. By using the base classes and following the recommended patterns, you get:
+1. resolves typed entities from stored labels/types and loadable CLR metadata;
+2. populates `Labels` or `Type`;
+3. converts scalar and collection values;
+4. reconstructs owned complex-property subtrees; and
+5. stitches path segments with endpoint/orientation metadata.
 
-- **Type Safety**: Compile-time checking of your domain model
-- **Runtime Flexibility**: Filter and query by labels/types without knowing compile-time types
-- **Provider Management**: No manual metadata management required
-- **Analyzer Support**: Catch incorrect usage at compile time
+Dynamic entities expose stored user properties plus labels/type. Provider identity and private
+collection/complex-property companion values never enter their property bags.
 
-This design enables powerful polymorphic queries while maintaining the clean separation between your domain model and the graph database structure.
+Compatible native Neo4j/AGE rows created outside CVOYA Graph can materialize without a universal
+root or CLR discriminator. Typed resolution uses the mapped label/type; dynamic resolution exposes
+the native shape directly.
+
+## Migration boundary
+
+Pre-v1 code that relied on inherited IDs, endpoint fields, relationship-owned direction, universal
+roots, or legacy metadata must move to the identity-free model. The library does not read or
+rewrite alpha storage. See [Migrate a 0.x application to the v1 model](migration-0.x.md).

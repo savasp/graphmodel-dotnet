@@ -35,7 +35,7 @@ This guide provides best practices and optimization techniques for maximizing pe
 // ✅ Good - specific query with projection
 var userEmails = await graph.Nodes<User>()
     .Where(u => u.IsActive && u.CreatedDate > DateTime.Now.AddDays(-30))
-    .Select(u => new { u.Id, u.Email })
+    .Select(u => new { u.Email })
     .ToListAsync();
 
 // ❌ Avoid - loading full objects when only emails needed
@@ -50,14 +50,14 @@ var emails = users.Select(u => u.Email).ToList();
 ```csharp
 // ✅ Good - depth-limited traversal
 var nearbyFriends = await graph.Nodes<User>()
-    .Where(u => u.Id == userId)
+    .Where(u => u.Email == userEmail)
     .Traverse<FriendOf, Person>(minDepth: 1, maxDepth: 2)  // Limit to 2 degrees of separation
     .Where(friend => friend.City == "Seattle")
     .ToListAsync();
 
 // ❌ Avoid - unlimited depth traversal
 var allConnections = await graph.Nodes<User>()
-    .Where(u => u.Id == userId)
+    .Where(u => u.Email == userEmail)
     .Traverse<FriendOf, Person>(minDepth: 1, maxDepth: 100) // Large depth limit
     .ToListAsync();
 ```
@@ -112,7 +112,7 @@ await using var transaction = await graph.GetTransactionAsync();
 var users = new List<User>();
 for (int i = 0; i < 1000; i++)
 {
-    users.Add(new User { Id = Guid.NewGuid().ToString(), Email = $"user{i}@example.com" });
+    users.Add(new User { Email = $"user{i}@example.com" });
 }
 
 foreach (var user in users)
@@ -213,20 +213,20 @@ when creating the driver.
 // Consider caching frequently accessed, rarely changing data
 private readonly Dictionary<string, User> _cache = new();
 
-public async Task<User> GetUserAsync(string userId)
+public async Task<User?> GetUserAsync(string email)
 {
-    if (_cache.TryGetValue($"user:{userId}", out User cachedUser))
+    if (_cache.TryGetValue($"user:{email}", out User cachedUser))
     {
         return cachedUser;
     }
 
     var user = await graph.Nodes<User>()
-        .Where(u => u.Id == userId)
+        .Where(u => u.Email == email)
         .FirstOrDefaultAsync();
 
     if (user != null)
     {
-        _cache[$"user:{userId}"] = user;
+        _cache[$"user:{email}"] = user;
     }
 
     return user;
@@ -282,18 +282,20 @@ RETURN ...
 ### 4. Common Query Patterns to Avoid
 
 ```csharp
-// ❌ Avoid - Loading related data in loops (N+1 problem)
+// ❌ Avoid - loading one traversal per user (N+1 problem)
 foreach (var user in users)
 {
-    user.Friends = await graph.Relationships<FriendOf>()
-        .Where(f => f.StartNodeId == user.Id)
+    var friends = await graph.Nodes<User>()
+        .Where(candidate => candidate.Email == user.Email)
+        .Traverse<FriendOf, User>()
         .ToListAsync();
 }
 
-// ✅ Better - Load related data in batch
-var userIds = users.Select(u => u.Id).ToList();
-var friendships = await graph.Relationships<FriendOf>()
-    .Where(f => userIds.Contains(f.StartNodeId))
+// ✅ Better - select all sources once and traverse in one provider query
+var userEmails = users.Select(user => user.Email).ToList();
+var friendships = await graph.Nodes<User>()
+    .Where(user => userEmails.Contains(user.Email))
+    .PathSegments<User, FriendOf, User>()
     .ToListAsync();
 ```
 
@@ -407,32 +409,33 @@ You can also run benchmarks directly:
 
 ```bash
 # Build the performance test project
-dotnet build tests/Cvoya.Graph.Performance.Tests --configuration Benchmark
+dotnet build tests/Graph.Performance.Tests --configuration Benchmark
 
 # Run all benchmarks (non-interactive)
-dotnet run --project tests/Cvoya.Graph.Performance.Tests --configuration Benchmark -- --all
+dotnet run --project tests/Graph.Performance.Tests --configuration Benchmark -- --all
 
 # Run specific benchmark class
-dotnet run --project tests/Cvoya.Graph.Performance.Tests --configuration Benchmark -- --filter "*CrudOperations*"
+dotnet run --project tests/Graph.Performance.Tests --configuration Benchmark -- --filter "*CrudOperations*"
 
 # Interactive mode (local development only)
-dotnet run --project tests/Cvoya.Graph.Performance.Tests --configuration Benchmark
+dotnet run --project tests/Graph.Performance.Tests --configuration Benchmark
 ```
 
 ## 🔄 CI/CD Integration
 
 ### Automated Performance Testing
 
-The GitHub Actions workflow (`.github/workflows/performance.yml`) automatically:
+The repository keeps a disabled performance-workflow template at
+`.github/workflows/performance.yml.disable`; performance benchmarks are currently an explicit
+local/release-engineering activity, not a required hosted PR gate. The template is designed to:
 
-1. **Runs on every push to main and pull requests**
-2. **Uses non-interactive mode** with `--all` parameter
-3. **Generates multiple report formats**:
+1. **Use non-interactive mode** with the `--all` parameter.
+2. **Generate multiple report formats**:
    - HTML reports for human readability
    - JSON reports for programmatic analysis
    - Markdown summaries for PR comments
-4. **Stores artifacts** for 30 days
-5. **Compares performance** against baseline when available
+3. **Store artifacts** for 30 days.
+4. **Compare performance** against a baseline when available.
 
 ### Non-Interactive Mode
 

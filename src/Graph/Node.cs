@@ -8,7 +8,8 @@ namespace Cvoya.Graph;
 /// This serves as a foundation for creating domain-specific node entities.
 /// </summary>
 /// <remarks>
-/// Use this class as a base class for domain node models.
+/// Use this class as a base class for domain node models. It supplies labels only; it does not
+/// add public provider identity or require a domain key.
 /// </remarks>
 public abstract record Node : INode
 {

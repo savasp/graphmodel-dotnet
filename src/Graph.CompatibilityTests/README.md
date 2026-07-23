@@ -57,6 +57,11 @@ run. See the **[Certifying a provider](https://github.com/cvoya-com/graph/blob/m
 chapter for the full workflow, and `examples/CompatibilityTests.SampleHarness` for a compiling
 skeleton.
 
+Strict mode enforces the capability-eligible execution floor; it does not convert infrastructure
+failures into skips. `GraphProviderUnavailableException` always fails the test run. The harness owns
+stores and provider resources, while `CompatibilityTest` disposes a returned graph only when the
+graph itself implements `IAsyncDisposable` or `IDisposable`.
+
 ## 📦 What's in the package
 
 - **Harness SPI** - `IGraphProviderTestHarness`, `StoreIsolation`, `GraphProviderUnavailableException`
@@ -68,8 +73,10 @@ skeleton.
 ## 🔧 Capabilities
 
 Some suite areas are optional (for example `FullTextSearch`). Declare only what your backing store
-actually supports via `CapabilitySet.Of(...)`; the suite skips - never fails - tests that
-need a capability you haven't declared, with a fixed, parseable skip reason.
+actually supports via `CapabilitySet.Of(...)`; the suite skips - never fails - tests that need an
+undeclared capability, with a fixed, parseable skip reason. The in-memory reference provider
+declares full-text search and executes those contracts with its index-free, case-insensitive
+whole-token matcher.
 
 ## 📚 Documentation
 

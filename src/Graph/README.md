@@ -6,72 +6,91 @@
 [![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.svg)](https://www.nuget.org/packages/Cvoya.Graph/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-**CVOYA graph** is a powerful, type-safe .NET library for working with graph data structures and graph databases. This core package provides the fundamental abstractions, interfaces, and base implementations.
+`Cvoya.Graph` is the provider-neutral model, LINQ query surface, transaction contract, and mutation
+API for CVOYA Graph.
 
-## 🚀 Quick Start
+## Entity model
+
+`IEntity` is an empty marker. `INode` exposes labels and `IRelationship` exposes its type; neither
+interface exposes provider identity. Relationship endpoints and physical direction are returned by
+path segments rather than stored on relationship values.
+
+Domain keys are optional:
 
 ```csharp
-// Define your graph entities
 [Node(Label = "User")]
 public record User : Node
 {
-    public string Email { get; set; }
-    public string Name { get; set; }
+    [Property(IsKey = true)]
+    public string Email { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
 }
 
 [Relationship(Label = "FOLLOWS")]
 public record Follows : Relationship
 {
-    public DateTime CreatedDate { get; set; }
+    public DateTime Since { get; set; }
 }
-
-// Use with a provider (Neo4j, etc.)
-var store = new Neo4jGraphStore(connectionString);
-var graph = store.Graph;
-await graph.CreateNodeAsync(new User { Email = "user@example.com", Name = "John" });
 ```
 
-## 📦 Core Features
+Remove `IsKey` and `User` remains a valid keyless entity. A property named `Id` or `Direction` is
+ordinary domain data unless its attributes say otherwise.
 
-- **Type-safe entity modeling** with attributes and interfaces
-- **LINQ-style querying** with full IntelliSense support
-- **Graph traversal** with depth control and filtering
-- **Transaction management** with ACID guarantees
-- **Extensible provider model** for different graph databases
-- **Compile-time validation** with built-in analyzers
-- **Code generation** for performant serialization/deserialization
+## Query and mutation
 
-## 🏗️ Architecture
+Install a database provider, obtain its `IGraph`, and compose synchronous query roots with async
+terminals:
 
-This package provides the core abstractions:
+```csharp
+var activeUsers = await graph.Nodes<User>()
+    .Where(user => user.IsActive)
+    .OrderBy(user => user.Name)
+    .ToListAsync(cancellationToken);
 
-- **`INode`** - Graph node interface
-- **`IRelationship`** - Graph relationship interface
-- **`IGraph`** - Main graph operations interface
-- **`IGraphQueryable<T>`** - LINQ-style querying
-- **Attributes** - Entity configuration (`[Node]`, `[Relationship]`, `[Property]`)
+var updated = await graph.Nodes<User>()
+    .Where(user => user.Email.EndsWith("@old.example"))
+    .UpdateAsync(setters => setters
+        .SetProperty(user => user.IsActive, false),
+        cancellationToken);
+```
 
-## 📚 Documentation
+Create relationships by supplying endpoint intent separately from relationship data:
 
-For comprehensive documentation, examples, and best practices:
+```csharp
+var alice = graph.Nodes<User>().Where(user => user.Email == "alice@example.com");
+var bob = graph.Nodes<User>().Where(user => user.Email == "bob@example.com");
 
-**🌐 [Complete Documentation](https://github.com/cvoya-com/graph/)**
+await graph.CreateRelationshipAsync(
+    alice,
+    new Follows { Since = DateTime.UtcNow },
+    bob,
+    cancellationToken: cancellationToken);
+```
 
-## 🔗 Related Packages
+Each selected endpoint must resolve to exactly one node. Hybrid and all-new overloads are also
+available through `CreateAsync`; `CreateSelfLoopAsync` handles one new node used as both endpoints.
 
-- **[Cvoya.Graph.Neo4j](https://www.nuget.org/packages/Cvoya.Graph.Neo4j/)** - Neo4j database provider
-- **[Cvoya.Graph.Serialization](https://www.nuget.org/packages/Cvoya.Graph.Serialization/)** - Object serialization framework
-- **[Cvoya.Graph.Serialization.CodeGen](https://www.nuget.org/packages/Cvoya.Graph.Serialization.CodeGen/)** - Code generation for performant serialization/deserialization
-- **[Cvoya.Graph.Analyzers](https://www.nuget.org/packages/Cvoya.Graph.Analyzers/)** - Compile-time code analyzers
+## Core contracts
 
-## 🤝 Contributing
+- `IGraph` — query roots, search, transactions, standalone node creation, and managed-index refresh
+- `IGraphQueryable<T>` — typed LINQ composition, traversal, and async terminals
+- `INode`, `IRelationship`, `IGraphPath`, and `IGraphPathSegment` — portable graph values
+- `GraphCommandExtensions` — endpoint-intent creation plus set-based update and delete
+- `[Node]`, `[Relationship]`, and `[Property]` — mapping and optional schema metadata
 
-Contributions are welcome! Please see our [Contributing Guide](https://github.com/cvoya-com/graph/blob/main/CONTRIBUTING.md).
+## Related packages
 
-## 📄 License
+- [Cvoya.Graph.Neo4j](https://www.nuget.org/packages/Cvoya.Graph.Neo4j/) — Neo4j provider
+- [Cvoya.Graph.Age](https://www.nuget.org/packages/Cvoya.Graph.Age/) — PostgreSQL + Apache AGE provider
+- [Cvoya.Graph.InMemory](https://www.nuget.org/packages/Cvoya.Graph.InMemory/) — reference provider and test double
+- [Cvoya.Graph.Cypher](https://www.nuget.org/packages/Cvoya.Graph.Cypher/) — Cypher planner, AST, renderer, and dialect SPI
+- [Cvoya.Graph.Serialization](https://www.nuget.org/packages/Cvoya.Graph.Serialization/) — provider-neutral serialization and materialization
+- [Cvoya.Graph.Serialization.CodeGen](https://www.nuget.org/packages/Cvoya.Graph.Serialization.CodeGen/) — incremental serializer generator
+- [Cvoya.Graph.Analyzers](https://www.nuget.org/packages/Cvoya.Graph.Analyzers/) — optional model diagnostics
+- [Cvoya.Graph.CompatibilityTests](https://www.nuget.org/packages/Cvoya.Graph.CompatibilityTests/) — provider contract suite
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/cvoya-com/graph/blob/main/LICENSE) file for details.
-
----
-
-**Need help?** Check the [troubleshooting guide](https://github.com/cvoya-com/graph/blob/main/docs/troubleshooting.md) or [open an issue](https://github.com/cvoya-com/graph/issues).
+See the [complete documentation](https://github.com/cvoya-com/graph/), the
+[contributing guide](https://github.com/cvoya-com/graph/blob/main/CONTRIBUTING.md), and the
+[Apache 2.0 license](https://github.com/cvoya-com/graph/blob/main/LICENSE).

@@ -4,9 +4,14 @@
 namespace Cvoya.Graph;
 
 /// <summary>
-/// Represents the foundation for all entities in the graph model.
-/// This is the base interface for both nodes and relationships.
+/// Marks a domain value as a graph node or relationship.
 /// </summary>
+/// <remarks>
+/// This interface deliberately has no members. CVOYA Graph does not expose provider element
+/// identity, a graph reference, relationship endpoints, or relationship direction through
+/// <see cref="IEntity"/>. Domain keys are optional properties configured with
+/// <see cref="PropertyAttribute.IsKey"/>.
+/// </remarks>
 public interface IEntity
 {
 }

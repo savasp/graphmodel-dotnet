@@ -20,7 +20,7 @@
 | MultiLabelMatch | Yes | An AGE AST pass lowers logical inheritance labels to AGE-compatible predicates. |
 | LabelFiltering | Yes | Caller-supplied labels lower to escaped literal membership tests over physical and logical inheritance labels. |
 | OrderByEntity | No | Scalar property ordering is supported; bare whole-entity ordering is rejected rather than rewritten to public `Id`. |
-| ShortestPath | No | Apache AGE 1.7 does not provide the required native capability; support remains tracked by #355 and is deferred until AGE 1.8 is released. |
+| ShortestPath | No | Deliberately unsupported for v1.0; the capability-gated shortest-path contract skips for AGE. #355 tracks any future implementation. |
 | OptionalTraversal | Yes | Optional matches are lowered while preserving owners with absent paths. |
 | GroupByAggregation | Yes | The shared structured `WITH` plan uses AGE-native grouping and aggregate functions. |
 | RelationshipPredicates | Yes | Per-hop predicates use indexed list filtering; anchored existence uses optional-match count stages. |

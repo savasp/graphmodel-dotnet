@@ -4,7 +4,7 @@
 namespace Cvoya.Graph.CompatibilityTests;
 
 /// <summary>
-/// The seam a provider implements to run the GraphModel compatibility suite against its own
+/// The seam a provider implements to run the CVOYA Graph compatibility suite against its own
 /// backing store.
 /// </summary>
 /// <remarks>

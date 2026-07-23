@@ -56,10 +56,11 @@ An application that already owns its connection pool can pass an AGE-enabled
 - agtype adaptation for vertices, edges, paths, maps, arrays, large integers, decimals, and
   ISO-8601 temporal values.
 
-The provider declares full-text search. It does not currently declare nested transactions or
-shortest path. Shortest-path support remains tracked by #355 and is deferred until Apache AGE 1.8
-releases its native capability. Unsupported operations fail during translation or are
-capability-skipped by the provider compatibility suite.
+The provider declares full-text search, relationship predicates, and set operations. It does not
+declare nested transactions, whole-entity ordering, or `GraphCapability.ShortestPath`. Shortest
+path is deliberately unsupported for v1.0; the capability-gated TCK test skips for AGE, and #355
+tracks any future implementation. Unsupported operations fail during translation or are skipped
+only when a compatibility test is explicitly gated by the missing capability.
 
 ### Native storage and commands
 
@@ -76,7 +77,8 @@ Set updates and deletes first freeze distinct `id(n)` / `id(r)` values inside th
 transaction, then mutate only those graphids. Endpoint-intent relationship creation likewise joins
 selected or newly created endpoints by graphid and supports selected/selected, hybrid, all-new, and
 explicit self-loop shapes. Caller-owned multi-statement commands are isolated behind a savepoint.
-These command contracts remain internal until the shared public surface lands in issue #477.
+The public set-based mutation and endpoint-intent APIs use these native command paths without
+exposing graphids.
 
 ### Scalar-key grouped aggregation
 

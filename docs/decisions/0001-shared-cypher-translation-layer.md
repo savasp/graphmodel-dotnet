@@ -6,28 +6,29 @@
 - **Status:** Accepted (all decisions ratified by @savasp on PR #97; contributor comments on the PR #66 landing path remain welcome via #86)
 - **Date:** 2026-07-02
 - **Related:** #53, #66, #67, #80, #81, #84, #85, #86, #90, #93, #94, #95, #96
-- **Related code:** src/Graph/GraphQueryable/, src/Cvoya.Graph.Neo4j/Querying/
+- **Related code:** src/Graph/Querying/, src/Graph.Neo4j/Querying/, src/Graph.Cypher/
 
 ## Context
 
 CVOYA graph has one LINQ-to-Cypher translation pipeline and, as of PR #66, two providers that need it.
 
-The in-tree Neo4j provider translates by string-building: `ExpressionToCypherVisitor`
-(src/Cvoya.Graph.Neo4j/Querying/Cypher/Visitors/ExpressionToCypherVisitor.cs, 1,079 lines) returns Cypher
+The in-tree Neo4j provider translated by string-building: `ExpressionToCypherVisitor`
+(then under `src/Graph.Neo4j/Querying/`) returned Cypher
 fragments as `Expression.Constant(string)`, and `CypherQueryBuilder`
-(src/Cvoya.Graph.Neo4j/Querying/Cypher/Builders/CypherQueryBuilder.cs, 1,216 lines) accumulates raw clause
+(also under `src/Graph.Neo4j/Querying/`) accumulated raw clause
 strings (`AddMatchPattern(string)`, `AddWhere(string)`). Dialect syntax — `datetime()`, `apoc.text.*`,
-`db.index.fulltext` calls — is welded inline into LINQ recognition. Terminal operations are dispatched by
+`db.index.fulltext` calls — was welded inline into LINQ recognition. Terminal operations were dispatched by
 string method name in `CypherQueryVisitor`
-(src/Cvoya.Graph.Neo4j/Querying/Cypher/Visitors/Core/CypherQueryVisitor.cs, 1,683 lines), matching ~60
-public `*AsyncMarker` stubs (src/Graph/GraphQueryable/QueryableAsyncExtensionsMarkers.cs).
+(then under `src/Graph.Neo4j/Querying/`), matching ~60
+public `*AsyncMarker` stubs (then under `src/Graph/GraphQueryable/`).
 
 PR #66 (@paule96) contributes a complete Apache AGE provider for PostgreSQL (~23k added lines). Because
 nothing in the pipeline was reusable, it had to fork the stack (`AgeGraphQueryableBase`,
 `AgeGraphQueryProvider` — byte-similar to their Neo4j counterparts) — but its internals are *better* than
 what they fork: a typed fragment IR plus a renderer (`AgeQueryFragments`, `AgeFragmentRenderer` under
-src/Cvoya.Graph.Age/Querying/Cypher/Visitors/Core/ in the PR) instead of string accumulation, and a thin
-shared `src/Cvoya.Graph.Cypher` package that the Neo4j provider does not yet consume.
+`src/Graph.Age/Querying/` in the PR) instead of string accumulation, and a thin shared Cypher
+package. The converged implementation now lives in `src/Graph.Cypher` and is consumed by both
+database providers.
 
 Without a shared layer, every LINQ feature must be built twice and the two implementations will drift
 semantically. The public query surface compounds the cost: the node/relationship distinction is modeled as
@@ -78,11 +79,11 @@ convention (see [README.md](README.md)).
 
 5. **Neutral result wire model.** Provider-independent graph values (node/relationship/path/scalar/list/map
    records). The hard materialization logic of `CypherResultProcessor`
-   (src/Cvoya.Graph.Neo4j/Querying/Cypher/Execution/CypherResultProcessor.cs, 1,173 lines — complex-property
+   (then in `src/Graph.Neo4j/Querying/` — complex-property
    reassembly, polymorphic type resolution, path stitching) moves into shared code operating on the wire
    model; each provider shrinks to a driver→wire-model adapter (#85).
 
-6. **`tests/Cvoya.Graph.Tests` ships as a provider compatibility suite** with a harness SPI
+6. **`src/Graph.CompatibilityTests` ships as a provider compatibility suite** with a harness SPI
    (create/tear down store, produce `IGraph`, per-test isolation) and a capability model aligned 1:1 with
    the `ICypherDialect` capability surface, so "dialect says unsupported" and "suite skips-with-reason" can
    never disagree. The in-tree Neo4j tests consume it exactly as an external provider would (#95).
@@ -154,9 +155,10 @@ means" checklist on #66/#53.
 - **Impact on PR #66 / @paule96:** the fork pipeline as posted will not merge; the convergence target is
   `AgeDialect` + result adapter + store layer + compatibility harness once #85/#95 land, done
   collaboratively. The fragment/renderer design is adopted upstream with credit (decision 7). AGE's known
-  capability gaps (nested transactions, full-text search — #53) become declared capabilities: translation
-  fails informatively and suite tests skip-with-reason instead of failing. Security-issue triage from the
-  PR's own docs happens during #86. Concrete checklist lands on #66/#53 per #86.
+  capability gaps become declared capabilities: translation fails informatively and suite tests
+  skip-with-reason instead of failing. The final v1 provider implements full-text search but still
+  declines nested transactions and shortest path. Security-issue triage from the PR's own docs happens
+  during #86. Concrete checklist lands on #66/#53 per #86.
 - **New shipped packages:** `Cvoya.Graph.Cypher` and `Cvoya.Graph.CompatibilityTests` join the
   release pipeline (#71). Both are 0.x and version in lockstep with the core.
 - **Cost per new operator drops to one binding:** surface + `GraphQueryModel` node + planner lowering +

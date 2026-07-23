@@ -7,7 +7,7 @@ using Microsoft.CodeAnalysis;
 
 
 /// <summary>
-/// Helper class for type checking and validation in the Graph Model analyzer.
+/// Helper class for type checking and validation in the CVOYA Graph analyzer.
 /// </summary>
 internal class AnalyzerHelper
 {

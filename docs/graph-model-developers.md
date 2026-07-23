@@ -165,8 +165,8 @@ including the one-time NuGet Trusted Publishing portal setup.
 # 1. Regular development (fastest)
 dotnet build --configuration Debug
 
-# 2. Run tests
-dotnet test --configuration Debug
+# 2. Run the service-free/in-memory lane
+./scripts/run-tests.sh --configuration Debug --lane fast
 
 # 3. Performance testing when needed
 dotnet build --configuration Benchmark
@@ -222,8 +222,8 @@ To include CodeQL in the full build-system validation pass:
 # 1. Verify the release build works
 dotnet build --configuration Release
 
-# 2. Run the full test suite
-dotnet test --configuration Release
+# 2. Start both services and run the full discovered suite
+./scripts/run-tests.sh --configuration Release --lane all --neo4j --age
 
 # 3. Preview the tag that would be cut
 ./scripts/release.sh 1.2.3 --plan
@@ -246,7 +246,12 @@ Package-reference validation has one repository-level owner:
 dotnet msbuild eng/PackageValidation.proj -target:Validate
 ```
 
-The orchestrator starts from clean repository-owned state, restores and builds the `LocalFeed` package set, explicitly packs the analyzer projects, verifies the exact nine-package inventory and every packaged assembly's version metadata with `scripts/verify-package-set.sh`, and then restores/builds the solution with `UsePackageReferences=true`. `eng/package-validation.NuGet.config` maps `Cvoya.*` to the generated feed and everything else to NuGet.org.
+The orchestrator starts from clean repository-owned state, restores and builds the `LocalFeed`
+package set, explicitly packs the analyzer projects, and then restores/builds the solution with
+`UsePackageReferences=true`. `scripts/verify-package-set.sh` derives the expected inventory from
+every packable project under `src/`, rejects missing or unexpected packages, and verifies every
+packaged assembly's version metadata. `eng/package-validation.NuGet.config` maps `Cvoya.*` to the
+generated feed and everything else to NuGet.org.
 
 All package, feed, global-packages, HTTP-cache, scratch, and plugin-cache paths live under `artifacts/package-validation/`. The workflow does not add or remove user-level NuGet sources and does not read, clear, or write the user's global NuGet caches.
 
@@ -306,7 +311,7 @@ dotnet clean
 ## 📁 Directory Structure
 
 ```text
-graphmodel/
+graph/
 ├── VERSION                    # Development default version for untagged builds
 ├── Directory.Build.props      # MSBuild configuration
 ├── eng/
@@ -317,7 +322,7 @@ graphmodel/
 └── scripts/
     ├── release.sh            # Release orchestration (tag, watch, verify)
     ├── run-benchmarks.sh     # Benchmark runner
-    └── cleanup-local-feed.sh # Legacy cleanup script
+    └── cleanup-local-feed.sh # Compatibility wrapper over PackageValidation.proj
 ```
 
 ## 🚨 Error Prevention

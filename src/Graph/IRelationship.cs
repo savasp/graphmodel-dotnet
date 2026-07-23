@@ -9,6 +9,9 @@ namespace Cvoya.Graph;
 /// </summary>
 /// <remarks>
 /// Relationships form the connections between nodes, creating the graph structure.
+/// Endpoint selection and physical direction are supplied to creation commands and returned by
+/// <see cref="IGraphPathSegment"/>; they are not properties of the relationship domain value.
+/// Provider-native identity is private and is not part of this interface.
 /// </remarks>
 public interface IRelationship : IEntity
 {

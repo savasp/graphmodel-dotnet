@@ -15,7 +15,9 @@ using Microsoft.Extensions.Logging;
 /// This is a test double and executable specification, not a production database: data lives in
 /// process memory, there is no persistence or clustering, queries are unindexed scans, and
 /// commits are serialized through a single store-wide lock (transactions buffer their writes and
-/// apply them atomically on commit). Full-text search is not supported.
+/// apply them atomically on commit). Full-text search uses an index-free scan with the shared
+/// provider-neutral, case-insensitive whole-token semantics. It is suitable for contract and
+/// application tests, not for production search performance, ranking, stemming, or prefix search.
 /// </remarks>
 public sealed class InMemoryGraphStore : IAsyncDisposable
 {

@@ -1,50 +1,58 @@
-# Example 1: Basic CRUD Operations
+# Example 0: Basic serialization
 
-This example demonstrates the fundamental serialization using basic CRUD operations.
+This example exercises the Neo4j provider's entity serialization with scalar, nullable,
+collection, complex, and dynamic values.
 
-## What You'll Learn
+## What it demonstrates
 
-- How to define domain models using `Node` records
-- Creating nodes without and with complex properties (e.g. `Address`)
+- `Node` and `Relationship` records without public provider identity
+- Scalar and enum collections
+- Nullable complex properties and collections of complex values
+- Dynamic nodes and relationships
+- Relationship creation through selected endpoints
 
-## Domain Model
-
-The example uses a simple organizational structure:
-
-- **Person**: Represents a person with properties like Name, Email, Age, and Department
-- **PersonWithAddress**: Represents a person with properties like Name, Email, and Address. Address is considered a complex property.
-
-## Key Concepts Demonstrated
-
-### 1. Node Attributes
+The model includes a simple `Person`, a `PersonWithComplex` with nested `Address`, `City`, `Foo`,
+`Bar`, and `Baz` values, and a `Friend` relationship:
 
 ```csharp
-[Node("Person")]
-public record Person : Node { ... }
+[Node(Label = "Person")]
+public record Person : Node
+{
+    public string Email { get; set; } = string.Empty;
+    public List<string> Skills { get; set; } = [];
+}
+
+[Node(Label = "PersonWithAddress")]
+public record PersonWithComplex : Node
+{
+    public Address HomeAddress { get; set; } = new();
+    public Address? WorkAddress { get; set; }
+    public List<Address> PreviousAddresses { get; set; } = [];
+}
+
+[Relationship(Label = "FRIEND_OF")]
+public record Friend : Relationship
+{
+    public DateTime Since { get; set; }
+}
 ```
 
-### 2. Creating Graph Data
+Nodes are created directly. Existing relationship endpoints are expressed as exact-one query
+selections:
 
 ```csharp
-await graph.CreateNodeAsync(person);
+await graph.CreateNodeAsync(alice);
+
+await graph.CreateRelationshipAsync(
+    graph.Nodes<Person>().Where(person => person.Email == alice.Email),
+    new Friend { Since = DateTime.UtcNow },
+    graph.Nodes<Person>().Where(person => person.Email == bob.Email));
 ```
 
-### 3. Creating Nodes with complex properties
+## Run
 
-```csharp
-public record Address { ... }
-public record Person : Node { Address = ... }
-```
-
-## Prerequisites
-
-- Neo4j instance running on `localhost:7687`
-- Username: `neo4j`
-- Password: `password`
-
-## Running the Example
+Start Neo4j at `bolt://localhost:7687` with username `neo4j` and password `password`, then run:
 
 ```bash
-cd examples/Example0.BasicSerialization
-dotnet run
+dotnet run --project examples/Example0.BasicSerialization
 ```

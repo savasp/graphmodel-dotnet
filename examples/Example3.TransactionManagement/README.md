@@ -1,66 +1,46 @@
-# Example 3: Transaction Management
+# Example 3: Transaction management
 
-This example demonstrates transaction support in the CVOYA graph library, including commit, rollback, and data consistency.
+This example demonstrates explicit Neo4j transactions with a banking scenario: successful
+transfers, validation failures, rollback, and multi-operation commits.
 
-## What You'll Learn
-
-- Beginning and managing transactions
-- Committing successful operations
-- Rolling back failed operations
-- Ensuring data consistency across multiple operations
-- Working with transactions in a banking scenario
-
-## Key Concepts Demonstrated
-
-### 1. Basic Transaction Usage
+Pass the transaction to every query root and write that belongs to the unit of work:
 
 ```csharp
-await using (var transaction = await graph.GetTransactionAsync())
-{
-    try
-    {
-        // Perform operations
-        await graph.CreateNodeAsync(node, transaction: transaction);
-        await graph.UpdateNodeAsync(node, transaction: transaction);
+await using var transaction = await graph.GetTransactionAsync();
 
-        // Commit if successful
-        await transaction.CommitAsync();
-    }
-    catch
-    {
-        // Rollback on failure
-        await transaction.RollbackAsync();
-        throw;
-    }
+try
+{
+    var source = graph.Nodes<Account>(transaction)
+        .Where(account => account.AccountNumber == "ACC-001");
+    var target = graph.Nodes<Account>(transaction)
+        .Where(account => account.AccountNumber == "ACC-002");
+
+    await source.UpdateAsync(setters => setters
+        .SetProperty(account => account.Balance, account => account.Balance - 100m));
+    await target.UpdateAsync(setters => setters
+        .SetProperty(account => account.Balance, account => account.Balance + 100m));
+
+    await graph.CreateRelationshipAsync(
+        source,
+        new Transfer { Amount = 100m, Timestamp = DateTime.UtcNow },
+        target);
+
+    await transaction.CommitAsync();
+}
+catch
+{
+    await transaction.RollbackAsync();
+    throw;
 }
 ```
 
-### 2. Transaction Isolation
+Acquisition, graph writes, and query terminals accept cancellation tokens. `CommitAsync()` and
+`RollbackAsync()` do not.
 
-All operations within a transaction are isolated from other transactions until committed.
+## Run
 
-### 3. Automatic Rollback
-
-If an exception occurs and the transaction is not explicitly committed, it will be rolled back automatically when disposed.
-
-### 4. Complex Multi-Operation Transactions
-
-Transactions can include multiple creates, updates, and deletes that all succeed or fail together.
-
-## Banking Example
-
-The example simulates a simple banking system with:
-
-- Account creation
-- Money transfers between accounts
-- Balance validation
-- Transaction history
-
-## Running the Example
+Start Neo4j at `bolt://localhost:7687` with username `neo4j` and password `password`, then run:
 
 ```bash
-cd examples/Example3.TransactionManagement
-dotnet run
+dotnet run --project examples/Example3.TransactionManagement
 ```
-
-Make sure Neo4j is running and accessible at `neo4j://localhost:7687`.
