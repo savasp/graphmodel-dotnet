@@ -23,7 +23,9 @@ Releases are tag-authoritative — the tag is the version, and `release.sh` is t
 only supported way to cut one. It pushes the tag, watches
 `.github/workflows/release.yml` (build, test, pack, attest, publish to NuGet,
 create the GitHub Release, and deploy the tagged documentation), then verifies
-every package resolves on nuget.org.
+every package resolves on nuget.org. Before creating the immutable tag, it also
+verifies that Pages uses GitHub Actions and that the protected `github-pages`
+environment allows exactly `v*` tags.
 
 ```bash
 # Preview the computed tag without pushing anything

@@ -126,6 +126,10 @@ Repository administrators must configure Pages to use **GitHub Actions** as its
 source and protect the `github-pages` environment so only tags matching `v*`
 may deploy. `@savasp`, the repository and workflow owner recorded in
 `.github/CODEOWNERS`, owns that environment policy and release recovery.
+Before creating or pushing the immutable release tag, `release.sh` reads both
+settings and requires that exact configuration. Its authenticated GitHub account
+therefore needs repository administration read access in addition to the
+repository and workflow access used for the rest of the release.
 
 To recover from a transient documentation build or Pages failure, open the
 existing tag-triggered Release run and use **Re-run failed jobs**. Do not move or

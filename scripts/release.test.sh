@@ -84,6 +84,36 @@ cat > "$FAKE_BIN/gh" <<'EOF'
 set -u
 printf 'gh %s\n' "$*" >> "$TEST_LOG"
 
+if [[ "${1:-}" == "api" ]]; then
+  endpoint=""
+  for argument in "$@"; do
+    case "$argument" in
+      /repos/*)
+        endpoint="$argument"
+        ;;
+    esac
+  done
+
+  case "$endpoint" in
+    /repos/cvoya-com/graph/pages)
+      [[ "${TEST_PAGES_API_FAIL:-}" == "pages" ]] && exit 1
+      printf '%s\n' "${TEST_PAGES_BUILD_TYPE:-workflow}"
+      ;;
+    /repos/cvoya-com/graph/environments/github-pages)
+      [[ "${TEST_PAGES_API_FAIL:-}" == "environment" ]] && exit 1
+      printf '%s\n' "${TEST_PAGES_POLICY_MODE:-$'false\ttrue'}"
+      ;;
+    '/repos/cvoya-com/graph/environments/github-pages/deployment-branch-policies?per_page=100')
+      [[ "${TEST_PAGES_API_FAIL:-}" == "policies" ]] && exit 1
+      printf '%s\n' "${TEST_PAGES_DEPLOY_POLICIES:-tag:v*}"
+      ;;
+    *)
+      exit 1
+      ;;
+  esac
+  exit 0
+fi
+
 case "${1:-} ${2:-}" in
   'auth status')
     [[ "${TEST_GH_AUTH_FAIL:-false}" == "true" ]] && exit 1
@@ -131,6 +161,8 @@ reset_fakes() {
   export TEST_LS_REMOTE_MISSING_STATUS=2 TEST_NUGET_VERSION=1.2.3
   export TEST_ORIGIN_FETCH_REPO=cvoya-com/graph TEST_ORIGIN_FETCH_URL=https://github.com/cvoya-com/graph
   export TEST_ORIGIN_PUSH_REPO=cvoya-com/graph TEST_ORIGIN_PUSH_URL=https://github.com/cvoya-com/graph
+  export TEST_PAGES_API_FAIL='' TEST_PAGES_BUILD_TYPE=workflow
+  export TEST_PAGES_DEPLOY_POLICIES='tag:v*' TEST_PAGES_POLICY_MODE=$'false\ttrue'
   export TEST_ORIGIN_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa TEST_RELEASE_ASSETS=''
   export TEST_REMOTE_TAGS='' TEST_RUN_FAIL=false TEST_RUN_ID=12345 TEST_TODAY=20260717
 }
@@ -186,6 +218,21 @@ check_log_absent() {
   fi
 }
 
+check_log_order() {
+  local description="$1" first="$2" second="$3"
+  local first_line second_line
+  first_line="$(grep -nF -- "$first" "$TEST_LOG" | head -n 1 | cut -d: -f1)"
+  second_line="$(grep -nF -- "$second" "$TEST_LOG" | head -n 1 | cut -d: -f1)"
+
+  if [[ -n "$first_line" && -n "$second_line" && "$first_line" -lt "$second_line" ]]; then
+    pass=$((pass + 1))
+    printf 'PASS: %s\n' "$description"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL: %s (expected "%s" before "%s")\n' "$description" "$first" "$second"
+  fi
+}
+
 reset_fakes
 run_release 1.2.3 --plan
 check_status "stable plan succeeds" 0
@@ -219,6 +266,10 @@ TEST_RELEASE_ASSETS='Cvoya.Graph.1.2.3-alpha.20260717.nupkg'
 run_release 1.2.3 --pre alpha --latest
 check_status "complete prerelease flow succeeds with fakes" 0
 check_log "push access is checked before release" "git push --dry-run origin aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:refs/tags/v1.2.3-alpha.20260717"
+check_log "Pages source is checked before release" "gh api --method GET /repos/cvoya-com/graph/pages"
+check_log "Pages environment policy is checked before release" "gh api --method GET /repos/cvoya-com/graph/environments/github-pages"
+check_log "Pages deployment policies are checked before release" "gh api --method GET /repos/cvoya-com/graph/environments/github-pages/deployment-branch-policies?per_page=100"
+check_log_order "Pages policy is checked before the release tag is created" "gh api --method GET /repos/cvoya-com/graph/environments/github-pages/deployment-branch-policies?per_page=100" "git tag v1.2.3-alpha.20260717"
 check_log "release tag is created" "git tag v1.2.3-alpha.20260717"
 check_log "release workflow is watched" "gh run watch --repo cvoya-com/graph --exit-status 12345"
 check_log "verified prerelease is promoted" "gh release edit v1.2.3-alpha.20260717 --repo cvoya-com/graph --latest --prerelease=false"
@@ -257,6 +308,35 @@ TEST_GH_AUTH_FAIL=true
 run_release 1.2.3
 check_status "missing GitHub authentication is rejected" 1
 check_log_absent "authentication failure happens before a tag" "git tag v1.2.3"
+
+reset_fakes
+TEST_PAGES_BUILD_TYPE='legacy'
+run_release 1.2.3
+check_status "non-workflow Pages source is rejected" 1
+check_output "Pages source rejection explains the required source" "GitHub Pages must use GitHub Actions before releasing"
+check_log_absent "invalid Pages source cannot create a tag" "git tag v1.2.3"
+
+reset_fakes
+TEST_PAGES_POLICY_MODE=$'true\tfalse'
+run_release 1.2.3
+check_status "non-custom Pages environment policy is rejected" 1
+check_output "environment policy rejection explains the required mode" "must use custom deployment branch and tag policies"
+check_log_absent "invalid environment policy cannot create a tag" "git tag v1.2.3"
+
+reset_fakes
+TEST_PAGES_DEPLOY_POLICIES='branch:main'
+run_release 1.2.3
+check_status "wrong Pages deployment policy is rejected" 1
+check_output "deployment policy rejection names the required tag pattern" "must allow exactly the release tag policy 'v*'"
+check_output "deployment policy rejection reports the live policy" "Found:    branch:main"
+check_log_absent "invalid deployment policy cannot create a tag" "git tag v1.2.3"
+
+reset_fakes
+TEST_PAGES_API_FAIL='policies'
+run_release 1.2.3
+check_status "unreadable Pages deployment policies are rejected" 1
+check_output "unreadable policy rejection explains the required permission" "needs repository administration read access"
+check_log_absent "unreadable deployment policy cannot create a tag" "git tag v1.2.3"
 
 reset_fakes
 TEST_RELEASE_ASSETS='Cvoya.Graph.9.9.9.nupkg'
