@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 A shippable **compatibility test suite (TCK)** for CVOYA graph providers. Implement one small SPI,
-bind the suite's `I*Tests` interfaces to your provider, and run the same 350+ contract tests every
+bind the suite's `I*Tests` interfaces to your provider, and run the same 500+ contract test cases every
 in-tree provider runs - proving your provider actually behaves the way CVOYA graph promises.
 
 ## 🚀 Quick Start

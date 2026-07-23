@@ -525,7 +525,10 @@ public sealed class CypherRenderer : ICypherRenderContext
 
     private string[] GetProjectionColumns(CypherStatement statement)
     {
-        return (statement.Clauses.Count == 0 ? null : statement.Clauses[^1]) switch
+        var projection = statement.Clauses.LastOrDefault(clause => clause is
+            ReturnClause or EntityProjectionClause or SetOperationClause);
+
+        return projection switch
         {
             ReturnClause @return => @return.Items
                 .Select(item => item.Alias ?? RenderExpression(item.Expression))

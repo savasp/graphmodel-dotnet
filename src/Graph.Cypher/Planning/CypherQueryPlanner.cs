@@ -2135,6 +2135,7 @@ public sealed class CypherQueryPlanner
             AddPostPagingStageAndProjection(
                 clauses,
                 model,
+                state,
                 ordering,
                 projection,
                 postPagingLowerer!,
@@ -2253,13 +2254,14 @@ public sealed class CypherQueryPlanner
     private static void AddPostPagingStageAndProjection(
         List<ICypherClause> clauses,
         GraphQueryModel model,
+        PlanningState state,
         IReadOnlyList<OrderByItem> ordering,
         ProjectionPlan projection,
         ExpressionToCypherAstLowerer postPagingLowerer,
         IReadOnlyList<CypherExpression> postPagingPredicates,
         IReadOnlyList<OrderByItem> postPagingOrdering)
     {
-        if (model.Terminal != TerminalOperation.ToListOrArray)
+        if (model.Terminal is not (TerminalOperation.ToListOrArray or TerminalOperation.Count))
         {
             throw new GraphQueryTranslationException(
                 $"Terminal operation '{model.Terminal}' after a post-paging sequence stage is not supported yet; " +
@@ -2344,6 +2346,12 @@ public sealed class CypherQueryPlanner
             effectivePostPagingOrdering,
             postPaging.Paging,
             reverseOrdering: false);
+        if (model.Terminal == TerminalOperation.Count)
+        {
+            clauses.Add(BuildAggregateReturn(model, state, projection));
+            return;
+        }
+
         var resultOrdering = effectivePostPagingOrdering.Count > 0
             ? effectivePostPagingOrdering
             : effectiveOrdering;

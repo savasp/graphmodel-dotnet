@@ -73,6 +73,42 @@ public sealed class AgeTemporalParameterArithmeticPassTests
     }
 
     [Fact]
+    public void ShiftsStoredTemporalArithmeticIntoTheComparisonBound()
+    {
+        var cutoff = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var statement = new CypherStatement(
+        [
+            new MatchClause(
+                [new PathPattern([new NodePattern("src", [])])],
+                optional: false),
+            new WhereClause(new BinaryExpression(
+                CypherBinaryOperator.LessThan,
+                new BinaryExpression(
+                    CypherBinaryOperator.Add,
+                    Function(
+                        "temporal.datetime",
+                        new PropertyAccess(new VariableRef("src"), "OccurredAt")),
+                    Function(
+                        "temporal.duration",
+                        new MapExpression([new MapEntry("days", new QueryParameter("p0"))]))),
+                Function("temporal.datetime", new QueryParameter("p1")))),
+            new ReturnClause([new ReturnItem(new VariableRef("src"), null)], distinct: false),
+        ], new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["p0"] = 1,
+            ["p1"] = cutoff,
+        });
+
+        var lowered = pass.Run(statement);
+        var rendered = renderer.Render(lowered);
+
+        Assert.Equal(
+            "MATCH (src)\nWHERE src.OccurredAt < $age_temporal_0\nRETURN src",
+            rendered.Text);
+        Assert.Equal(cutoff.AddDays(-1), lowered.Parameters["age_temporal_0"]);
+    }
+
+    [Fact]
     public void EvaluatesParameterFreeTemporalFunctionsAndUnwrapsTemporalMembers()
     {
         var statement = new CypherStatement(

@@ -49,8 +49,9 @@ with a provider-reserved `inheritance_labels` alternative for mapped names outsi
 grammar, while excluding provider-owned complex values;
 `AgeClauseOrderPass` moves ordering and paging without parsing rendered Cypher (including the
 path-decomposition and aggregate exceptions), while
-`AgeTemporalParameterArithmeticPass` unwraps AGE-unsupported temporal constructors and folds
-parameter-only duration arithmetic into bound values. `AgeEntityProjectionPass` expands entity
+`AgeTemporalParameterArithmeticPass` unwraps AGE-unsupported temporal constructors, folds
+parameter-only duration arithmetic into bound values, and shifts stored temporal arithmetic across
+comparisons into the opposing bound. `AgeEntityProjectionPass` expands entity
 hydration into typed match, predicate, projection, and ordering clauses, then structurally lowers
 named optional paths, `ALL`/`reduce` compatibility, temporal members, string containment, path
 indexes, reserved aliases, and empty sums. `AgeInlineComplexPropertyProjectionPass` expands inline

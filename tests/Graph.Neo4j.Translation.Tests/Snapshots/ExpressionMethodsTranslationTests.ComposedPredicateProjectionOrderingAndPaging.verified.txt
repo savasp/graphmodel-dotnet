@@ -1,0 +1,18 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE NOT (EXISTS { MATCH ()-[__complexRootOwner]->(src) WHERE __complexRootOwner.__graphModelComplexProperty = true }) AND (((((src.Age >= $p0 AND src.FirstName IN $p1) AND (src.MiddleName IS NULL OR src.MiddleName STARTS WITH $p2)) AND NOT (size([__cvoya_collection_item IN CASE WHEN src.`__cvoya_sc:v1:n:TnVsbGFibGVOaWNrbmFtZXM` IS NULL THEN src.`NullableNicknames` WHEN size(src.`NullableNicknames`) + size(src.`__cvoya_sc:v1:n:TnVsbGFibGVOaWNrbmFtZXM`) = 0 THEN [] ELSE [__cvoya_i IN range(0, size(src.`NullableNicknames`) + size(src.`__cvoya_sc:v1:n:TnVsbGFibGVOaWNrbmFtZXM`) - 1) | CASE WHEN __cvoya_i IN src.`__cvoya_sc:v1:n:TnVsbGFibGVOaWNrbmFtZXM` THEN null ELSE src.`NullableNicknames`[__cvoya_i - size([__cvoya_n IN src.`__cvoya_sc:v1:n:TnVsbGFibGVOaWNrbmFtZXM` WHERE __cvoya_n < __cvoya_i])] END] END WHERE __cvoya_collection_item = $p3 OR (toString(__cvoya_collection_item) IS NULL AND toString($p3) IS NULL)]) > 0)) AND abs(src.Age - $p4) <= $p5) AND datetime(src.CreatedAt).year = $p6)
+ORDER BY src.LastName, src.Age DESC
+SKIP 1
+LIMIT 3
+RETURN src.FirstName AS FirstName, src.Age + $p7 AS AdjustedAge, CASE WHEN src.MiddleName IS NULL THEN $p8 ELSE toUpper(src.MiddleName) END AS Display
+
+== Parameters ==
+p0 = 18
+p1 = ["Alice", "Grace"]
+p2 = "a"
+p3 = "blocked"
+p4 = 30
+p5 = 12
+p6 = 2024
+p7 = 2
+p8 = "(missing)"

@@ -17,6 +17,8 @@ public record Person : Node
 
     public string LastName { get; set; } = string.Empty;
 
+    public string? MiddleName { get; set; }
+
     public int Age { get; set; }
 
     public DateTime CreatedAt { get; set; }

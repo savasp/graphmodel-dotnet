@@ -91,7 +91,9 @@ public sealed class ComplianceInventoryTests
     // +4 for #425: typed and dynamic nullable complex collections, real-child cascade cleanup,
     // and atomic dense/sparse/all-null/empty mutation transitions.
     // +1 for #520: native byte-array scalar create/read/update behavior across providers.
-    private const int ExpectedTotalTestMethods = 488;
+    // +8 for #525: composed predicate, collection-membership, expression-method, projection,
+    // ordering/paging, duplicate/aggregate, terminal, and deterministic-rejection contracts.
+    private const int ExpectedTotalTestMethods = 496;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

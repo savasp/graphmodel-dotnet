@@ -279,4 +279,38 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
         var query = Root.Nodes<Person>().Where(p => p.HomeAddress == null);
         return VerifyTranslation(query);
     }
+
+    [Fact]
+    public Task ComposedPredicateProjectionOrderingAndPaging()
+    {
+        var minimumAge = 18;
+        var allowedNames = new[] { "Alice", "Grace" };
+        var prefix = "a";
+        var targetAge = 30;
+        var tolerance = 12;
+        var year = 2024;
+        var bonus = 2;
+        var fallback = "(missing)";
+
+        var query = Root.Nodes<Person>()
+            .Where(person =>
+                person.Age >= minimumAge &&
+                allowedNames.Contains(person.FirstName) &&
+                (person.MiddleName == null || person.MiddleName.StartsWith(prefix)) &&
+                !person.NullableNicknames.Contains("blocked") &&
+                Math.Abs(person.Age - targetAge) <= tolerance &&
+                person.CreatedAt.Year == year)
+            .OrderBy(person => person.LastName)
+            .ThenByDescending(person => person.Age)
+            .Skip(1)
+            .Take(3)
+            .Select(person => new
+            {
+                person.FirstName,
+                AdjustedAge = person.Age + bonus,
+                Display = person.MiddleName == null ? fallback : person.MiddleName.ToUpperInvariant(),
+            });
+
+        return VerifyTranslation(query);
+    }
 }

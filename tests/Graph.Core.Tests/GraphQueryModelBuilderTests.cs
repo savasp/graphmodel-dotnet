@@ -42,6 +42,43 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
+    public void ComposedPredicateProjectionAndPaging_PreserveEveryExpressionShape()
+    {
+        var minimumAge = 18;
+        var allowedNames = new[] { "Ada", "Grace" };
+        var bonus = 2;
+        var fallback = "(missing)";
+        var query = Root<Person>()
+            .Where(person =>
+                person.Age >= minimumAge &&
+                (person.OptionalText == null || allowedNames.Contains(person.FirstName)))
+            .OrderBy(person => person.LastName)
+            .Select(person => new
+            {
+                person.FirstName,
+                AdjustedAge = person.Age + bonus,
+                Display = person.OptionalText == null ? fallback : person.OptionalText,
+            })
+            .Skip(1)
+            .Take(2);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var predicate = Assert.IsAssignableFrom<BinaryExpression>(Assert.Single(model.Predicates).Predicate.Body);
+        Assert.Equal(ExpressionType.AndAlso, predicate.NodeType);
+        Assert.Equal(ExpressionType.OrElse, Assert.IsAssignableFrom<BinaryExpression>(predicate.Right).NodeType);
+        Assert.Single(model.Ordering);
+        Assert.Equal(1, model.Paging.Skip);
+        Assert.Equal(2, model.Paging.Take);
+
+        var projection = Assert.IsType<NewExpression>(model.Projection?.Selector?.Body);
+        Assert.Equal(ProjectionKind.Anonymous, model.Projection?.Kind);
+        Assert.Equal(ExpressionType.Add, projection.Arguments[1].NodeType);
+        Assert.IsAssignableFrom<ConditionalExpression>(projection.Arguments[2]);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
     public void DistinctThenCount_CarriesBothSemantics()
     {
         var source = Root<Person>().Select(person => person.LastName).Distinct();
@@ -1423,6 +1460,8 @@ public class GraphQueryModelBuilderTests
         public string FirstName { get; init; } = string.Empty;
 
         public string LastName { get; init; } = string.Empty;
+
+        public string? OptionalText { get; init; }
 
         public int Age { get; init; }
 

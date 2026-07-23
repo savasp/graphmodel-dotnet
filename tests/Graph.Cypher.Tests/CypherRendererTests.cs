@@ -31,6 +31,34 @@ public class CypherRendererTests
     }
 
     [Fact]
+    public void Render_TrailingOrderingAndPagingPreserveReturnProjectionSchema()
+    {
+        var statement = new CypherStatement(
+            [
+                new MatchClause([new PathPattern([new NodePattern("n", ["Person"])])], optional: false),
+                new ReturnClause(
+                [
+                    new ReturnItem(new PropertyAccess(new VariableRef("n"), "Name"), "DisplayName"),
+                    new ReturnItem(new VariableRef("n"), "NodeValue"),
+                ],
+                distinct: false),
+                new OrderByClause(
+                [
+                    new OrderByItem(
+                        new PropertyAccess(new VariableRef("n"), "Name"),
+                        descending: false),
+                ]),
+                new SkipClause(new Literal(1)),
+                new LimitClause(new Literal(3)),
+            ],
+            new Dictionary<string, object?>());
+
+        var result = renderer.Render(statement);
+
+        Assert.Equal(["DisplayName", "NodeValue"], result.ProjectionColumns);
+    }
+
+    [Fact]
     public void Render_DecomposedPathProjectionReportsCoordinatesInRenderedOrder()
     {
         var statement = new CypherStatement(

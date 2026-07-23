@@ -27,6 +27,7 @@ A provider is **compliant** when its compatibility run reports N passed cases / 
 | GroupByAggregation | Yes / No | |
 | RelationshipPredicates | Yes / No | |
 | SetOperations | Yes / No | |
+| NullElementsInSimpleCollections | Yes / No | |
 
 ## Results
 
