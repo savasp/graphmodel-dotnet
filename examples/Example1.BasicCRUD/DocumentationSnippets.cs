@@ -24,8 +24,8 @@ internal static class DocumentationSnippets
         var engineers = await graph.Nodes<Person>()
             .Where(person => person.Department == "Engineering")
             .ToListAsync();
-        Console.WriteLine($"Found {engineers.Count} engineer(s).");
         // snippet-end: query
+        Console.WriteLine($"Found {engineers.Count} engineer(s).");
     }
 
     private static async Task UpdateAndDeleteAsync(IGraph graph, Person alice)
