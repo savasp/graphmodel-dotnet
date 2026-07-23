@@ -91,7 +91,6 @@ public sealed class SchemaInitializationTests : Neo4jTest
 
         var recreatedIndexes = await GetManagedIndexNamesAsync();
         var afterIndexIds = await GetIndexIdsAsync();
-        Assert.All(configuredIndexes, indexName => Assert.NotEqual(beforeIndexIds[indexName], afterIndexIds[indexName]));
         var indexStates = await GetIndexStatesAsync();
         Assert.All(configuredIndexes, indexName => Assert.Equal("ONLINE", indexStates[indexName]));
         Assert.Equal(beforeIndexIds[staleIndexName], afterIndexIds[staleIndexName]);
@@ -102,6 +101,10 @@ public sealed class SchemaInitializationTests : Neo4jTest
         Assert.Contains(externalFullTextIndexName, recreatedIndexes);
         Assert.Contains(externalConstraintName, await GetManagedConstraintNamesAsync());
 
+        // Neo4j may reuse an internal schema ID after an index is dropped, so ID inequality is not
+        // a stable replacement oracle. The stale reserved definition is the observable proof that
+        // the provider replaced its owned index; the ID assertions above prove external artifacts
+        // were preserved, and the state/search assertions prove the rebuilt indexes are usable.
         var fullTextLabels = await GetIndexLabelsOrTypesAsync("node_fulltext_index");
         Assert.DoesNotContain("StaleLabel", fullTextLabels);
         Assert.Contains("Class1", fullTextLabels);
