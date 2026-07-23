@@ -4,8 +4,25 @@
 |---|---|
 | Provider | `Cvoya.Graph.Age` (issue #86 implementation) |
 | Compliance suite | Repository build (`Cvoya.Graph.CompatibilityTests` 0.0.0-dev) |
-| Backing store | Apache AGE 1.7.0 / PostgreSQL 18 |
-| Date / run | 2026-07-22 / local strict certifying run; CI uses the same lane |
+| Candidate source | `7131eeac2f68b8e3165eca92537aa1c3f0a36cd1` |
+| Backing store | Apache AGE 1.7.0 / PostgreSQL 18.1 (Debian 18.1-1.pgdg13+2) (`apache/age:release_PG18_1.7.0`, image `17ac069ae4505520fde3bac5fb9fbaca01273056474190cd3af0e96f818aec02`) |
+| Reference provider | Neo4j 5.26.28 Enterprise (`neo4j:5-enterprise`, image `037e96a1ddb9581ba8dc420a03dbced3ffe303b7f126628dfa477566481786f0`) |
+| Date / run | 2026-07-23 / local strict final certification |
+| Retained evidence root | `artifacts/compliance/393-7131eeac/` (local, gitignored) |
+
+## Certified v1.0 boundary
+
+| Area | Certified contract |
+|---|---|
+| Identity | `IEntity` has no universal identity member. Domain keys are optional model properties, and a property named `Id` has no provider-defined semantics. |
+| Native storage | User roots use mapped AGE labels/types; typed and dynamic reads include raw externally seeded native graph data. |
+| Physical correlation | AGE graphids remain private query/write correlation values and never appear as public entity identity or property-bag metadata. |
+| Mutations and endpoints | Set mutations freeze selected graphids inside one transaction. Relationship creation preserves exactly-one endpoint intent, including value-equal endpoints and explicit self-loops. |
+| Paths | Path segments preserve relationship orientation relative to traversal direction without exposing endpoint IDs. |
+| Queries | Relationship predicates, set operations, query expressions and terminals, grouping, optional traversal, and supported projections execute through structured lowering. |
+| Collections and serialization | Nullable simple collections, nested complex collections, provider-neutral serialization, and transaction-cleanup contracts are included in the strict suite. |
+| Search and provisioning | Full-text search is function-free and correlates private graphids; read-only use performs no provisioning. |
+| Compatibility | The v1.0 provider is native-only. Retired universal roots, endpoint-ID contracts, mixed storage, and pre-v1 database compatibility are outside the supported boundary. |
 
 ## Declared capabilities
 
@@ -111,26 +128,86 @@ validation, cancellation, or database failure.
 |---|---|---|---|---|
 | 501 | 499 | 2 | 0 | 0 |
 
-The compatibility inventory contains 501 runnable test methods. For this capability set,
-`ComplianceInventory.MinimumExecuted(declared)` is 499 methods and the strict compliance guard
-passes with 2 expected skips: one for undeclared `ShortestPath` and one for undeclared
-`OrderByEntity`. The retained provider run reports 727 runtime cases: 725 passed, 2 capability
-skipped, and 0 failed.
+The inventory was derived from the candidate assemblies with
+`AgeDialect.Instance.Capabilities`, `ComplianceInventory.TotalTestMethods`,
+`ComplianceInventory.MinimumExecuted(declared)`, and
+`ComplianceInventory.ExpectedCapabilitySkips(declared)`. It reports 501 runnable compatibility
+methods, 499 required methods, and 2 expected capability skips. The strict guard passed, proving
+that every method eligible under every advertised AGE capability executed. Theory rows expand the
+provider run to 727 runtime cases: 725 passed, 2 capability-skipped, and 0 failed.
+
+| Strict run | Runtime cases | Passed | Expected skips | Failed | TRX |
+|---|---:|---:|---:|---:|---|
+| Compatibility meta-tests | 30 | 28 | 2 | 0 | `strict-meta/graph-compatibilitytests-tests/graph-compatibilitytests-tests.trx` |
+| InMemory provider | 541 | 540 | 1 | 0 | `strict-inmemory/graph-inmemory-tests/graph-inmemory-tests.trx` |
+| Neo4j provider | 616 | 616 | 0 | 0 | `strict-neo4j/graph-neo4j-tests/graph-neo4j-tests.trx` |
+| AGE provider | 727 | 725 | 2 | 0 | `strict-age/graph-age-tests/graph-age-tests.trx` |
+
+TRX paths are relative to the retained evidence root in the report header. There were no
+infrastructure, discovery, static, ad hoc, or unplanned capability skips.
+
+| Repository gate | Result |
+|---|---|
+| Debug build | Passed with 0 warnings and 0 errors |
+| Fast test lane | Passed: 8 projects, 2,526 runtime cases |
+| All test lane | Passed: 10 projects, 3,869 runtime cases |
+| Package validation | Passed: exact 9-package / 15-assembly inventory and package-reference consumer build |
+| Formatting | Passed with no changes required |
+| Portable CodeQL | Passed: Actions, C#, and Ruby SARIF each contained 0 results |
+
+### Expected skip ledger
+
+| Category | Run / exact method | Recorded reason |
+|---|---|---|
+| AGE ShortestPath | AGE / `Cvoya.Graph.Age.Tests.GraphTests.QueryTraversalTests.ShortestPaths_PinSelectionEndpointDirectionNoPathAndSameNodeSemantics` | `Capability 'ShortestPath' not declared by provider 'Cvoya.Graph.Age'` |
+| OrderByEntity architectural exclusion | AGE / `Cvoya.Graph.Age.Tests.GraphTests.AdvancedQueryTests.CanOrderByBareEntity` | `Capability 'OrderByEntity' not declared by provider 'Cvoya.Graph.Age'` |
+| OrderByEntity architectural exclusion | InMemory / `Cvoya.Graph.InMemory.Tests.GraphTests.AdvancedQueryTests.CanOrderByBareEntity` | `Capability 'OrderByEntity' not declared by provider 'Cvoya.Graph.InMemory'` |
+| Deliberate meta-test fixture | Meta / `Cvoya.Graph.CompatibilityTests.Tests.CapabilitySkipTests.RequiresUndeclaredCapability_IsSkippedNotExecuted` | `Capability 'FullTextSearch' not declared by provider 'Cvoya.Graph.CompatibilityTests.Tests.FakeProvider'` |
+| Deliberate meta-test fixture | Meta / `Cvoya.Graph.CompatibilityTests.Tests.InterfaceLevelCapabilitySkipTests.InterfaceGatedTest_MustSkip` | `Capability 'FullTextSearch' not declared by provider 'Cvoya.Graph.CompatibilityTests.Tests.FakeProvider'` |
+
 The provider-neutral shortest-path contract remains in `IQueryTraversalTests` and pins one/all
 shortest-path selection, endpoint direction, no-path, and same-node semantics; AGE skips that
 contract until AGE 1.8 supplies the native capability tracked by #355. Reachable shortest-path use
 is rejected before execution with `GraphQueryTranslationException`; `AgeShortestPathTranslationTests`
-pins that deterministic rejection. Theory data rows make the runtime case count larger than the
-method inventory. The provider-specific adapter,
-dialect, SQL-envelope, full-text, and security tests are excluded from the table.
+pins that deterministic rejection. Provider-specific adapter, dialect, SQL-envelope, full-text, and
+security tests contribute runtime cases but do not change the compatibility method inventory.
 
-Reproduce:
+## Reproduction
+
+Start the repository-pinned providers:
 
 ```bash
+./scripts/containers/start-neo4j.sh
 ./scripts/containers/start-age.sh
 export AGE_CONNECTION_STRING='Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres'
+```
+
+Run the retained strict evidence:
+
+```bash
+./scripts/run-tests.sh --configuration Debug --lane fast \
+  --project Graph.CompatibilityTests.Tests --disable-diff-engine --report-trx \
+  --results-directory artifacts/compliance/393-7131eeac/strict-meta
+GRAPHMODEL_COMPLIANCE_STRICT=1 ./scripts/run-tests.sh --configuration Debug --lane fast \
+  --project Graph.InMemory.Tests --disable-diff-engine --report-trx \
+  --results-directory artifacts/compliance/393-7131eeac/strict-inmemory
+GRAPHMODEL_COMPLIANCE_STRICT=1 ./scripts/run-tests.sh --configuration Debug --lane neo4j \
+  --project Graph.Neo4j.Tests --disable-diff-engine --report-trx \
+  --results-directory artifacts/compliance/393-7131eeac/strict-neo4j
 GRAPHMODEL_COMPLIANCE_STRICT=1 ./scripts/run-tests.sh --configuration Debug --lane age \
-  --disable-diff-engine --report-trx
+  --project Graph.Age.Tests --disable-diff-engine --report-trx \
+  --results-directory artifacts/compliance/393-7131eeac/strict-age
+```
+
+Run the repository gates against the same source candidate:
+
+```bash
+dotnet build --configuration Debug
+./scripts/run-tests.sh --configuration Debug --lane fast --disable-diff-engine
+./scripts/run-tests.sh --configuration Debug --lane all --disable-diff-engine
+dotnet msbuild eng/PackageValidation.proj -target:Validate
+dotnet format cvoya-graph.sln --verify-no-changes --no-restore --verbosity minimal
+./scripts/run-codeql.sh --output-dir artifacts/compliance/393-7131eeac/codeql
 ```
 
 Every runtime skip counted in the capability column carries the suite's declared-capability
