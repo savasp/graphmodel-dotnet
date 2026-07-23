@@ -46,7 +46,8 @@
 #   rather than hardcoded here, so this cannot drift from what release.yml packs.
 #
 # Requirements:
-#   - gh CLI authenticated (`gh auth status`) with repo + workflow scopes
+#   - gh CLI authenticated (`gh auth status`) with repo + workflow scopes and
+#     repository administration read access for the Pages configuration check
 #   - git remote `origin` pointing at cvoya-com/graph with push access
 #   - curl (for the nuget.org availability check; skipped with --plan)
 #   - Run from a clean checkout exactly at the current origin/main commit.
@@ -175,6 +176,66 @@ remote_tag_exists() {
 
   echo "::error::Could not query tags on origin while checking v${v}."
   exit 1
+}
+
+# Validates the external Pages settings that release.yml cannot safely discover
+# until its final deployment job. Run this immediately before creating the
+# immutable release tag so a stale environment policy cannot publish packages
+# and a GitHub Release before rejecting the documentation deployment.
+validate_pages_release_configuration() {
+  local pages_build_type
+  local environment_policy_mode
+  local deployment_policies
+  local environment_url="/repos/${REPO}/environments/github-pages"
+
+  if ! pages_build_type="$(gh api \
+      --method GET \
+      "/repos/${REPO}/pages" \
+      --jq '.build_type' 2>/dev/null)"; then
+    echo "::error::Could not read the GitHub Pages configuration for ${REPO}."
+    echo "         The authenticated account needs repository administration read access."
+    return 1
+  fi
+
+  if [[ "$pages_build_type" != "workflow" ]]; then
+    echo "::error::GitHub Pages must use GitHub Actions before releasing; found build type '${pages_build_type:-unset}'."
+    echo "         Configure Settings > Pages > Build and deployment > Source."
+    return 1
+  fi
+
+  if ! environment_policy_mode="$(gh api \
+      --method GET \
+      "$environment_url" \
+      --jq '[.deployment_branch_policy.protected_branches, .deployment_branch_policy.custom_branch_policies] | @tsv' \
+      2>/dev/null)"; then
+    echo "::error::Could not read the github-pages environment configuration for ${REPO}."
+    echo "         The authenticated account needs repository administration read access."
+    return 1
+  fi
+
+  if [[ "$environment_policy_mode" != $'false\ttrue' ]]; then
+    echo "::error::The github-pages environment must use custom deployment branch and tag policies."
+    echo "         Configure Settings > Environments > github-pages > Deployment branches and tags"
+    echo "         to Selected branches and tags."
+    return 1
+  fi
+
+  if ! deployment_policies="$(gh api \
+      --method GET \
+      "${environment_url}/deployment-branch-policies?per_page=100" \
+      --jq '[.branch_policies[] | "\(.type):\(.name)"] | sort | join(",")' \
+      2>/dev/null)"; then
+    echo "::error::Could not read the github-pages deployment policies for ${REPO}."
+    echo "         The authenticated account needs repository administration read access."
+    return 1
+  fi
+
+  if [[ "$deployment_policies" != "tag:v*" ]]; then
+    echo "::error::The github-pages environment must allow exactly the release tag policy 'v*'."
+    echo "         Expected: tag:v*"
+    echo "         Found:    ${deployment_policies:-none}"
+    return 1
+  fi
 }
 
 # Returns 0 (true) if `v<arg>` exists either remotely or locally.
@@ -330,6 +391,11 @@ fi
 
 if ! git push --dry-run origin "${LOCAL_SHA}:refs/tags/${RELEASE_TAG}" >/dev/null; then
   echo "::error::The release tag cannot be pushed to origin. No remote state was changed."
+  exit 1
+fi
+
+if ! validate_pages_release_configuration; then
+  echo "         No release tag was created or pushed."
   exit 1
 fi
 
