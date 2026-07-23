@@ -28,7 +28,8 @@ public class TraversalTranslationTests : TranslationTestBase
     [Fact]
     public Task Traverse_WidenedToINodeBeforeLabelFilter_LeavesStartUnconstrained()
     {
-        var query = ((IGraphQueryable<INode>)Root.Nodes<Person>())
+        IGraphQueryable<INode> nodes = Root.Nodes<Person>();
+        var query = nodes
             .OfLabel("Person")
             .Traverse<Knows, Person>();
 
@@ -118,8 +119,8 @@ public class TraversalTranslationTests : TranslationTestBase
             .OptionalTraverse<Knows, Person>()
             .Select(result => new
             {
-                SourceKey = ((Person)result.Source).TestKey,
-                TargetKey = result.Target == null ? null : ((Person)result.Target).TestKey,
+                SourceKey = ((Person)result.Source).TestKey, // lgtm[cs/useless-cast-to-self]
+                TargetKey = result.Target == null ? null : result.Target.TestKey,
             })
             .Take(5);
 

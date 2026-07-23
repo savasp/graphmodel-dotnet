@@ -1656,8 +1656,8 @@ public interface IQueryTraversalTests : IGraphTest
             .OptionalTraverse<Knows, Person>()
             .Select(result => new
             {
-                SourceId = ((Person)result.Source).TestKey,
-                TargetId = result.Target == null ? null : ((Person)result.Target).TestKey,
+                SourceId = ((Person)result.Source).TestKey, // lgtm[cs/useless-cast-to-self]
+                TargetId = result.Target == null ? null : result.Target.TestKey,
             })
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -1668,7 +1668,7 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Contains(results, result => ((Person)result.Source).TestKey == self.TestKey && ((Person?)result.Target)?.TestKey == self.TestKey);
         Assert.Equal(
             new[] { one.TestKey, many.TestKey }.Order().ToArray(),
-            incoming.Select(result => ((Person)result.Target!).TestKey).Order().ToArray());
+            incoming.Select(result => result.Target!.TestKey).Order().ToArray());
         Assert.Equal(unmatched.TestKey, Assert.Single(projected).SourceId);
         Assert.Null(projected[0].TargetId);
     }

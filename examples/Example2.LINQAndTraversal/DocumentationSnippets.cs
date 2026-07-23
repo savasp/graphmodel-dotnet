@@ -17,6 +17,7 @@ internal static class DocumentationSnippets
             .Where(person => person.Age >= 28 && person.Age <= 32)
             .ToListAsync();
         // snippet-end: query-roots
+        Console.WriteLine($"Found {newYorkers.Count} New Yorker(s) and {ageRange.Count} person(s) in the age range.");
     }
 
     private static async Task TraverseAsync(IGraph graph)
@@ -32,6 +33,8 @@ internal static class DocumentationSnippets
             .Traverse<Knows, Person>(2)
             .ToListAsync();
         // snippet-end: traversal
+        Console.WriteLine(
+            $"Found {directConnections.Count} direct connection(s) and {twoHopConnections.Count} two-hop connection(s).");
     }
 
     private static async Task PathSegmentsAsync(IGraph graph)
@@ -42,5 +45,6 @@ internal static class DocumentationSnippets
             .PathSegments<Person, Knows, Person>()
             .ToListAsync();
         // snippet-end: path-segments
+        Console.WriteLine($"Found {connections.Count} path segment(s).");
     }
 }

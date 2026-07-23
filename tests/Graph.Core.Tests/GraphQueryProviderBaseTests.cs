@@ -410,6 +410,7 @@ public sealed class GraphQueryProviderBaseTests
     {
         await foreach (var _ in stream)
         {
+            // Enumerating the stream is the behavior under test.
         }
     }
 

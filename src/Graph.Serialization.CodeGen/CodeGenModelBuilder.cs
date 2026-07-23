@@ -458,8 +458,6 @@ internal sealed class CodeGenModelBuilder
 
     private static string FindPropertyNameForParameter(IParameterSymbol parameter)
     {
-        var parameterName = parameter.Name;
-
         return Utils.GetPropertyNameFromParameter(parameter);
     }
 

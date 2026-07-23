@@ -137,6 +137,8 @@ internal sealed class CypherEngine
         }
         else if (mutation.Kind == GraphMutationKind.Update)
         {
+            var updateComplexPlan = complexPlan ?? throw new InvalidOperationException(
+                "An update mutation must have a complex-property plan.");
             if (!constraintPlan.IsEmpty)
             {
                 var rows = await ReadConstraintRowsAsync(
@@ -153,7 +155,7 @@ internal sealed class CypherEngine
                     transaction,
                     cancellationToken).ConfigureAwait(false);
             }
-            else if (complexPlan!.HasWork)
+            else if (updateComplexPlan.HasWork)
             {
                 // Complex replacement spans multiple AGE statements. Lock every frozen parent in
                 // the same global order as constrained and entity-manager updates before any scalar
@@ -172,14 +174,14 @@ internal sealed class CypherEngine
                 _ = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
             }
 
-            if (complexPlan!.HasWork)
+            if (updateComplexPlan.HasWork)
             {
                 await _complexPropertyManager.ReplaceGraphIdBoundComplexPropertiesAsync(
                     transaction.Runner,
                     nativeIdentities.Cast<long>().ToArray(),
-                    complexPlan.RelationshipTypesToClear,
-                    complexPlan.PropertyNamesToClear,
-                    complexPlan.ReplacementEntity,
+                    updateComplexPlan.RelationshipTypesToClear,
+                    updateComplexPlan.PropertyNamesToClear,
+                    updateComplexPlan.ReplacementEntity,
                     cancellationToken).ConfigureAwait(false);
             }
         }
@@ -232,14 +234,15 @@ internal sealed class CypherEngine
             constraintPlan.Properties.Select(property => property.StorageName).ToArray(),
             acquireWriteLock: false);
         var records = await ExecuteStatementAsync(statement, transaction, cancellationToken).ConfigureAwait(false);
-        var rows = records.Select(record => new GraphMutationConstraintRow(
-            record["__nativeId"].As<long>(),
-            constraintPlan.Properties.Select((property, index) => new
+        var rows = records.Select(record =>
+        {
+            var values = constraintPlan.Properties.Select((property, index) =>
             {
-                property.StorageName,
-                Value = (object?)record[CypherMutationPlanner.ConstraintValueColumn(index)].As<object>(),
-            })
-                .ToDictionary(item => item.StorageName, item => item.Value, StringComparer.Ordinal)))
+                object? value = record[CypherMutationPlanner.ConstraintValueColumn(index)].As<object>();
+                return new KeyValuePair<string, object?>(property.StorageName, value);
+            }).ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+            return new GraphMutationConstraintRow(record["__nativeId"].As<long>(), values);
+        })
             .ToArray();
         GraphMutationConstraintPlan.ValidateTargetRows(nativeIdentities, rows);
         return rows;

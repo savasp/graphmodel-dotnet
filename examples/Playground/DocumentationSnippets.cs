@@ -108,6 +108,7 @@ internal static class DocumentationSnippets
             .Where(person => person.Email.EndsWith("@expired.example"))
             .DeleteAsync(cascadeDelete: true);
         // snippet-end: set-based-mutation
+        Console.WriteLine($"Updated {updated} and deleted {deleted} person(s).");
     }
 
     private static async Task Neo4jQuickStartAsync()
@@ -124,6 +125,7 @@ internal static class DocumentationSnippets
             .OrderBy(u => u.CreatedDate)
             .ToListAsync();
         // snippet-end: neo4j-quick-start
+        Console.WriteLine($"Found {users.Count} active user(s).");
     }
 
     private static async Task AgeQuickStartAsync()
@@ -140,6 +142,7 @@ internal static class DocumentationSnippets
             .Where(user => user.IsActive)
             .ToListAsync();
         // snippet-end: age-quick-start
+        Console.WriteLine($"Found {activeUsers.Count} active user(s).");
     }
 
     private static async Task InMemoryQuickStartAsync()
@@ -151,5 +154,6 @@ internal static class DocumentationSnippets
         await graph.CreateNodeAsync(new Person { Name = "Alice" });
         var alice = await graph.Nodes<Person>().Where(p => p.Name == "Alice").SingleAsync();
         // snippet-end: in-memory-quick-start
+        Console.WriteLine(alice.Name);
     }
 }
