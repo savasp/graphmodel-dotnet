@@ -261,6 +261,17 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task TakeThenWhereThenCount_PipesPredicateAfterPagingBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>()
+            .OrderBy(p => p.Age)
+            .Take(3)
+            .Where(p => p.Age >= 3);
+        var expr = MarkerExpressions.Call<Person>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
     public Task LongCount_NoPredicate()
     {
         var source = Root.Nodes<Person>();

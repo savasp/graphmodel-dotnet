@@ -269,8 +269,8 @@ apply them before projection and paging. All in-tree providers implement the con
 every relationship while expanding a candidate path; an existence filter lowers directly to an
 anchored relationship pattern. Providers must implement those semantics or decline the capability—
 post-hoc client filtering and silently ignoring the predicate are not conforming implementations.
-Neo4j and in-memory implement the contract; AGE declines it because its supported openCypher subset
-cannot preserve both variable-path and existence-pattern semantics.
+All in-tree providers implement the contract. AGE preserves variable-path predicates through
+indexed list filtering and lowers anchored existence patterns through grouped optional matches.
 
 `ShortestPath` gates both `ShortestPath<TRel, TEnd>` and `AllShortestPaths<TRel, TEnd>`.
 Implementations select paths independently for every source/endpoint pair, evaluate the endpoint
@@ -286,8 +286,8 @@ or scalar projection shapes at the shared model boundary. Repeated same-kind lef
 represented as recursive binary `UnionFragment` models: `Union` removes duplicates across the
 complete tree, while `Concat` preserves operand order and duplicates. Parameter prefixes must remain
 disjoint recursively. Flat mixed chains are rejected by the builder; explicitly nested mixed trees
-retain their declared grouping. Neo4j and in-memory implement the contract; AGE declines it at
-translation time.
+retain their declared grouping. All in-tree providers implement the contract; AGE sends every
+branch through its provider-local lowering pipeline and normalizes the result aliases.
 
 `PatternSizeProjection` gates every relationship-count pattern subquery a projection can produce. The node relationship-count (degree) surface `CountRelationships<TRel>(direction)` lowers to a `COUNT { MATCH (src)-[:REL]->() }` / `size((src)-[:REL]->())` subquery. Relationship direction is physical (matching traversal), compatible derived relationship labels participate, and an undirected self-loop counts once. A provider that declines the capability rejects it at translation time. Complex-property collection `.Count` instead reads the owner's stored logical length so null slots are counted without requiring this capability.
 
@@ -454,9 +454,9 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*`, `IQueryTraversalTests.OptionalTraverse_PreservesUnmatchedRowsAndPinsMatchDirectionAndProjectionSemantics`, `IQueryTraversalTests.OptionalTraverse_SourceLabelFilterEliminatesRowsBeforeTheLeftMatch` (also gated on `LabelFiltering`) | method | pass | pass | pass |
 | `GroupByAggregation` | `IGroupByTests` (all methods) | interface | pass | pass | pass |
 | `NestedTransactions` | _record only_ | — | — | — | — |
-| `RelationshipPredicates` | `IQueryTraversalTests.VariableTraversal_RelationshipPredicateFiltersEveryExpandedHop`, `IQueryTraversalTests.WhereHasRelationship_RespectsDirectionPredicateAndSelfRelationships` | method | pass | pass | skip |
+| `RelationshipPredicates` | `IQueryTraversalTests.VariableTraversal_RelationshipPredicateFiltersEveryExpandedHop`, `IQueryTraversalTests.WhereHasRelationship_RespectsDirectionPredicateAndSelfRelationships` | method | pass | pass | pass |
 | `ShortestPath` | `IQueryTraversalTests.ShortestPaths_PinSelectionEndpointDirectionNoPathAndSameNodeSemantics` | method | pass | pass | skip |
-| `SetOperations` | `IQueryTraversalTests.TypedUnionAndConcat_PinDistinctBagAndScalarProjectionSemantics` | method | pass | pass | skip |
+| `SetOperations` | `IQueryTraversalTests.TypedUnionAndConcat_PinDistinctBagAndScalarProjectionSemantics` | method | pass | pass | pass |
 | `NullElementsInSimpleCollections` | `IBasicTests` and `IGraphCommandTests` null-bearing collection cases | method | pass | pass | pass |
 
 The correlated grouped-projection grammar (`GroupBy(seg => seg.StartNode).Select(g => new { … })`)

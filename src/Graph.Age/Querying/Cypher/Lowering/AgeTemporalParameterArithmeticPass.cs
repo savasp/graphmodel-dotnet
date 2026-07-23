@@ -146,7 +146,14 @@ internal sealed class AgeTemporalParameterArithmeticPass : ICypherPass
         private CypherExpression RewriteBinary(BinaryExpression binary)
         {
             var rewritten = new BinaryExpression(binary.Op, Rewrite(binary.Left), Rewrite(binary.Right));
-            return TryFoldTemporalArithmetic(rewritten, out var parameter) ? parameter : rewritten;
+            if (TryFoldTemporalArithmetic(rewritten, out var parameter))
+            {
+                return parameter;
+            }
+
+            return TryShiftTemporalArithmeticComparison(rewritten, out var comparison)
+                ? comparison
+                : rewritten;
         }
 
         private CypherExpression RewriteFunction(FunctionCall function)
@@ -206,6 +213,148 @@ internal sealed class AgeTemporalParameterArithmeticPass : ICypherPass
             parameter = AddParameter(value.ToUniversalTime());
             return true;
         }
+
+        private bool TryShiftTemporalArithmeticComparison(
+            BinaryExpression expression,
+            out BinaryExpression comparison)
+        {
+            comparison = null!;
+            if (!IsComparison(expression.Op))
+            {
+                return false;
+            }
+
+            if (TryShiftTemporalOperand(expression.Left, expression.Right, out var left, out var right) ||
+                TryShiftTemporalOperand(expression.Right, expression.Left, out right, out left))
+            {
+                comparison = new BinaryExpression(expression.Op, left, right);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryShiftTemporalOperand(
+            CypherExpression temporalOperand,
+            CypherExpression boundOperand,
+            out CypherExpression rewrittenTemporal,
+            out CypherExpression rewrittenBound)
+        {
+            rewrittenTemporal = null!;
+            rewrittenBound = null!;
+            if (temporalOperand is not BinaryExpression
+                {
+                    Op: CypherBinaryOperator.Add,
+                    Left: var temporalValue,
+                    Right: MapExpression { Entries: [var duration] }
+                } ||
+                boundOperand is not QueryParameter boundParameter ||
+                !IsDurationUnit(duration.Key) ||
+                !TryGetDurationAmount(duration.Value, out var amount) ||
+                !parameters.TryGetValue(boundParameter.Name, out var rawBound) ||
+                rawBound is null ||
+                !TryAdjustTemporalValue(rawBound, duration.Key, -amount, out var adjustedBound))
+            {
+                return false;
+            }
+
+            rewrittenTemporal = temporalValue;
+            rewrittenBound = AddParameter(adjustedBound);
+            return true;
+        }
+
+        private bool TryGetDurationAmount(CypherExpression expression, out double amount)
+        {
+            object? raw = expression switch
+            {
+                QueryParameter parameter when parameters.TryGetValue(parameter.Name, out var value) => value,
+                Literal literal => literal.Value,
+                _ => null,
+            };
+
+            if (raw is null)
+            {
+                amount = default;
+                return false;
+            }
+
+            try
+            {
+                amount = Convert.ToDouble(raw, CultureInfo.InvariantCulture);
+                return true;
+            }
+            catch (Exception exception) when (exception is FormatException or InvalidCastException or OverflowException)
+            {
+                amount = default;
+                return false;
+            }
+        }
+
+        private static bool TryAdjustTemporalValue(
+            object rawValue,
+            string unit,
+            double amount,
+            out object adjusted)
+        {
+            if (rawValue is DateTime dateTime)
+            {
+                adjusted = Add(dateTime, unit, amount);
+                return true;
+            }
+
+            if (rawValue is DateTimeOffset dateTimeOffset)
+            {
+                adjusted = Add(dateTimeOffset, unit, amount);
+                return true;
+            }
+
+            if (DateTimeOffset.TryParse(
+                Convert.ToString(rawValue, CultureInfo.InvariantCulture),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var parsed))
+            {
+                adjusted = Add(parsed, unit, amount);
+                return true;
+            }
+
+            adjusted = null!;
+            return false;
+        }
+
+        private static DateTime Add(DateTime value, string unit, double amount) =>
+            unit.ToLowerInvariant() switch
+            {
+                "days" => value.AddDays(amount),
+                "hours" => value.AddHours(amount),
+                "minutes" => value.AddMinutes(amount),
+                "seconds" => value.AddSeconds(amount),
+                "milliseconds" => value.AddMilliseconds(amount),
+                "months" => value.AddMonths(Convert.ToInt32(amount, CultureInfo.InvariantCulture)),
+                "years" => value.AddYears(Convert.ToInt32(amount, CultureInfo.InvariantCulture)),
+                _ => value,
+            };
+
+        private static DateTimeOffset Add(DateTimeOffset value, string unit, double amount) =>
+            unit.ToLowerInvariant() switch
+            {
+                "days" => value.AddDays(amount),
+                "hours" => value.AddHours(amount),
+                "minutes" => value.AddMinutes(amount),
+                "seconds" => value.AddSeconds(amount),
+                "milliseconds" => value.AddMilliseconds(amount),
+                "months" => value.AddMonths(Convert.ToInt32(amount, CultureInfo.InvariantCulture)),
+                "years" => value.AddYears(Convert.ToInt32(amount, CultureInfo.InvariantCulture)),
+                _ => value,
+            };
+
+        private static bool IsComparison(CypherBinaryOperator op) => op is
+            CypherBinaryOperator.Equal or
+            CypherBinaryOperator.NotEqual or
+            CypherBinaryOperator.LessThan or
+            CypherBinaryOperator.LessThanOrEqual or
+            CypherBinaryOperator.GreaterThan or
+            CypherBinaryOperator.GreaterThanOrEqual;
 
         private static bool TryEvaluateParameterFreeTemporal(string name, out object value)
         {

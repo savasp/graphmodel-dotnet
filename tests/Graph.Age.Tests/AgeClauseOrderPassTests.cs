@@ -92,6 +92,7 @@ public sealed class AgeClauseOrderPassTests
             LIMIT 3
             """,
             rendered.Text);
+        Assert.Equal(["src"], rendered.ProjectionColumns);
     }
 
     [Fact]

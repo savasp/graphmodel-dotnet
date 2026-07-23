@@ -664,6 +664,50 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_ComposedPredicateAndConstructorProjection_RetainsSemanticAstNodes()
+    {
+        var minimumAge = 18;
+        var allowedNames = new[] { "Ada", "Grace" };
+        var bonus = 2;
+        var fallback = "(missing)";
+        Expression<Func<Person, bool>> predicate = person =>
+            person.Age >= minimumAge &&
+            (person.OptionalText == null || allowedNames.Contains(person.Name)) &&
+            !person.Tags.Contains("blocked");
+        Expression<Func<Person, PersonCoverageDto>> projection = person => new PersonCoverageDto(
+            person.Name,
+            person.Age + bonus,
+            person.OptionalText == null ? fallback : person.OptionalText);
+
+        var statement = planner.Plan(Model(
+            predicates: [new PredicateFragment(predicate, "src")],
+            paging: new Paging(skip: 1, take: 3),
+            projection: new ProjectionShape(ProjectionKind.Scalar, projection)));
+
+        var predicateExpressions = Descendants(
+            Assert.Single(statement.Clauses.OfType<WhereClause>()).Predicate).ToArray();
+        Assert.Contains(predicateExpressions, expression => expression is AstBinaryExpression { Op: CypherBinaryOperator.GreaterThanOrEqual });
+        Assert.Contains(predicateExpressions, expression => expression is AstBinaryExpression { Op: CypherBinaryOperator.Or });
+        Assert.Contains(predicateExpressions, expression => expression is AstBinaryExpression { Op: CypherBinaryOperator.In });
+        Assert.Contains(predicateExpressions, expression => expression is AstUnaryExpression { Op: CypherUnaryOperator.IsNull });
+        Assert.Contains(predicateExpressions, expression => expression is AstUnaryExpression { Op: CypherUnaryOperator.Not });
+        Assert.Contains(predicateExpressions, expression => expression is CollectionContainsExpression);
+
+        var items = Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items;
+        Assert.Collection(
+            items,
+            item => Assert.Equal("Name", item.Alias),
+            item => Assert.Equal("AdjustedAge", item.Alias),
+            item => Assert.Equal("Display", item.Alias));
+        Assert.Equal(CypherBinaryOperator.Add, Assert.IsType<AstBinaryExpression>(items[1].Expression).Op);
+        Assert.IsType<CaseExpression>(items[2].Expression);
+        Assert.Contains(minimumAge, statement.Parameters.Values);
+        Assert.Contains(bonus, statement.Parameters.Values);
+        Assert.Contains(fallback, statement.Parameters.Values);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
     public void Plan_NamedConstructorProjection_UsesConstructorParameterAsAlias()
     {
         Expression<Func<Person, PersonDto>> selector = person => new PersonDto(person.Name);
@@ -915,6 +959,37 @@ public class CypherQueryPlannerTests
 
         var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
         Assert.Equal("count", Assert.IsType<FunctionCall>(item.Expression).Name);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_CountAfterPagedFilter_AggregatesTheContinuationRows()
+    {
+        Expression<Func<Person, int>> ordering = person => person.Age;
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 3;
+        var statement = planner.Plan(Model(
+            ordering: [new OrderingKey(ordering, descending: false)],
+            paging: new Paging(skip: null, take: 3),
+            terminal: TerminalOperation.Count,
+            postPaging: new PostPagingStage(
+                [new PredicateFragment(predicate, "src")],
+                [],
+                new Paging(null, null),
+                distinct: false)));
+
+        Assert.Collection(
+            statement.Clauses,
+            clause => Assert.IsType<MatchClause>(clause),
+            clause => Assert.IsType<WithClause>(clause),
+            clause => Assert.IsType<OrderByClause>(clause),
+            clause => Assert.IsType<LimitClause>(clause),
+            clause => Assert.IsType<WithClause>(clause),
+            clause => Assert.IsType<WhereClause>(clause),
+            clause =>
+            {
+                var item = Assert.Single(Assert.IsType<ReturnClause>(clause).Items);
+                Assert.Equal("count", Assert.IsType<FunctionCall>(item.Expression).Name);
+            });
         new CypherAstValidator().Run(statement);
     }
 
@@ -1677,6 +1752,26 @@ public class CypherQueryPlannerTests
             case AstUnaryExpression unary:
                 foreach (var item in Descendants(unary.Operand)) yield return item;
                 break;
+            case CollectionContainsExpression contains:
+                foreach (var item in Descendants(contains.Collection)) yield return item;
+                foreach (var item in Descendants(contains.Item)) yield return item;
+                break;
+            case FunctionCall function:
+                foreach (var argument in function.Arguments)
+                {
+                    foreach (var item in Descendants(argument)) yield return item;
+                }
+
+                break;
+            case CaseExpression @case:
+                foreach (var item in Descendants(@case.Condition)) yield return item;
+                foreach (var item in Descendants(@case.WhenTrue)) yield return item;
+                if (@case.WhenFalse is not null)
+                {
+                    foreach (var item in Descendants(@case.WhenFalse)) yield return item;
+                }
+
+                break;
             case ConjunctionExpression conjunction:
                 foreach (var predicate in conjunction.Predicates)
                 {
@@ -1709,7 +1804,8 @@ public class CypherQueryPlannerTests
         GroupByFragment? groupBy = null,
         SelectManyFragment? selectMany = null,
         UnionFragment? union = null,
-        QueryPathShape? pathShape = null) =>
+        QueryPathShape? pathShape = null,
+        PostPagingStage? postPaging = null) =>
         new(
             root ?? new NodeRoot(typeof(Person)),
             predicates ?? [],
@@ -1725,7 +1821,8 @@ public class CypherQueryPlannerTests
             searchFilter,
             groupBy,
             selectMany,
-            union);
+            union,
+            postPaging);
 
     private static void AssertMissingCapability(GraphCapability capability, GraphQueryModel model)
     {
@@ -1751,6 +1848,8 @@ public class CypherQueryPlannerTests
 
     private sealed record PersonDto(string Name);
 
+    private sealed record PersonCoverageDto(string Name, int AdjustedAge, string Display);
+
     [Node("Person")]
     private sealed record Person : Node
     {
@@ -1759,6 +1858,10 @@ public class CypherQueryPlannerTests
         public int Age { get; init; }
 
         public string Name { get; init; } = string.Empty;
+
+        public string? OptionalText { get; init; }
+
+        public IReadOnlyList<string> Tags { get; init; } = [];
 
         public PersonStatus Status { get; init; }
 
